@@ -1,0 +1,149 @@
+class_name MonsterData
+extends RefCounted
+##
+## 怪物原型 / Elite 三张表 —— **GDD `wave-spawner` v0.2 §2.5 / §2.5.4** 的唯一登记处
+##
+## 🔴 定位（control-manifest §5）：`scripts/data/` = SSOT。工程层禁止就地写这些字面量，
+##    一律 `MonsterData.*` 读取。本文件**只登记 GDD 定稿值 + 派生函数**，不新增任何数值。
+##
+## 🔴 W-C1 三条守恒（GDD §2.5.2）—— 本文件的取值必须全部满足：
+##   C-1 总 HP 守恒   Σ p_i · m_hp_i  = 0.40×0.60 + 0.40×0.40 + 0.20×3.00 = 1.000 ✓
+##   C-2 只数守恒     Σ p_i            = 0.40 + 0.40 + 0.20                = 1.000 ✓
+##   C-3 在场时间守恒 Σ p_i / m_spd_i  = 0.30 + 0.40 + 0.30                = 1.000 ✓
+##   （`m_dps` 同族：0.40×0.80 + 0.40×0.60 + 0.20×2.20 = 1.000 ✓ —— 🔒 T1 才用）
+##
+## 🟡 待拍板 **S5-D1**（见 `docs/phase3/slice5-verify.md` §5）：
+##    GDD §2.5 的三原型分化 + §2.5.4 的 Elite **与金标本 `WaveSim.simulate_wave` 不等价**
+##    （金标本是「单一基准怪」：全体 `hp = HP_unit(w)`、`t_remain = t_reach`）。
+##    实测偏离见 verify §5 的对照表（W10 @1.0×threshold：金标本 7 杀 / 17 漏，
+##    三原型 17 杀 / 7 漏）→ 会改动起飞率判据链。
+##    → 本文件照 GDD **完整登记**，`WaveDirector` 侧由 `prototype_split_enabled`
+##      / `elite_waves_enabled` 两个开关控制是否生效；**MVP 默认 false = 金标本等价口径**。
+##
+## ⚠️ Godot 坑
+##   G1 `int / int` 整数除法 → 所有期望 float 的除法两侧显式 `float()`。
+##   G2 `**` 不是运算符；本文件无幂运算（`HP_unit` 由 `WaveSim.monster_stats` 给出）。
+##
+
+# ---- GDD §2.5.3 定稿构成（唯一同时满足 C-1/C-2/C-3 的整洁解）----
+const PROTOS: Array = ["Rush", "Swarm", "Tank"]
+
+## 只数占比 p
+const P: Dictionary = {"Rush": 0.40, "Swarm": 0.40, "Tank": 0.20}
+## HP 乘数 m_hp（× HP_unit(w)）
+const M_HP: Dictionary = {"Rush": 0.60, "Swarm": 0.40, "Tank": 3.00}
+## 速度乘数 m_spd（× v₀ = 10.10 u/s）
+const M_SPD: Dictionary = {"Rush": 4.0 / 3.0, "Swarm": 1.0, "Tank": 2.0 / 3.0}
+## 对塔伤害系数 m_dps（🔒 T1 才消费；MVP 塔不死 → 不生效）
+const M_DPS: Dictionary = {"Rush": 0.80, "Swarm": 0.60, "Tank": 2.20}
+
+# ---- GDD §2.5.4 Elite 波（词缀版，非新原型）----
+const ELITE_EVERY := 5              # Elite 波 = {5,10,15,20,…}
+const ELITE_SHARE := 0.10           # n_e = max(2, round(0.10·N))
+const ELITE_MIN := 2
+const ELITE_HP_MULT := 2.5          # m_hp_elite（浓缩口径：Elite 单只 = 2.5 × HP_unit）
+
+# ---- GDD §2.6 仇恨（🔒 T1 生效；MVP 骨架登记，不进判定）----
+const AGGRO_R := 9.0                # R1 转向半径（水平面 XZ，不判 Y）
+const AGGRO_TICK := 0.10            # R3 判定频率（与 sim 真身 dt=0.1 对齐）
+const AGGRO_EXIT := 10.8            # R4 迟滞带退出阈值 = 9.0 × 1.2
+
+# ---- GDD §2.2.1 派生基准速度 ----
+## v₀ = L / t_reach = 101.0 / 10.0 = 10.10 unit/s
+static func v0(total_len: float, t_reach: float) -> float:
+	return total_len / t_reach
+
+
+# ---------------------------------------------------------------------------
+# 构成取整（复现 GDD §5.2 波次节奏表的「构成 R/S/T」列）
+# ---------------------------------------------------------------------------
+## 🔴 口径（GDD 未写死取整顺序，本文件给唯一自洽解）：
+##   tank  = round(0.20·N)
+##   rush  = round(0.40·N)
+##   swarm = N − rush − tank          ← 兜住 C-2 只数守恒（Σ ≡ N，恒等成立）
+##
+## 与 GDD §5.2 表逐波比对：W1 4/4/2 · W3 5/5/3 · W5 6/7/3 · W10 10/9/5 ·
+## W15 13/13/6 · W20 16/16/8 全部逐位一致。
+## 🟡 GDD 表自身在 W4（6/6/3 = 15 ≠ N=14）、W7（8/8/4 = 20 ≠ 19）、
+##    W19（15/16/8 = 39 ≠ 38）三行有加总笔误 —— 本函数按 **C-2 守恒** 取正确解
+##    （详见 verify §5「S5-F1」）。
+static func composition(n: int) -> Dictionary:
+	var tank := int(round(0.20 * float(n)))
+	var rush := int(round(0.40 * float(n)))
+	var swarm := n - rush - tank
+	if swarm < 0:
+		swarm = 0
+	return {"Rush": rush, "Swarm": swarm, "Tank": tank}
+
+
+## 出生序列（**按构成比例轮转**，GDD §4.1「每 interval 秒生成 1 只（按构成比例轮转原型）」）。
+## 轮转顺序固定 `Swarm → Rush → Tank`（Swarm 是基准怪，先出；Tank 最慢，压后），
+## 逐轮依次取一只、取空即跳过 → 三原型**均匀铺开**而不是先来 4 只 Rush 再来 4 只 Swarm。
+## 🔴 纯确定性（无 RNG）：同一 N 恒得同一序列。
+static func spawn_sequence(n: int) -> Array:
+	var c := composition(n)
+	var rem := {"Rush": int(c["Rush"]), "Swarm": int(c["Swarm"]), "Tank": int(c["Tank"])}
+	var out: Array = []
+	out.resize(n)
+	var wpos := 0
+	var guard := 0
+	while wpos < n and guard < n * 4:
+		guard += 1
+		for p in PROTOS:
+			if int(rem[p]) > 0 and wpos < n:
+				out[wpos] = p
+				wpos += 1
+				rem[p] = int(rem[p]) - 1
+	return out
+
+
+# ---------------------------------------------------------------------------
+# Elite 波（GDD §2.5.4）
+# ---------------------------------------------------------------------------
+static func is_elite_wave(w: int) -> bool:
+	return w % ELITE_EVERY == 0
+
+
+## n_e(w) = max(2, round(0.10 × N(w)))   → W5 2 / W10 2 / W15 3 / W20 4
+static func elite_count(w: int, n: int) -> int:
+	if not is_elite_wave(w):
+		return 0
+	return maxi(ELITE_MIN, int(round(ELITE_SHARE * float(n))))
+
+
+## 守恒系数 c(w) = (N − 2.5·n_e) / (N − n_e)
+##   → W5 0.7857 / W10 0.8636 / W15 0.8448 / W20 0.8333（GDD §2.5.4 表）
+## 🔴 保证：n_e 只数吃掉 2.5×，其余 (N−n_e) 只按 c(w) 等比下调 →
+##    总 HP 与只数**双守恒**；速度沿用宿主原型 → C-3 自动成立。
+static func elite_conserve(n: int, n_e: int) -> float:
+	if n_e <= 0:
+		return 1.0
+	return (float(n) - ELITE_HP_MULT * float(n_e)) / (float(n) - float(n_e))
+
+
+## Elite 词缀落在哪几个出生序号上：**沿波次均匀铺开**（GDD 只定只数，未定位置）。
+## 🔴 纯确定性：idx_j = floor(N·(j+0.5)/n_e)，j ∈ [0, n_e)。
+static func elite_indices(n: int, n_e: int) -> Array:
+	var out: Array = []
+	if n_e <= 0:
+		return out
+	for j in range(n_e):
+		var idx := int(floor(float(n) * (float(j) + 0.5) / float(n_e)))
+		idx = clampi(idx, 0, maxi(0, n - 1))
+		if not out.has(idx):
+			out.append(idx)
+	return out
+
+
+## 单只 HP 乘数（相对 `HP_unit(w)`）
+##   Elite      → 2.5（GDD：浓缩口径，不再乘宿主原型的 m_hp）
+##   普通怪     → m_hp(proto) × c(w)
+static func hp_mult(proto: String, is_elite: bool, c: float) -> float:
+	if is_elite:
+		return ELITE_HP_MULT
+	return float(M_HP[proto]) * c
+
+
+## 单只速度乘数：🔴 Elite **沿用宿主原型**（C-3 自动成立）
+static func spd_mult(proto: String) -> float:
+	return float(M_SPD[proto])

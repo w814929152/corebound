@@ -1,0 +1,25 @@
+# Godot 4
+.godot/
+*.tmp
+*.log
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# 导出
+export/
+build/
+*.exe
+*.pck
+*.zip
+
+# 系统
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 编辑器备份
+*.swp
+*~

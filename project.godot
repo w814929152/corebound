@@ -1,0 +1,42 @@
+; 《守核 Corebound》— Godot 4 工程
+; Phase 3 MVP · 切片1：伤害引擎（7 乘区）移植 + headless 逐位对齐
+;
+; headless 自测：
+;   <godot> --headless --path D:/roguedemo --script res://tests/run_tests.gd
+;   <godot> --headless --path D:/roguedemo --quit        （走 main scene，headless 下自动跑自测）
+
+config_version=5
+
+[application]
+
+config/name="Corebound"
+config/description="肉鸽塔防 + 卡牌构筑 — 守核 Corebound"
+config/version="0.1.0.slice1"
+config/features=PackedStringArray("4.7")
+run/main_scene="res://scenes/main.tscn"
+boot_splash/bg_color=Color(0.05, 0.06, 0.08, 1)
+
+[display]
+
+; 🔴 Q-S3-C（主理人 2026-10-01 拍板，GDD `design/gdd/shop-reroll.md` v1.2）：
+;    视口 = **1920×1080**（GDD §2.4 的基准屏）—— 0.32×1920 = 614.4px 与 C3 的「614px / 32%」完全吻合，
+;    而 1280 下 0.32×1280 = 409.6px < 560px 会被最小宽约束压过（抽屉 43.75%）。
+;    `shop_layout.gd` 的 `maxf(560, 0.32×屏宽)` 算尺保留，作非基准屏（窗口 resize / expand）的安全网。
+window/size/viewport_width=1920
+window/size/viewport_height=1080
+window/stretch/mode="canvas_items"
+; 🔴 显式钉死 aspect（4.7 新建项目默认值已改为 expand，不写死会随引擎升级漂）
+window/stretch/aspect="expand"
+
+[rendering]
+
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
+
+[physics]
+
+common/physics_ticks_per_second=60
+
+[debug]
+
+gdscript/warnings/untyped_declaration=0
