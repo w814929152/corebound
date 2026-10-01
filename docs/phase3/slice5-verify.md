@@ -96,6 +96,7 @@ MVP 塔不死 → 波内 DPS 恒定 → 金标本批处理循环可**逐 tick �
 - **落地方式（工程已做，追认）**：两口径都完整实现，🔴 **MVP 默认 `prototype_split_enabled=false` 且 `elite_waves_enabled=false`**（与 `tower_aggro_enabled=false` 同款"结构就位、分支不生效"模式）→ 金标本等价口径，MC 逐位不变。
 - **🟢 校准闸门（后续切片前置）**：三原型+Elite 上线前**必须**：① 用真实 build 跑 300 局 MC，确认起飞率仍 ≥80%、起飞点仍落 W10–15、B/A<1；② 若破线，按 GDD §2.5 兜底"第一个砍 Elite"，或重扫 `m_hp/m_spd`；③ 验收口径从"逐位等价"改为"统计容差"（金标本扩展为多原型版本，或改用 MC 分布对齐）。**这是 D-W1/D-W2 的激活前置，不是推翻它们**——设计已定稿，只是校准未过不能默认开。
 - **T1 仇恨联动**：`tower_aggro_enabled=true` 会让"波内 DPS 不再恒定"（怪物停下打塔 → 集火目标变），届时等价口径需重议（建议：仇恨只改怪物路径、不改 DPS 分配总量，则等价可保）。
+- **✅ 校准闸门已过（2026-10-01，切片7）**：用真实 build 跑 300 局 MC（三原型+Elite 口径，`wave_sim_proto.gd` / `run_loop_proto.gd`，shop_ai 金标本不变）—— **闸门三闸全过**：① B 起飞率 **91.7%** ≥80% ② 起飞点 **W13** ∈W10-15 ③ B/A **0.432** <1。→ 三原型+Elite 从「已实现但未激活」升级为「**已过校准闸门，可激活**」（双开关置 true 即生效）。详见 `docs/phase3/slice7-verify.md`。🔴 注意：这**不改** MVP 默认口径（仍 false = 金标本等价），只是解除"不许默认激活"的封锁。
 
 ### S5-D2 · 安全窗实现口径 —— ✅ 拍板：**追认 `paused` 实现，GDD 已补术语前置**
 - GDD §2.9 写 `time_scale = 0`；项目红线 SR-R5 规定 `Engine.time_scale` 永不为 0（预算计时除零）→ 用 `get_tree().paused` 实现，paused 帧 delta 强制 0。
