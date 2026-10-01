@@ -24,6 +24,7 @@ const TestSuiteSlice2 := preload("res://tests/test_suite_slice2.gd")
 const TestSuiteSlice3 := preload("res://tests/test_suite_slice3.gd")
 const TestSuiteSlice4 := preload("res://tests/test_suite_slice4.gd")
 const TestSuiteSlice5 := preload("res://tests/test_suite_slice5.gd")
+const TestSuiteSlice6 := preload("res://tests/test_suite_slice6.gd")
 
 
 func _initialize() -> void:
@@ -43,5 +44,7 @@ func _initialize() -> void:
 		ok = TestSuiteSlice4.new().run_all() and ok
 	if only == "" or only == "slice5":
 		ok = TestSuiteSlice5.new().run_all() and ok
+	if only == "" or only == "slice6":
+		ok = TestSuiteSlice6.new().run_all() and ok
 
 	quit(0 if ok else 1)

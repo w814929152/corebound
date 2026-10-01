@@ -240,9 +240,14 @@ static func compute_dps(player, cfg: Dictionary, geo = null) -> Dictionary:
 
 		# ★ 乘法次序与 v08 逐字一致（左结合）
 		var dps_i := base * stack * syn * res * foc * ali * cov
+		# 🔒 T1 占位（mechanics-tower-life-death §0 / §4.3 交接点③）：塔死亡唯一落点。
+		#    塔进入 Disabled 中间态 → 断输出不断链（E-T 口径）→ 本塔 dps 归零。
+		#    🔴 MVP `disabled` 恒 false → 该乘数恒 1.0 → 对定稿 DPS 逐位零影响。
+		dps_i *= 0.0 if bool(t.disabled) else 1.0
 		per_tower.append({
 			"base": base, "stack": stack, "syn": syn, "res": res,
 			"focus": foc, "allin": ali, "cov": cov, "dps": dps_i,
+			"disabled": bool(t.disabled),
 		})
 
 	# -----------------------------------------------------------------------

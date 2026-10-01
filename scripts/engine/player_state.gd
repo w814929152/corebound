@@ -12,6 +12,12 @@ class TowerState extends RefCounted:
 	var ctype: String = ""
 	var h: int = 0                 # 建筑卡层数 h_i
 	var attach: Dictionary = {}    # {强化卡名: 层数} → L_i = Σ 层数
+	## 🔒 T1 占位（设计文档 mechanics-tower-life-death §0 / §4.3 交接点③）：
+	##   塔死亡（进入 Disabled 中间态）时对 7 乘区管线的**唯一落点**。
+	##   `damage_engine` 在 per_tower 末尾乘 `disabled ? 0.0 : 1.0`。
+	##   🔴 MVP 恒 false → 该乘数恒 1.0 → 对定稿 DPS **逐位零影响**（金标本零改动、判据链不变）。
+	##   塔死亡玩法（HP0/维修/暴露度实战）整体留后续批次 + 300 局 MC 重扫后上线。
+	var disabled: bool = false
 
 
 var path: String = "B"
