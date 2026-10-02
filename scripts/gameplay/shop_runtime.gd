@@ -858,6 +858,142 @@ func salvage_tower(slot: int) -> Dictionary:
 	return result
 
 
+# ---------------------------------------------------------------------------
+#  T1 · 修复入口（波次间安全窗对 Disabled 塔的三选一处置 · Q-T4/Q-T8 定稿）
+# ---------------------------------------------------------------------------
+## 🔴 定稿口径（一字不改）：
+##   · Q-T4 = ①：Disabled 塔在**下一个波次间安全窗**玩家三选一：修复 / 拆除 / 放着不管。
+##   · Q-T8：**修复** `repair_cost = ceil(0.30 × 该塔累计投入)`（PLACEHOLDER，待 V-1 扫参）
+##     → HP 回满、塔恢复输出、**装配卡全部保留**（区别于主动拆除的全销毁）。
+##     **被动拆除**（Disabled 塔的拆除）返还 **0%**（区别主动移除的 50%）→ 保塔的经济动机。
+##     **放着不管** = 继续占塔位、不输出、仍吃 κ 折价（隐性持续惩罚）→ 本方法不实现（no-op）。
+##   · E-T4：没钱修复 → 允许「放着不管」或「0 返还拆除」释放塔位 → **永不死锁**。
+##   · E-T6：修复**只恢复 HP，不改任何层数**；repair_cost 按**当前**累计投入算。
+##   · E-T2：多座同时停机合并为一个列表弹窗（`list_disabled_towers()` 供 UI 组装）。
+##
+## 🔴 金标本零改动：修复/被动拆除只在玩家路线（本文件）；`shop_ai.gd` 不读不写。
+##    κ 口径不动（Disabled 塔仍占塔位供 h_j → N_tower 不变；修复后恢复输出）。
+##
+## 🔴 仅 SafeWindow 可操作（T-C1 / E16）；非安全窗直接拒绝。
+
+## 修复费用系数（Q-T8 = ceil(0.30 × 累计投入)）。
+const REPAIR_RATE := 0.30
+
+
+## 🔴 只读预览：给处置弹窗组装「修复」文案用（**不改动任何状态**）。
+##   返回 {ok, reason, cost, invested, hp_max}。仅对 **Disabled 塔**有意义。
+func preview_repair(slot: int) -> Dictionary:
+	var result := {"ok": false, "reason": "", "cost": 0, "invested": 0.0, "hp_max": 0.0}
+	if not _in_safe_window():
+		result["reason"] = "仅波次间安全窗可修复（T-C1 / E16）"
+		return result
+	var idx := _tower_index(slot)
+	if idx < 0:
+		result["reason"] = "塔位 %d 不存在" % slot
+		return result
+	var t = player.towers[idx]
+	if not bool(t.disabled):
+		result["reason"] = "塔未受损，无需修复"
+		return result
+	var invested := floorf(float(t.invested))
+	result["ok"] = true
+	result["cost"] = int(ceilf(float(invested) * REPAIR_RATE))
+	result["invested"] = invested
+	result["hp_max"] = float(t.hp_max)
+	return result
+
+
+## 修复 `Repair(tower)` —— Q-T8 定稿（仅 Disabled 塔）：
+##   · 花费 `ceil(0.30 × 累计投入)` 分 → HP 回满 → 塔恢复输出（`disabled = false`）；
+##   · 🔴 **装配卡全部保留**（与主动拆除的全销毁相反）；层数不变（E-T6）。
+##   · 返回 {ok, reason, cost, invested}（供 UI 披露花费）。
+##   · 🔴 积分不足 → ok=false（E-T4：玩家可改「放着不管」或「0 返还拆除」→ 永不死锁）。
+func repair_tower(slot: int) -> Dictionary:
+	var result := {"ok": false, "reason": "", "cost": 0, "invested": 0.0}
+	if not _in_safe_window():
+		result["reason"] = "仅波次间安全窗可修复（T-C1 / E16）"
+		return result
+	var idx := _tower_index(slot)
+	if idx < 0:
+		result["reason"] = "塔位 %d 不存在" % slot
+		return result
+	var t = player.towers[idx]
+	if not bool(t.disabled):
+		result["reason"] = "塔未受损，无需修复"
+		return result
+	var invested := floorf(float(t.invested))
+	var cost := int(ceilf(float(invested) * REPAIR_RATE))
+	if scrap < float(cost):
+		result["reason"] = "积分不足（需 %d，现有 %d）→ 可「放着不管」或「拆除」" % [cost, int(scrap)]
+		result["cost"] = cost
+		result["invested"] = invested
+		return result
+	# ① 扣分 ② 回满 HP ③ 恢复输出（装配卡不动、层数不动）
+	scrap -= float(cost)
+	t.hp = float(t.hp_max)
+	t.disabled = false
+	result["ok"] = true
+	result["cost"] = cost
+	result["invested"] = invested
+	last_error = ""
+	return result
+
+
+## 被动拆除 `Salvage(Disabled tower)` —— Q-T4/Q-T8 定稿（仅 Disabled 塔）：
+##   · 返还 **0%**（区别主动移除的 50% → 保塔的经济动机）；
+##   · 装配卡**全销毁**（同主动拆除）+ **塔位释放**（同主动拆除）；
+##   · 🔴 κ 不回升（兜底①：`n_hist_max` 只增不减，E11）→ 本方法不动 `n_hist_max`。
+##   · 返回 {ok, reason, cards_destroyed, layers_destroyed}。
+##   · 🔴 仅 SafeWindow；非安全窗直接拒绝。
+func salvage_disabled_tower(slot: int) -> Dictionary:
+	var result := {"ok": false, "reason": "", "cards_destroyed": 0, "layers_destroyed": 0}
+	if not _in_safe_window():
+		result["reason"] = "仅波次间安全窗可拆除（T-C1 / E16）"
+		return result
+	var idx := _tower_index(slot)
+	if idx < 0:
+		result["reason"] = "塔位 %d 不存在" % slot
+		return result
+	var t = player.towers[idx]
+	if not bool(t.disabled):
+		result["reason"] = "该塔未受损；如需主动拆除请走「拆除并回收」（返还 50%）"
+		return result
+	# ① 装配卡全销毁（同主动拆除）
+	var n_cards := 0
+	var n_layers := 0
+	for cname in _keys(t.attach):
+		var layers := int(t.attach[cname])
+		n_cards += 1
+		n_layers += layers
+		player.cards.erase(cname)
+	# ② 塔位释放（返还 0% → 不加 scrap）
+	player.towers.remove_at(idx)
+	result["ok"] = true
+	result["cards_destroyed"] = n_cards
+	result["layers_destroyed"] = n_layers
+	last_error = ""
+	return result
+
+
+## 列出所有 **Disabled 塔**的处置信息（E-T2：多座同时停机合并为一个列表弹窗的数据源）。
+##   返回 Array[Dictionary]：{slot, invested, repair_cost, attach_layers}。
+func list_disabled_towers() -> Array:
+	var out: Array = []
+	for t in player.towers:
+		if bool(t.disabled):
+			var invested := floorf(float(t.invested))
+			var n_layers := 0
+			for _k in t.attach:
+				n_layers += int(t.attach[_k])
+			out.append({
+				"slot": int(t.slot),
+				"invested": invested,
+				"repair_cost": int(ceilf(float(invested) * REPAIR_RATE)),
+				"attach_layers": n_layers,
+			})
+	return out
+
+
 ## 弃卡 `discard_card(card_name)` —— 弃掉整张单塔效果卡（腾槽，§4.3）：
 ##   该卡及其**全部层数**从**所有塔**上销毁，槽位释放（`player.cards` 移除）。
 ##   🔴 不可回收（无返还）；仅 SafeWindow。

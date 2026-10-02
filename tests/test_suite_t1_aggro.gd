@@ -35,6 +35,7 @@ const _Cfg := preload("res://scripts/engine/mvp_config.gd")
 const _PS := preload("res://scripts/engine/player_state.gd")
 const _Monster := preload("res://scripts/gameplay/monster.gd")
 const _PathGeometry := preload("res://scripts/geo/path_geometry.gd")
+const _ShopRuntime := preload("res://scripts/gameplay/shop_runtime.gd")
 
 var _pass = 0
 var _fail = 0
@@ -289,6 +290,119 @@ func _snap_monster_targeting(snap: Dictionary, slot: int) -> bool:
 	return false
 
 
+## 造一个 runtime 并塞一座 Disabled 塔（绕开战斗，专测修复/被动拆除结算数学）
+func _mk_rt_with_disabled_tower(slot: int, h: int, invested: float, scrap: float):
+	var rt = _ShopRuntime.new()
+	rt.setup("B", 20261002)
+	rt.player.towers = []
+	rt.player.cards = {}
+	var t := _PS.make_tower(slot, "Cannon", h, {})
+	t.invested = invested
+	t.disabled = true
+	t.hp = 0.0
+	t.hp_max = _MonsterData.tower_hp(h)
+	rt.player.towers.append(t)
+	rt.scrap = scrap
+	return rt
+
+
+# ===========================================================================
+#  AC-T1-10 · 修复入口（Q-T8：repair_cost = ceil(0.30 × 累计投入)）
+# ===========================================================================
+func _test_repair_entry() -> void:
+	_log("")
+	_log("--- [AC-T1-10] 修复入口：repair_cost 数学 + 回满 HP + 保留装配卡 ---")
+	# ① cost 数学：invested=100 → ceil(0.30×100)=30
+	var rt = _mk_rt_with_disabled_tower(0, 1, 100.0, 500.0)
+	var prev := rt.preview_repair(0)
+	_check_bool("preview 修复费用 ceil(0.30×100)=30", int(prev["cost"]), 30)
+	_check_bool("preview ok（Disabled 塔可修）", bool(prev["ok"]), true)
+	# ② 执行修复：扣分 30、HP 回满、disabled=false、装配卡保留
+	var r := rt.repair_tower(0)
+	_check_bool("修复 ok", bool(r["ok"]), true)
+	_check("实际花费 = 30", float(r["cost"]), 30.0)
+	_check("修复后 scrap 500→470", rt.scrap, 470.0)
+	_check_bool("修复后塔恢复输出（disabled=false）", bool(rt.player.towers[0].disabled), false)
+	_check("修复后 HP 回满 = hp_max", float(rt.player.towers[0].hp), float(rt.player.towers[0].hp_max))
+	# ③ 非 Disabled 塔拒绝修复
+	var rt2 = _mk_rt_with_disabled_tower(1, 1, 100.0, 500.0)
+	rt2.player.towers[0].disabled = false
+	var bad := rt2.repair_tower(1)
+	_check_bool("未受损塔拒绝修复", bool(bad["ok"]), false)
+	# ④ 积分不足 → 拒绝（E-T4 永不死锁前提）
+	var rt3 = _mk_rt_with_disabled_tower(2, 1, 100.0, 10.0)
+	var poor := rt3.repair_tower(2)
+	_check_bool("积分不足拒绝修复（E-T4）", bool(poor["ok"]), false)
+
+
+# ===========================================================================
+#  AC-T1-11 · 被动拆除（Q-T4/Q-T8：返还 0%，区别主动 50%）
+# ===========================================================================
+func _test_salvage_disabled() -> void:
+	_log("")
+	_log("--- [AC-T1-11] 被动拆除：返还 0% + 释放塔位 + 销毁装配卡 ---")
+	# 带一张装配卡的 Disabled 塔
+	var rt = _mk_rt_with_disabled_tower(0, 1, 100.0, 500.0)
+	rt.player.towers[0].attach["FireUp"] = 2
+	rt.player.cards["FireUp"] = true
+	var before_towers: int = rt.player.towers.size()
+	var before_cards: int = rt.player.cards.size()
+	var r := rt.salvage_disabled_tower(0)
+	_check_bool("被动拆除 ok", bool(r["ok"]), true)
+	_check_int("销毁 1 张装配卡", int(r["cards_destroyed"]), 1)
+	_check_int("销毁 2 层", int(r["layers_destroyed"]), 2)
+	# 🔴 返还 0% → scrap 不变（区别主动拆除的 +50%）
+	_check("被动拆除返还 0% → scrap 仍 500", rt.scrap, 500.0)
+	_check_int("塔位释放（塔数 -1）", rt.player.towers.size(), before_towers - 1)
+	_check_int("装配卡从 player.cards 移除", rt.player.cards.size(), before_cards - 1)
+	# 对比：主动拆除同 invested=100 返还 50
+	var rt2 = _ShopRuntime.new()
+	rt2.setup("B", 20261002)
+	rt2.player.towers = []
+	rt2.player.cards = {}
+	var t2 := _PS.make_tower(0, "Cannon", 1, {})
+	t2.invested = 100.0
+	rt2.player.towers.append(t2)
+	rt2.scrap = 500.0
+	var prev_active := rt2.preview_salvage(0)
+	_check("主动拆除返还 50% = 50（对比被动 0%）", float(prev_active["refund"]), 50.0)
+	# 非 Disabled 塔拒绝被动拆除
+	var rt3 = _mk_rt_with_disabled_tower(1, 1, 100.0, 500.0)
+	rt3.player.towers[0].disabled = false
+	var bad := rt3.salvage_disabled_tower(1)
+	_check_bool("未受损塔拒绝被动拆除", bool(bad["ok"]), false)
+
+
+# ===========================================================================
+#  AC-T1-12 · 放着不管（no-op）+ E-T4 永不死锁
+# ===========================================================================
+func _test_disabled_noop_never_deadlock() -> void:
+	_log("")
+	_log("--- [AC-T1-12] 放着不管（no-op）+ E-T4 永不死锁 ---")
+	# 放着不管 = 塔保持 Disabled、占位、不输出（本方法不实现，验证塔状态不变）
+	var rt = _mk_rt_with_disabled_tower(0, 1, 100.0, 500.0)
+	var scrap_before: float = rt.scrap
+	var disabled_before := bool(rt.player.towers[0].disabled)
+	# 玩家选择「放着不管」→ 不调任何方法 → 塔仍 Disabled、scrap 不变
+	_check_bool("放着不管：塔仍 Disabled", bool(rt.player.towers[0].disabled), disabled_before)
+	_check("放着不管：scrap 不变", rt.scrap, scrap_before)
+	# E-T4 永不死锁：即使没钱修复，也能「放着不管」（不崩）或「0 返还拆除」释放塔位
+	var rt2 = _mk_rt_with_disabled_tower(0, 1, 100.0, 0.0)   # 身无分文
+	var poor_repair := rt2.repair_tower(0)
+	_check_bool("E-T4：没钱修复 → 拒绝（不扣负分）", bool(poor_repair["ok"]), false)
+	_check("E-T4：没钱修复 → scrap 仍 0（不欠分）", rt2.scrap, 0.0)
+	# 没钱也能 0 返还拆除 → 释放塔位，永不死锁
+	var before: int = rt2.player.towers.size()
+	var salv := rt2.salvage_disabled_tower(0)
+	_check_bool("E-T4：没钱可 0 返还拆除 → 释放塔位", bool(salv["ok"]), true)
+	_check_int("E-T4：拆除后塔位数 -1（永不死锁）", rt2.player.towers.size(), before - 1)
+	# list_disabled_towers 供 E-T2 合并弹窗
+	var rt3 = _mk_rt_with_disabled_tower(3, 2, 200.0, 500.0)
+	var lst := rt3.list_disabled_towers()
+	_check_int("list_disabled_towers 列出 1 座", lst.size(), 1)
+	_check("list 修复费 ceil(0.30×200)=60", float(lst[0]["repair_cost"]), 60.0)
+
+
 func run_all() -> bool:
 	_test_tower_hp_derivation()
 	_test_aggro_constants()
@@ -299,6 +413,9 @@ func run_all() -> bool:
 	_test_safe_slot_immune()
 	_test_aggro_effect_batch()
 	_test_realtime_batch_consistency()
+	_test_repair_entry()
+	_test_salvage_disabled()
+	_test_disabled_noop_never_deadlock()
 	_log("")
 	_log("T1 仇恨 汇总：通过 %d 项 / 失败 %d 项" % [_pass, _fail])
 	return _fail == 0
