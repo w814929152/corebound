@@ -361,11 +361,80 @@ func _test_tower_selection() -> void:
 
 
 # ===========================================================================
+#  AC-S8-8 · C2 智能高亮 H2/H3/H5/H6/H7/H9（🔴 只标事实，SR-R2）
+# ===========================================================================
+func _test_c2_highlights() -> void:
+	_log("")
+	_log("--- [AC-S8-8] C2 智能高亮 H2/H3/H5/H6/H7/H9 ---")
+	# 起手清空，建主塔 Cannon(fire, h=2) + 副塔 Arrow(中性)
+	var rt = _mk_runtime()
+	rt.player.towers = []
+	rt.player.cards = {}
+	_add_tower(rt, 1, "Cannon", 2, 24.0)
+	_add_tower(rt, 2, "Arrow", 1, 12.0)
+	rt.player.cards["Arrow"] = true
+
+	# ---- H7 槽位占用事实 ----
+	var su := rt.slot_usage()
+	_check_int("H7 强化槽 1/5（仅 Arrow）", int(su["enh"]), 1)
+	_check_int("H7 塔位 2/6", int(su["tower"]), 2)
+	_check_int("H7 全局槽 0/3", int(su["global"]), 0)
+
+	# 装配 FireUp 到主塔 → 让 H2/H5 有内容
+	rt.player.towers[0].attach["FireUp"] = 3
+	rt.player.cards["FireUp"] = true
+
+	# ---- 用 offers 驱动 highlights ----
+	# 位0：FireUp（reinforce, fire 卡 → 主塔 fire 协同 H2；Lv3→4 H5；ΔDPS>0 H9）
+	rt.offers = ["FireUp", "FrostUp", "Cannon"]
+	var hl := rt.highlights()
+	var h0: Dictionary = hl[0]
+	_check_bool("H2 FireUp 与主塔 fire 协同", bool(h0["tag_synergy"]), true)
+	_check_str("H5 FireUp 主塔 Lv3→4", String(h0["layer_next"]), "Lv 3 → 4")
+	# H9 ΔDPS 为正（FireUp 给 fire 主塔 +1 层 → DPS 必增；具体值由金标本引擎定，此处验方向）
+	var dpct := float(h0["delta_pct"])
+	_check_bool("H9 FireUp 投主塔 ΔDPS > 0（有增益）", dpct > 0.0, true)
+
+	# 位1：FrostUp（reinforce, frost 卡 → 主塔 fire 不协同；投主塔不合法→改投无宿主，但仍标 H2=false）
+	var h1: Dictionary = hl[1]
+	_check_bool("H2 FrostUp 与 fire 主塔不协同", bool(h1["tag_synergy"]), false)
+
+	# 位2：Cannon（tower 新建 → H6 κ 折价预告，N=2→3 disc 0→0.01 κ 降）
+	var h2: Dictionary = hl[2]
+	_check_bool("H6 Cannon 新建触发 κ 折价预告", String(h2["kappa_preview"]) != "", true)
+	# 文案格式「建造新塔：κ X → Y（拆除塔不会让 κ 回升）」，X > Y（新建后广度折价 +0.01）
+	var pv := String(h2["kappa_preview"])
+	_check_bool("H6 文案含不可逆披露「不会回升」", pv.contains("不会让 κ 回升"), true)
+	_check_bool("H6 文案标注「建造新塔」", pv.contains("建造新塔"), true)
+	# 升级同塔不触发 H6
+	rt.player.towers = []
+	rt.player.cards = {}
+	_add_tower(rt, 1, "Cannon", 1, 12.0)
+	rt.offers = ["Cannon"]
+	var hl3 := rt.highlights()
+	var h3: Dictionary = hl3[0]
+	# 场上仅 1 塔（N=1, disc=0），新建第 2 座 → N=2 disc 仍 0 → κ 不降 → H6 空
+	_check_str("H6 升级同塔不触发（κ 不变）", String(h3["kappa_preview"]), "")
+
+	# ---- H3 +1 档位：fire 投入 2 层 → 再投 1 层跨档 3 ----
+	rt.player.towers = []
+	rt.player.cards = {}
+	_add_tower(rt, 1, "Cannon", 2, 24.0)     # fire 投入 = 2（h=2）
+	rt.offers = ["FireUp"]
+	var hl4 := rt.highlights()
+	_check_bool("H3 fire 投入 2→3 跨档 → plus_one", bool(hl4[0]["plus_one"]), true)
+	# fire 投入已到 3 → 再投不再跨 3 档（下一档是 20）
+	rt.player.towers[0].h = 3
+	var hl5 := rt.highlights()
+	_check_bool("H3 fire 投入 3 未跨 20 档 → 非 plus_one", bool(hl5[0]["plus_one"]), false)
+
+
+# ===========================================================================
 #  汇总
 # ===========================================================================
 func run_all() -> bool:
 	_log("=".repeat(78))
-	_log("切片8 · 拆除回收 Salvage / 弃卡 / 卸下改投 + I-9 二次确认 + I-7 塔位点选")
+	_log("切片8 · 拆除回收 Salvage / 弃卡 / 卸下改投 + I-9 二次确认 + I-7 塔位点选 + C2 高亮")
 	_log("=".repeat(78))
 	_test_invested_tracking()
 	_test_salvage_settlement()
@@ -375,6 +444,7 @@ func run_all() -> bool:
 	_test_confirm_dialog_component()
 	_test_golden_untouched()
 	_test_tower_selection()
+	_test_c2_highlights()
 	_log("")
 	_log("-".repeat(78))
 	_log("切片8 合计：PASS=%d  FAIL=%d" % [_pass, _fail])

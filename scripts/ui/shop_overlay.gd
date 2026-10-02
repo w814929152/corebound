@@ -309,15 +309,15 @@ func _refresh_shop() -> void:
 		_clear_children(_place_box)
 		return
 
-	_scrap_label.text = "积分 %.0f · 主塔塔位 %d · 强化槽 %d/%d · 塔 %d/%d" % [
-		float(s["scrap"]), int(s["core_tower_slot"]),
-		int(s["cards"]), int(s["cards_max"]),
-		int(s["towers"]), int(s["towers_max"])]
+	_scrap_label.text = "积分 %.0f · 主塔塔位 %d" % [
+		float(s["scrap"]), int(s["core_tower_slot"])]
 
 	for i in SLOT_COUNT:
 		var nm := String(s["offers"][i])
 		var price := float(s["prices"][i])
 		var ok := bool(s["affordable"][i]) and bool(s["legal"][i])
+		# C2 高亮事实（H2/H3/H5/H6/H9；H1/H4/H8 已在 affordable/at_cap/notes）
+		var hl: Dictionary = s.get("highlights", {}).get(str(i), {})
 		if nm == "":
 			_slot_name[i].text = "—"
 			_slot_kind[i].text = "此位无卡"
@@ -326,7 +326,11 @@ func _refresh_shop() -> void:
 			_slot_price[i].add_theme_color_override("font_color", C_DIM)
 		else:
 			_slot_name[i].text = nm
-			_slot_kind[i].text = String(s["kinds"][i])
+			# H2：Tag 协同 → 卡种行加脉冲标记（橙🔥/青❄，视觉编码不写推荐词）
+			var kind_txt := String(s["kinds"][i])
+			if bool(hl.get("tag_synergy", false)):
+				kind_txt += "  ◈协同"
+			_slot_kind[i].text = kind_txt
 			# H1：价格数字用辉金 vs 灰（🔴 卡片本身始终可见，X6）
 			_slot_price[i].text = "%.0f 分" % price
 			_slot_price[i].add_theme_color_override("font_color",
@@ -334,6 +338,18 @@ func _refresh_shop() -> void:
 			var note := String(s["notes"][i])
 			if note == "" and bool(s["at_cap"][i]):
 				note = "已达上限 (+0%)"        # H4
+			# C2 高亮事实拼接（🔴 只标事实，SR-R2；顺序：H5 层数 / H3 +1档 / H6 κ / H9 ΔDPS）
+			var extra: Array = []
+			if String(hl.get("layer_next", "")) != "":
+				extra.append(String(hl["layer_next"]))          # H5
+			if bool(hl.get("plus_one", false)):
+				extra.append("+1 档位")                          # H3
+			if String(hl.get("kappa_preview", "")) != "":
+				extra.append(String(hl["kappa_preview"]))       # H6
+			if float(hl.get("delta_pct", 0.0)) > 0.0001:
+				extra.append("投主塔 DPS +%.0f%%" % (float(hl["delta_pct"]) * 100.0))  # H9
+			if not extra.is_empty():
+				note = (note + " · " if note != "" else "") + " · ".join(extra)
 			_slot_note[i].text = note
 		_slot_buy[i].disabled = not ok
 		_slot_buy[i].text = "购买" if nm == "" else "购买 %.0f" % price
@@ -341,6 +357,14 @@ func _refresh_shop() -> void:
 		var locked := (int(s["lock_index"]) == i)
 		_slot_lock[i].text = "已锁（Space 解锁）" if locked else "锁定 / 解锁"
 		_slot_lock[i].disabled = (nm == "")
+
+	# ---- H7 槽位占用事实（强化槽 / 全局槽 / 塔位）----
+	var su: Dictionary = s.get("slot_usage", {})
+	if not su.is_empty():
+		_scrap_label.text += " · 强化槽 %d/%d · 全局槽 %d/%d · 塔位 %d/%d" % [
+			int(su.get("enh", 0)), int(su.get("enh_max", 5)),
+			int(su.get("global", 0)), int(su.get("global_max", 3)),
+			int(su.get("tower", 0)), int(su.get("tower_max", 6))]
 
 	# ---- 刷新按钮：显示 5+3n 的实时成本（E5：买不起置灰 + 标红）----
 	var rc := float(s["reroll_cost"])

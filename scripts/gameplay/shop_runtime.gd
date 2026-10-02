@@ -41,6 +41,7 @@ const _ShopAI := preload("res://scripts/engine/shop_ai.gd")
 const _SimPlayer := preload("res://scripts/engine/sim_player.gd")
 const _PyRandom := preload("res://scripts/engine/py_random.gd")
 const _FpSum := preload("res://scripts/engine/fp_sum.gd")
+const _DE := preload("res://scripts/engine/damage_engine.gd")
 const _TD := preload("res://scripts/data/tower_data.gd")
 const _WaveSim := preload("res://scripts/engine/wave_sim.gd")
 const _Geo6 := preload("res://scripts/geo/geo6.gd")
@@ -548,6 +549,161 @@ func at_cap(slot: int) -> bool:
 
 
 # ---------------------------------------------------------------------------
+#  切片8·C2 · 智能高亮 H2/H3/H5/H6/H7/H9（🔴 只标事实，SR-R2；H1/H4/H8 已在 snapshot）
+# ---------------------------------------------------------------------------
+## 🔴 口径来源：`shop-reroll` §2.3 规则表（H1–H9，H10 暴露度 T1 不做）。
+##   · H2 Tag 协同：卡 Tag ∈ {主塔 Tag, 全场已投 Tag}（脉冲，视觉在 overlay）
+##   · H3 +1 档位阈值：再投 1 层跨 κ_tag/κ_r 档位（角标，视觉在 overlay）
+##   · H5 层数→下一层：单塔效果卡当前宿主层数 → +1（复利读数）
+##   · H6 κ 折价预告：建筑卡建造新塔时的 κ 变化（🔴 强制披露不可逆性，兜底①）
+##   · H7 槽位占用事实：{强化槽 x/5, 全局槽 y/3, 塔位 z/6}
+##   · H9 ΔDPS 事实：读 `action_value`（= damage_engine 纯函数，SR-1），只给相对增量 %
+## 🔴 全部**只读**：不改任何状态；SR-6 由 overlay 事件驱动调一次，不每帧重算。
+func highlights() -> Dictionary:
+	var info: Dictionary = _engine_info()
+	var out: Dictionary = {}
+	for i in range(offers.size()):
+		var nm := offer_at(i)
+		if nm == "":
+			out[i] = {"tag_synergy": false, "plus_one": false, "layer_next": "", "kappa_preview": "", "delta_pct": 0.0}
+			continue
+		var kind := _ShopAI.card_kind(nm)
+		var act := _action_for(nm)
+		out[i] = {
+			"tag_synergy": _h2_tag_synergy(nm, kind, info),
+			"plus_one": _h3_plus_one_tier(nm, kind, act, info),
+			"layer_next": _h5_layer_next(nm, kind, act),
+			"kappa_preview": _h6_kappa_preview(nm, kind, act, info),
+			"delta_pct": _h9_delta_pct(act),
+		}
+	return out
+
+
+## H7 槽位占用事实（强化槽 / 全局槽 / 塔位）。
+func slot_usage() -> Dictionary:
+	var enh: int = player.cards.size()
+	var tower_n: int = player.towers.size()
+	var slots_max: int = int(cfg.get("n_slots", 6))
+	# 全局槽：ScrapUp 计数（income_mult 每 +0.20 占 1 槽，cap 见 cfg）
+	var glob_max := 3
+	var glob_used := 0
+	if float(player.income_mult) > 0.0:
+		glob_used = mini(int(float(player.income_mult) / 0.20), glob_max)
+	return {
+		"enh": enh, "enh_max": int(cfg["backpack"]),
+		"global": glob_used, "global_max": glob_max,
+		"tower": tower_n, "tower_max": slots_max,
+	}
+
+
+## 取当前构筑的 damage_engine info（kappa/kr/tag_invest/tag_tower_lv/n_for_kappa）。
+func _engine_info() -> Dictionary:
+	return _DE.compute_dps(player, cfg, geo).get("info", {})
+
+
+## H2：卡 Tag 是否与主塔 Tag 或全场已投 Tag 协同。
+func _h2_tag_synergy(nm: String, kind: String, info: Dictionary) -> bool:
+	var card_tag := ""
+	match kind:
+		"tower":
+			card_tag = _TD.tower_tag(nm)              # 建筑卡原型 Tag
+		"reinforce":
+			card_tag = _TD.reinf_tag(nm)              # 单塔效果卡 Tag
+		_:
+			return false
+	if card_tag == "":
+		return false                                  # 中性（Arrow）不产 Tag 协同脉冲
+	var tag_invest: Dictionary = info.get("tag_invest", {})
+	if float(tag_invest.get(card_tag, 0.0)) >= 1.0:
+		return true                                   # 全场已投该 Tag
+	# 主塔 Tag
+	var core := core_tower_slot()
+	if core >= 0:
+		for t in player.towers:
+			if int(t.slot) == core:
+				if _TD.tower_tag(String(t.ctype)) == card_tag:
+					return true
+	return false
+
+
+## H3：再投 1 层是否跨 κ 档位（κ_tag 档 0→3→20 / κ_r 档 0→3→20）。
+func _h3_plus_one_tier(nm: String, kind: String, act: Array, info: Dictionary) -> bool:
+	if kind != "reinforce" and kind != "tower":
+		return false
+	# 该卡贡献的 Tag 投入层数（reinforce=1 层；tower 新建=h=1）
+	var tag := ""
+	if kind == "reinforce":
+		tag = _TD.reinf_tag(nm)
+	else:
+		tag = _TD.tower_tag(nm)
+	if tag == "":
+		return false                                  # 中性塔/无 Tag 不参与 κ 档位
+	var tag_invest: Dictionary = info.get("tag_invest", {})
+	var cur := float(tag_invest.get(tag, 0.0))
+	# κ_tag 档位阈值 3；κ_r 档位阈值 3 / 20。跨任一阈值即 +1 档位。
+	return (cur < 3.0 and cur + 1.0 >= 3.0) or (cur < 20.0 and cur + 1.0 >= 20.0)
+
+
+## H5：单塔效果卡当前宿主层数 → 下一层（复利读数）。
+func _h5_layer_next(nm: String, kind: String, act: Array) -> String:
+	if kind != "reinforce" or act.is_empty():
+		return ""
+	var host: int = int(act[2])
+	for t in player.towers:
+		if int(t.slot) == host:
+			var cur := int(t.attach.get(nm, 0))
+			return "Lv %d → %d" % [cur, cur + 1]
+	return ""
+
+
+## H6：κ 折价预告（🔴 强制披露不可逆性，兜底①）。仅建筑卡**新建**塔时触发。
+##   κ = κ_tag − disc；disc = 0.01×clamp(N−2,0,4)。新建 → N+1 → disc +0.01 → κ 降。
+func _h6_kappa_preview(nm: String, kind: String, act: Array, info: Dictionary) -> String:
+	if kind != "tower" or String(act[0]) != "build":
+		return ""                                      # 只有新建塔才改广度折价
+	var cur_n: int = player.towers.size()
+	var k_now := _current_effective_kappa(info)
+	var disc_now := 0.01 * float(mini(maxi(cur_n - 2, 0), 4))
+	var disc_new := 0.01 * float(mini(maxi(cur_n + 1 - 2, 0), 4))
+	var k_new := maxf(0.02, k_now - (disc_new - disc_now))
+	if k_new >= k_now - 1e-9:
+		return ""                                      # κ 未降（已触下限或广度档未变）
+	return "建造新塔：κ %.2f → %.2f（拆除塔不会让 κ 回升）" % [k_now, k_new]
+
+
+func _current_effective_kappa(info: Dictionary) -> float:
+	var kappa: Array = info.get("kappa", [])
+	if kappa.is_empty():
+		return 0.0
+	# 取主塔（或首塔）的 κ（1+κ 形式 → 减 1）
+	var core := core_tower_slot()
+	var idx := 0
+	for i in range(player.towers.size()):
+		if int(player.towers[i].slot) == core:
+			idx = i
+	if idx >= kappa.size():
+		idx = 0
+	return maxf(0.0, float(kappa[idx]) - 1.0)
+
+
+## H9：ΔDPS 相对增量 %（读 damage_engine 纯函数，SR-1；只给 % 不给多步预演）。
+func _h9_delta_pct(act: Array) -> float:
+	if act.is_empty():
+		return 0.0
+	var before := _DE.dps_only(player, cfg, geo)
+	if before <= 0.0:
+		return 0.0
+	# 试算：快照 → apply → 算 after → 回滚（复用金标本 action_value 的 snap/rest 范式）
+	var snap := _SimPlayer.snap(player)
+	var cost = _ShopAI.apply_action(player, act, cfg)
+	var after := _DE.dps_only(player, cfg, geo)
+	_SimPlayer.rest(player, snap)
+	if cost == null or after <= before:
+		return 0.0
+	return (after - before) / before
+
+
+# ---------------------------------------------------------------------------
 #  I-8 放置（建筑卡落子）—— CD-D：`New` / `Upgrade` / `Invalid`
 # ---------------------------------------------------------------------------
 func begin_placement(pending_index: int) -> bool:
@@ -862,6 +1018,8 @@ func snapshot() -> Dictionary:
 		"reroll_disc": float(player.reroll_disc),
 		"core_tower_slot": core_tower_slot(),
 		"selected_tower_slot": selected_tower_slot,   # I-7：点选塔位（-1=无）
+		"slot_usage": slot_usage(),                    # C2·H7 槽位占用事实
+		"highlights": highlights(),                    # C2·H2/H3/H5/H6/H9 每商品位事实
 		"slots": slots,
 		"place_modes": place_modes,
 		"build": _SimPlayer.build_str(player),
