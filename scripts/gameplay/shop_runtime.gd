@@ -44,6 +44,7 @@ const _FpSum := preload("res://scripts/engine/fp_sum.gd")
 const _TD := preload("res://scripts/data/tower_data.gd")
 const _WaveSim := preload("res://scripts/engine/wave_sim.gd")
 const _Geo6 := preload("res://scripts/geo/geo6.gd")
+const _TSM := preload("res://scripts/engine/time_state_machine.gd")
 
 
 # ---------------------------------------------------------------------------
@@ -97,6 +98,9 @@ var cfg: Dictionary = {}
 var geo = null
 var player = null
 var rng = null
+## 🟡 切片8：时钟权威（TimeDirector）引用，仅供重决策入口（salvage/discard/unequip）
+##   做 **SafeWindow 守卫**（T-C1 / E16：战斗内禁止塔操作）。headless 单测可不绑定（放行）。
+var director: Node = null
 
 var path: String = "B"
 var wave: int = 0
@@ -108,6 +112,10 @@ var rerolls: int = 0            # n：本波已刷新次数（每波重置）
 var lock_index: int = -1        # 锁定的商品位（-1 = 无；3 位中可锁 1，每波重置）
 var offers: Array = []          # Array[String]，长度恒 = MvpConfig.SHOP_SLOTS（D-2：有放回抽 3，可重复）
 var pending: Array = []         # 待放置队列 Array[String]（建筑卡；Q-SR5 跨波保留，无上限）
+## 🟡 切片8 · 与 `pending` **平行**的待放置成本数组（拆除回收 `Salvage` 逐塔投入追踪前提）：
+##   建筑卡买时入 `pending`（未落塔、未记投入），成本先记在这里；`confirm_placement`
+##   落子时把对应成本累加到**具体塔**的 `invested`。与 `pending` 同下标、同增删节奏。
+var pending_cost: Array = []    # Array[float]，建筑卡买入时锁定的实付分
 var counts: Dictionary = {}     # 卡名 → 本波已买次数（`action_cost` 的 wave_price_step 用）
 
 var last_error: String = ""
@@ -134,6 +142,7 @@ func setup(p_path: String, seed_value: int, overrides: Dictionary = {}) -> void:
 	lock_index = -1
 	offers = []
 	pending = []
+	pending_cost = []
 	counts = {}
 	_placing_index = -1
 	last_error = ""
@@ -437,13 +446,17 @@ func buy(slot: int) -> bool:
 	match _ShopAI.card_kind(nm):
 		"tower":
 			# ① 建筑卡 → **入待放置队列**（买 / 放解耦，GDD §2.7；不占塔位、不占强化槽）
+			#    🟡 切片8：同时锁定**本次实付分**到平行数组 `pending_cost`（落子时才计入塔 invested）
 			pending.append(nm)
+			pending_cost.append(cost)
 		"reinforce":
 			# ② 单塔效果卡 → 投主塔（`apply_action` 内部处理 层数+1 / 新占槽 / 换掉最弱卡）
 			var act := _action_for(nm)
 			if act.is_empty() or _ShopAI.apply_action(player, act, cfg) == null:
 				last_error = "装配失败：%s" % nm
 				return false
+			#    🟡 切片8：装配卡成本直接计入**宿主塔** invested（返还 50% 累计投入的来源之一）
+			_add_invested(int(act[2]), cost)
 		"econ":
 			# ③ 全局效果卡 → 立即生效
 			#    ScrapUp：`income_mult += 0.20`（金标本 `apply_action` 的 econ 分支）
@@ -509,10 +522,196 @@ func confirm_placement(slot: int) -> bool:
 	if _ShopAI.apply_action(player, act, cfg) == null:
 		last_error = "落子失败：%s → 塔位 %d" % [nm, slot]
 		return false
+	# 🟡 切片8：建筑卡成本（build/upgrade 同价）计入**这座塔**的 invested（拆除返还 50% 依据）
+	var paid := 0.0
+	if _placing_index < pending_cost.size():
+		paid = float(pending_cost[_placing_index])
+	_add_invested(int(slot), paid)
 	pending.remove_at(_placing_index)
+	pending_cost.remove_at(_placing_index)
 	_placing_index = -1
 	last_error = ""
 	return true
+
+
+# ---------------------------------------------------------------------------
+#  切片8 · 拆除回收 `Salvage` / 弃卡 `discard` / 卸下改投 `unequip`
+#  （card-system §4.3 / §7.2.2 / E8 / Q-C3 原文，一字不改）
+# ---------------------------------------------------------------------------
+## 🔴 三条红线（本区块全部遵守）：
+##   ① Q-C3 原文：返还 **50% 累计投入**（向下取整）· 装配卡**全销毁** · **二次确认** · 仅**安全窗**；
+##   ② T-R1 反通胀：返还系数 = 50% ≤ 100%，且不存在「买入折扣 × 移除返还」组合（本游戏无买入折扣 → 安全）；
+##   ③ T-C1 / E16：战斗内**禁止任何塔相关操作** → 本区块三个方法**入口即校验**当前必须 SafeWindow，
+##      否则直接拒绝（战斗中入口在 UI 层置灰，本层再兜底一次，防绕过 UI 直接调）。
+##
+## 🔴 金标本零改动：`invested` 只在**玩家路线**（本文件）记录；`shop_ai.gd apply_action`
+##    不读不写它。κ 口径不动（兜底①：`N_tower_histmax` 只增不减 → 拆塔**不回升** κ，E11）。
+
+## 逐塔累计投入累加器：找不到该塔位则忽略（防御；正常路径塔已由 build/reinf 建好）。
+func _add_invested(slot: int, amount: float) -> void:
+	for t in player.towers:
+		if int(t.slot) == slot:
+			t.invested = float(t.invested) + amount
+			return
+
+
+## 🔴 只读预览：给 I-9 二次确认弹窗组装文案用（**不改动任何状态**）。
+##   返回 {ok, reason, refund, cards_destroyed, layers_destroyed, invested}。
+##   与 `salvage_tower()` 同判据，但纯读 → UI 可先预览再让玩家确认。
+func preview_salvage(slot: int) -> Dictionary:
+	var result := {"ok": false, "reason": "", "refund": 0.0, "cards_destroyed": 0, "layers_destroyed": 0, "invested": 0.0}
+	if not _in_safe_window():
+		result["reason"] = "仅波次间安全窗可拆除（T-C1 / E16）"
+		return result
+	var idx := _tower_index(slot)
+	if idx < 0:
+		result["reason"] = "塔位 %d 不存在" % slot
+		return result
+	var t = player.towers[idx]
+	var invested := floorf(float(t.invested))
+	var n_cards := 0
+	var n_layers := 0
+	for cname in _keys(t.attach):
+		n_cards += 1
+		n_layers += int(t.attach[cname])
+	result["ok"] = true
+	result["refund"] = floorf(invested * 0.5)
+	result["cards_destroyed"] = n_cards
+	result["layers_destroyed"] = n_layers
+	result["invested"] = invested
+	return result
+
+
+## 塔位上**装配卡总层数**（弃卡/卸下判据用；salvage 时用于弹窗披露销毁规模）。
+func tower_attach_layers(slot: int) -> int:
+	for t in player.towers:
+		if int(t.slot) == slot:
+			var n := 0
+			for _k in t.attach:
+				n += int(t.attach[_k])
+			return n
+	return 0
+
+
+## 拆除回收 `Salvage(tower)` —— Q-C3 定稿（主动移除，✅ MVP）：
+##   · 返还 **50% 累计投入**（`invested`，向下取整）到 `scrap`；
+##   · 该塔装配的**全部单塔效果卡及层数销毁**（`attach` 清空，卡从 `player.cards` 移除）；
+##   · **塔位释放**（从 `player.towers` 删除）；
+##   · 🔴 **κ 不回升**（兜底①：`n_hist_max` 只增不减，E11）→ 本方法**不动** `n_hist_max`；
+##   · 返回结算字典（供 UI 二次确认弹窗披露「返还 X 分 / 销毁 N 张（M 层）」；E8 确认项）。
+## 🔴 仅 SafeWindow 可操作（T-C1 / E16）；非安全窗直接拒绝。
+func salvage_tower(slot: int) -> Dictionary:
+	var result := {"ok": false, "reason": "", "refund": 0.0, "cards_destroyed": 0, "layers_destroyed": 0}
+	if not _in_safe_window():
+		result["reason"] = "仅波次间安全窗可拆除（T-C1 / E16）"
+		return result
+	var idx := _tower_index(slot)
+	if idx < 0:
+		result["reason"] = "塔位 %d 不存在" % slot
+		return result
+	var t = player.towers[idx]
+	var invested := floorf(float(t.invested))
+	# ① 装配卡全销毁：从 player.cards 移除该塔持有的所有卡（含层数）
+	var n_cards := 0
+	var n_layers := 0
+	for cname in _keys(t.attach):
+		var layers := int(t.attach[cname])
+		n_cards += 1
+		n_layers += layers
+		player.cards.erase(cname)
+	t.attach = {}
+	# ② 塔位释放
+	player.towers.remove_at(idx)
+	# ③ 返还 50% 累计投入（向下取整）
+	var refund := floorf(invested * 0.5)
+	scrap += refund
+	result["ok"] = true
+	result["refund"] = refund
+	result["cards_destroyed"] = n_cards
+	result["layers_destroyed"] = n_layers
+	result["invested"] = invested
+	last_error = ""
+	return result
+
+
+## 弃卡 `discard_card(card_name)` —— 弃掉整张单塔效果卡（腾槽，§4.3）：
+##   该卡及其**全部层数**从**所有塔**上销毁，槽位释放（`player.cards` 移除）。
+##   🔴 不可回收（无返还）；仅 SafeWindow。
+##   🟡 MVP 说明：本方法销毁该卡在**全部宿主塔**上的层数（卡名全局唯一归属，
+##      与 `drop_from` 同口径）；「换宿主塔」的卸下改投见 `unequip_downgrade`。
+func discard_card(card_name: String) -> Dictionary:
+	var result := {"ok": false, "reason": "", "layers_destroyed": 0}
+	if not _in_safe_window():
+		result["reason"] = "仅波次间安全窗可弃卡（§4.3）"
+		return result
+	var nm := String(card_name)
+	if nm == "" or not player.cards.has(nm):
+		result["reason"] = "未持有该卡：%s" % nm
+		return result
+	var n_layers := 0
+	for t in player.towers:
+		if t.attach.has(nm):
+			n_layers += int(t.attach[nm])
+			t.attach.erase(nm)
+	player.cards.erase(nm)
+	result["ok"] = true
+	result["layers_destroyed"] = n_layers
+	last_error = ""
+	return result
+
+
+## 卸下改投 `unequip_downgrade(card_name)` —— 卸下**降 1 层**（§4.3 / Q8 / §2.4.2 已定）：
+##   该卡在**主塔**（或指定 slot 的塔）上**降 1 层**；降到 0 层则整卡销毁、槽位释放。
+##   🔴 不返还（卸下是「改投」不是「售卖」，层数损失即代价）；仅 SafeWindow。
+func unequip_downgrade(card_name: String, slot: int = -1) -> Dictionary:
+	var result := {"ok": false, "reason": "", "remaining": 0, "destroyed": false}
+	if not _in_safe_window():
+		result["reason"] = "仅波次间安全窗可卸下（§4.3）"
+		return result
+	var nm := String(card_name)
+	if nm == "":
+		result["reason"] = "未指定卡名"
+		return result
+	# 目标塔：指定 slot 优先；否则主塔
+	var target_slot := slot
+	if target_slot < 0:
+		target_slot = core_tower_slot()
+	if target_slot < 0:
+		result["reason"] = "无宿主塔"
+		return result
+	for t in player.towers:
+		if int(t.slot) == target_slot and t.attach.has(nm):
+			var layers := int(t.attach[nm]) - 1
+			if layers <= 0:
+				t.attach.erase(nm)
+				player.cards.erase(nm)
+				result["destroyed"] = true
+				result["remaining"] = 0
+			else:
+				t.attach[nm] = layers
+				result["remaining"] = layers
+			result["ok"] = true
+			last_error = ""
+			return result
+	result["reason"] = "该塔未持有 %s" % nm
+	return result
+
+
+## 塔位在 `player.towers` 中的下标（找不到 −1）。
+func _tower_index(slot: int) -> int:
+	for i in range(player.towers.size()):
+		if int(player.towers[i].slot) == slot:
+			return i
+	return -1
+
+
+## 🔴 T-C1 / E16：本层重决策入口的统一安全窗守卫。
+##   `director` 为 null（headless 单测直接调 runtime）时**放行**（由调用方/单测保证时机）；
+##   有 director 时读其状态机，非 SafeWindow 一律拒绝。
+func _in_safe_window() -> bool:
+	if director == null:
+		return true
+	return int(director.sm.state) == _TSM.State.SAFE_WINDOW
 
 
 # ---------------------------------------------------------------------------

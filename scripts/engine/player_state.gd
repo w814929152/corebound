@@ -18,6 +18,13 @@ class TowerState extends RefCounted:
 	##   🔴 MVP 恒 false → 该乘数恒 1.0 → 对定稿 DPS **逐位零影响**（金标本零改动、判据链不变）。
 	##   塔死亡玩法（HP0/维修/暴露度实战）整体留后续批次 + 300 局 MC 重扫后上线。
 	var disabled: bool = false
+	## 🟡 切片8 · 逐塔累计投入（拆除回收 `Salvage` 的数据前提，card-system §4.3 / §7.2.2 / Q-C3）：
+	##   记录**这座塔**累计吃掉的分数（建筑卡 build/upgrade 分 + 装配卡 reinforce 分）。
+	##   `salvage_tower()` 据此返还 **50% 累计投入**（向下取整）。
+	##   🔴 只在**玩家手动路线**（`shop_runtime.gd`）侧记录与维护；金标本 AI 路线
+	##      （`shop_ai.gd apply_action`）**不读不写**此字段 → 金标本零改动、MC 判据链不受影响。
+	##   🔴 MVP 默认不触发拆除（入口置灰），本字段恒 0.0；单测里主动写入以验证结算器。
+	var invested: float = 0.0
 
 
 var path: String = "B"

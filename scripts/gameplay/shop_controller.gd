@@ -28,6 +28,7 @@ extends Node
 const _Cfg := preload("res://scripts/engine/mvp_config.gd")
 const _TSM := preload("res://scripts/engine/time_state_machine.gd")
 const _ShopRuntime := preload("res://scripts/gameplay/shop_runtime.gd")
+const _SalvageDialog := preload("res://scripts/ui/salvage_confirm_dialog.gd")
 
 # 交互局 RNG 种子（= MC 定稿种子，便于复现；不是平衡参数）
 const DEFAULT_RUN_SEED := 20260930
@@ -67,6 +68,9 @@ func bind_director(d: Node) -> void:
 	director = d
 	if d == null:
 		return
+	# 🟡 切片8：把时钟权威注入 runtime，供重决策入口（salvage/discard/unequip）做 SafeWindow 守卫
+	if runtime != null:
+		runtime.director = d
 	if not d.is_connected("reroll_requested", _on_reroll_requested):
 		d.reroll_requested.connect(_on_reroll_requested)
 	if not d.is_connected("buy_requested", _on_buy_requested):
@@ -147,8 +151,43 @@ func _on_placement_cancelled() -> void:
 
 
 func _on_salvage_requested() -> void:
-	# 🟡 后续切片：拆除回收（`TowerRemove` 结算器 + 二次确认弹窗，I-9 / §2.9）
-	print("[shop_controller] salvage_requested 已收到，🟡 拆除回收未在切片4 实现")
+	# 切片8 · 拆除回收 `Salvage`（I-9 二次确认弹窗，Q-C3 原文 / E8 / E15）
+	if runtime == null:
+		return
+	# 🟡 MVP：salvage_requested 无参（I-7 塔位点选随 D-9 后续切片）→ 目标取**主塔**
+	#    （与 reinforce 恒投 core_tower_slot 同口径）。有塔才可拆。
+	var slot := runtime.core_tower_slot()
+	if slot < 0:
+		runtime.last_error = "场上无塔可拆除"
+		_emit_shop()
+		return
+	var prev := runtime.preview_salvage(slot)
+	if not bool(prev["ok"]):
+		runtime.last_error = String(prev["reason"])
+		_emit_shop()
+		return
+	# 🔴 I-9 二次确认弹窗（CanvasLayer 140，自定义 Control，禁 AcceptDialog）
+	_show_salvage_confirm(slot, prev)
+
+
+## 组装 I-9 弹窗文案（E8 确认项：返还 X 分 / 销毁 N 张（M 层）/ κ 不回升）并挂确认回调。
+func _show_salvage_confirm(slot: int, prev: Dictionary) -> void:
+	var dlg = _SalvageDialog.new()
+	add_child(dlg)
+	var body := "塔位 %d · 累计投入 %.0f 分\n返还 %.0f 分（50%%，向下取整）\n销毁 %d 张卡（共 %d 层）\nκ 不回升（兜底①，E11）" % [
+		slot, float(prev["invested"]), float(prev["refund"]),
+		int(prev["cards_destroyed"]), int(prev["layers_destroyed"])]
+	# 🔴 E15：弹窗打开时世界仍 paused（dialog process_mode=ALWAYS，不解除暂停）
+	dlg.show_confirm("拆除并回收 Salvage？", body, func() -> void:
+		var res := runtime.salvage_tower(slot)
+		if bool(res["ok"]):
+			print("[shop_controller] 拆除塔位 %d：返还 %.0f 分 / 销毁 %d 张（%d 层）"
+				% [slot, float(res["refund"]), int(res["cards_destroyed"]), int(res["layers_destroyed"])])
+		else:
+			runtime.last_error = String(res["reason"])
+		_emit_shop()
+		_emit_run()
+	)
 
 
 # ---- 待放置队列 → 进入放置模式（I-8 的前半段）----

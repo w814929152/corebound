@@ -4,8 +4,8 @@
 >
 - **维护人**：程基岩（工程主理人）
 - **适用引擎**：Godot `v4.7.2.stable.official.ed1daf0bf`（换版本必须重跑第 7 节全量自测）
-- **来源**：ADR-0001（`kr_mode` 口径）／ADR-0002（浮点可移植性）／切片1·切片2·切片3·切片4·切片5·切片6·切片7 联调实测
-- **状态**：切片7 全量自测 **222 + 2228 + 142 + 123 + 302 + 41 + 31 = 3089 项断言 / 0 失败 / 退出码 0**（31 = 切片7；另有切片4 场景冒烟 46 项回归、切片5 场景冒烟 22 项）；🔴 切片4 的 9 项接线冲突（D-1…D-9）已全部拍板（`shop-reroll` §9.2 v1.3）；🟡 切片5 的 4 项新分歧（S5-D1/S5-D2/S5-F1/S5-F2）已全部拍板（`wave-spawner` v0.3）；✅ 切片7 = S5-D1 校准闸门**已过**（三原型+Elite MC 300：B 起飞率 91.7%≥80% / 起飞点 W13∈W10-15 / B/A 0.432<1），金标本零改动
+- **来源**：ADR-0001（`kr_mode` 口径）／ADR-0002（浮点可移植性）／切片1·切片2·切片3·切片4·切片5·切片6·切片7·切片8 联调实测
+- **状态**：切片8 全量自测 **222 + 2228 + 142 + 123 + 302 + 41 + 31 + 43 = 3132 项断言 / 0 失败 / 退出码 0**（43 = 切片8；另有切片4 场景冒烟 46 项回归、切片5 场景冒烟 22 项）；🔴 切片4 的 9 项接线冲突（D-1…D-9）已全部拍板（`shop-reroll` §9.2 v1.3）；🟡 切片5 的 4 项新分歧（S5-D1/S5-D2/S5-F1/S5-F2）已全部拍板（`wave-spawner` v0.3）；✅ 切片7 = S5-D1 校准闸门**已过**；✅ 切片8 = 拆除回收 `Salvage`（Q-C3 原文：返还 50% + 装配卡全销毁 + I-9 二次确认 + 仅安全窗）落地，κ 兜底①不回升守护通过，金标本零改动
 
 ---
 
@@ -180,6 +180,7 @@ GODOT="/c/Users/junhewang/Downloads/Godot_v4.7.2-stable_win64.exe/Godot_v4.7.2-s
 "$GODOT" --headless --path D:/roguedemo --script res://tests/run_tests.gd -- slice5
 "$GODOT" --headless --path D:/roguedemo --script res://tests/run_tests.gd -- slice6
 "$GODOT" --headless --path D:/roguedemo --script res://tests/run_tests.gd -- slice7
+"$GODOT" --headless --path D:/roguedemo --script res://tests/run_tests.gd -- slice8
 
 # 切片3 真机场景冒烟（真实帧，会真等 10 实时秒做预算实测，约 15 秒）
 "$GODOT" --headless --path D:/roguedemo --script res://tests/run_slice3_scene_smoke.gd
@@ -193,7 +194,7 @@ GODOT="/c/Users/junhewang/Downloads/Godot_v4.7.2-stable_win64.exe/Godot_v4.7.2-s
 
 对照检查项：
 
-- [ ] 退出码 **0**，且日志里七段汇总齐全：`通过 222 项`（切片1）/ `通过 2228 项`（切片2）/ `通过 142 项`（切片3）/ `通过 123 项`（切片4）/ `通过 302 项`（切片5）/ `通过 41 项`（切片6）/ `通过 31 项`（切片7）
+- [ ] 退出码 **0**，且日志里八段汇总齐全：`通过 222 项`（切片1）/ `通过 2228 项`（切片2）/ `通过 142 项`（切片3）/ `通过 123 项`（切片4）/ `通过 302 项`（切片5）/ `通过 41 项`（切片6）/ `通过 31 项`（切片7）/ `通过 43 项`（切片8）
 - [ ] 定稿判据链 16 条逐条对上（A 起飞 W8 / B 起飞 W12 / B÷A **0.458** / cross **16-4** / flips **1** /
       三阶段健康 A **2.4** / B **3.0** 单调上升）
 - [ ] MC：**A 69.3%（208/300）/ B 91.3%（274/300）**，中位起飞波 A W8.0 / B W13.0；
@@ -205,6 +206,7 @@ GODOT="/c/Users/junhewang/Downloads/Godot_v4.7.2-stable_win64.exe/Godot_v4.7.2-s
 - [ ] 🔴 切片5 时间轴红线：`wave_director.gd` 无墙钟/帧计数/`Timer`（单测源码探针）；安全窗 paused → `t_wave` Δ=0
 - [ ] 🔒 切片6 额外确认：`wave_sim.gd` / `shop_ai.gd` / `corebound_sim_v03.py` **零修改**（git diff 证据）；`disabled` 占位 MVP 恒 false → DPS 逐位零影响（AC-S6-1）；断输出不断链（AC-S6-2：E/κ/κ_r 不变 + 全局乘区不变）；硬约束「≥1 安全位」成立（AC-S6-3）；`tower_aggro_enabled` 默认 false（AC-S6-4）
 - [ ] ✅ 切片7 额外确认：`wave_sim.gd` / `run_loop.gd` / `shop_ai.gd` **零修改**（三原型+Elite 走独立 `wave_sim_proto.gd` / `run_loop_proto.gd`，金标本证据链纯净）；S5-D1 校准闸门三闸门全过（①B 起飞率 91.7%≥80% ②起飞点 W13∈W10-15 ③B/A 0.432<1）；AC-S7-1 proto=false 逐位等价金标本（9 波次）
+- [ ] ✅ 切片8 额外确认：`shop_ai.gd` / `player_state.gd` 金标本路径 **零改动**（`invested` 只在玩家路线 `shop_runtime.gd` 记录）；Q-C3 原文落地（返还 50% 向下取整 + 装配卡全销毁 + I-9 二次确认 CanvasLayer 140 自定义 Control 禁 AcceptDialog + 仅安全窗 T-C1/E16）；🔴 兜底① κ 不回升（`n_hist_max` 只增不减，AC-S8-2）；弃卡全销毁腾槽无返还（AC-S8-3）；卸下改投降 1 层（AC-S8-4）
 - [ ] 🔴 **玩家路线发牌池口径**（D-4/D-2，v1.3）：金标本 `CARD_NAMES` 是 **7 张**（AI 路线，含 RerollD，MC 来源，不动）；**玩家路线发牌池 = 7 − RerollD = 6 张**（`shop_runtime.player_card_names()` 由金标本派生，有放回抽 3，恒 3 位可重复）。⚠️ 别与**设计卡池 12 张**（card-system §7.3，13→12 移除 G2 `SupplyChain`）混淆——前者是金标本运行时实际抽的 6 张，后者是设计意图的 12 张，两个口径都对，只是作用层不同
 - [ ] 完整输出存档到 `docs/phase3/sliceN-headless-run.log`
 
@@ -239,6 +241,10 @@ GODOT="/c/Users/junhewang/Downloads/Godot_v4.7.2-stable_win64.exe/Godot_v4.7.2-s
 | 切片7 验证报告 | `docs/phase3/slice7-verify.md`（S5-D1 校准闸门：三原型+Elite MC 300 过闸门，金标本零改动） |
 | 切片7 自测 | `tests/test_suite_slice7.gd`（31 项：AC-S7-1 proto=false 逐位等价金标本 · AC-S7-2 确实换口径 · AC-S7-3 闸门①②③） |
 | 切片7 批处理战斗结算（金标本不动） | `scripts/engine/wave_sim_proto.gd`（`simulate_wave_proto`，镜像 `WaveDirector._substep`）· `scripts/engine/run_loop_proto.gd`（MC 重扫运行器，shop_ai 金标本不变） |
+| 切片8 验证报告 | `docs/phase3/slice8-verify.md`（拆除回收 `Salvage` Q-C3 原文落地 + I-9 二次确认 + κ 不回升守护，金标本零改动） |
+| 切片8 自测 | `tests/test_suite_slice8.gd`（43 项：AC-S8-1 逐塔投入追踪 · AC-S8-2 拆除返还 50%+全销毁+κ 不回升 · AC-S8-3 弃卡 · AC-S8-4 卸下改投 · AC-S8-5 I-9 弹窗组件 · AC-S8-6 金标本零改动） |
+| 切片8 结算核心（玩家路线，金标本不动） | `scripts/gameplay/shop_runtime.gd`（`salvage_tower` / `discard_card` / `unequip_downgrade` / `preview_salvage` + `pending_cost` 平行数组 + `invested` 累加）· `scripts/engine/player_state.gd`（`TowerState.invested: float = 0.0`） |
+| 切片8 I-9 二次确认弹窗 | `scripts/ui/salvage_confirm_dialog.gd`（CanvasLayer 140 · 自定义 Control 禁 AcceptDialog · `show_confirm(title,body,on_confirm)`）· `scripts/gameplay/shop_controller.gd`（`_on_salvage_requested` 接线 + 弹窗组装 + SafeWindow 守卫注入） |
 | 切片4 拍板留档（设计侧） | `design/gdd/shop-reroll.md` §9.2（v1.3，D-1~D-7 拍板）· `design/gdd/card-system.md` A4/§7.3（v1.1.6，D-4 卡池 13→12） |
 | 口径 / 浮点决策记录 | `docs/architecture/adr-0001-kr-tier-vs-flat.md`、`adr-0002-float-portability.md` |
 | 引擎 | `scripts/engine/{damage_engine,wave_sim,shop_ai,run_loop,stats,softcap,mvp_config,player_state,sim_player,py_random,fp_pow,fp_sum,time_state_machine}.gd` |
