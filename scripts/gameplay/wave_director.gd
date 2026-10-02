@@ -93,6 +93,9 @@ var tower_aggro_enabled: bool = false
 ##   >= 0 时覆盖 `_damage_tower` 的对塔 DPS 复合比（供扫参脚本与实时↔批处理一致性
 ##   在扫参值下守护）。扫参定稿后回写 `MonsterData.ATTRITION`，此成员退回默认。
 var attrition_override: float = -1.0
+## 🔒 T1 V-1 定稿起手保护波数（默认 = MonsterData.WARMUP = 2）：W1..warmup 仇恨不激活。
+##   测试机制能力本身（仇恨能否打死塔）时可设 0 绕过（AC-T1-5/6/8/9 用 W1 测能力）。
+var warmup_waves: int = _MonsterData.WARMUP
 ## 🟡 S5-D1：GDD §2.5.3 三原型分化。MVP 恒 false（= 单一基准怪 = 金标本口径）。
 var prototype_split_enabled: bool = false
 ## 🟡 S5-D1：GDD §2.5.4 词缀版 Elite 波。MVP 恒 false。
@@ -377,7 +380,9 @@ func _substep() -> void:
 	# ---- ④ 🔒 T1 仇恨行为（Q-T3 机会型仇恨 · 仅 tower_aggro_enabled 时生效）----
 	#   设计铁律「仇恨只改路径不改 DPS 分配」：本阶段只改怪物态（Marching↔AggroTower）
 	#   与塔损耗，**不动** ② 的 DPS 分配口径（全场池→t_remain 排序→填满→结转）。
-	if tower_aggro_enabled:
+	#   🔒 T1 V-1 定稿起手保护：W1..WARMUP(=2) 仇恨不激活（与批处理镜像 simulate_wave_aggro
+	#     对称 → 实时↔批处理逐位一致）。无此保护起手塔 W1 必死、起飞率 0%。
+	if tower_aggro_enabled and w > warmup_waves:
 		_apply_aggro()
 
 

@@ -90,6 +90,9 @@ func _mk_director(player, aggro: bool):
 	var geo = _Geo6.build()
 	var wd = _WaveDirector.new()
 	wd.tower_aggro_enabled = aggro
+	# 🔒 T1 V-1：测"仇恨机制能力本身"（能否转 AggroTower / 能否打死塔）→ warmup_waves=0
+	#   绕过起手保护（AC-T1-5/6/8/9 在 W1 测能力，非测激活时机）。定稿运行时默认 WARMUP=2。
+	wd.warmup_waves = 0
 	wd.setup(player, cfg, geo)
 	return wd
 
@@ -119,8 +122,10 @@ func _test_aggro_constants() -> void:
 	_check("AGGRO_R = 9.0（转向半径）", _MonsterData.AGGRO_R, 9.0)
 	_check("AGGRO_EXIT = 10.8（迟滞带退出 = 9.0×1.2）", _MonsterData.AGGRO_EXIT, 10.8)
 	_check("AGGRO_TICK = 0.10（判定频率 = sim dt）", _MonsterData.AGGRO_TICK, 0.10)
-	# ATTRITION 是 PLACEHOLDER（V-1 扫参基比），登记但待重扫
-	_check("ATTRITION 已登记（PLACEHOLDER · V-1 扫参基比）", _MonsterData.ATTRITION, 0.5)
+	# ATTRITION 已 V-1 定稿 = 1.50（300 局 MC，首个全判据通过点）
+	_check("ATTRITION 已定稿 = 1.50（V-1 扫参，300 局 MC）", _MonsterData.ATTRITION, 1.5)
+	# WARMUP 起手保护定稿 = 2（与 ATTRITION 成对生效）
+	_check("WARMUP 起手保护 = 2（与 ATTRITION 成对，仇恨 W3 起生效）", _MonsterData.WARMUP, 2.0)
 
 
 # ===========================================================================
@@ -403,6 +408,34 @@ func _test_disabled_noop_never_deadlock() -> void:
 	_check("list 修复费 ceil(0.30×200)=60", float(lst[0]["repair_cost"]), 60.0)
 
 
+# ===========================================================================
+#  AC-T1-13 · V-1 定稿：ATTRITION=1.50 + 起手保护 WARMUP=2（实时↔批处理对称）
+# ===========================================================================
+func _test_v1_finalized_attrition_and_warmup() -> void:
+	_log("")
+	_log("--- [AC-T1-13] V-1 定稿：ATTRITION=1.50 + 起手保护 WARMUP=2 ---")
+	# ① resolve_attrition 覆盖逻辑：默认读定稿常量；传覆盖值用覆盖值
+	_check("resolve_attrition(-1) 读定稿 1.50", _MonsterData.resolve_attrition(-1.0), 1.5)
+	_check("resolve_attrition(4.0) 用覆盖值 4.0", _MonsterData.resolve_attrition(4.0), 4.0)
+	# ② 起手保护（批处理镜像 warmup=2）：W1 暴露位 S0 塔**不应**被打死（仇恨 W3 才生效）
+	var geo = _Geo6.build()
+	var cfg = _Cfg.cfg_of("B")
+	var p1 = _mk_player_with_tower(0, "Arrow", 1)   # h=1 暴露位 S0
+	var on_warmup := _WaveSimAggro.simulate_wave_aggro(p1, 1, cfg, geo, true, 0.6, -1.0, 2)
+	_check("W1 起手保护：暴露位 S0 塔不死（towers_disabled=0）",
+		float(on_warmup["towers_disabled"]), 0.0)
+	_check("W1 起手保护：本波毛新增 Disabled=0", float(on_warmup["dis_new"]), 0.0)
+	# ③ 起手保护关闭（warmup=0）时 W1 暴露位塔**会**被打死（机制能力在，只是被保护期挡住）
+	var p2 = _mk_player_with_tower(0, "Arrow", 1)
+	var on_nowarmup := _WaveSimAggro.simulate_wave_aggro(p2, 1, cfg, geo, true, 0.6, -1.0, 0)
+	_check_bool("warmup=0 时 W1 暴露位 S0 塔会被打死（机制能力在）",
+		int(on_nowarmup["towers_disabled"]) > 0, true)
+	# ④ 实时版门控：warmup_waves 成员**默认** = WARMUP=2（直接 new，不经 _mk_director
+	#    否则会被设成 0）
+	var wd_default := _WaveDirector.new()
+	_check("实时版 warmup_waves 默认 = WARMUP=2", float(wd_default.warmup_waves), 2.0)
+
+
 func run_all() -> bool:
 	_test_tower_hp_derivation()
 	_test_aggro_constants()
@@ -416,6 +449,7 @@ func run_all() -> bool:
 	_test_repair_entry()
 	_test_salvage_disabled()
 	_test_disabled_noop_never_deadlock()
+	_test_v1_finalized_attrition_and_warmup()
 	_log("")
 	_log("T1 仇恨 汇总：通过 %d 项 / 失败 %d 项" % [_pass, _fail])
 	return _fail == 0
