@@ -5,7 +5,7 @@
 - **维护人**：程基岩（工程主理人）
 - **适用引擎**：Godot `v4.7.2.stable.official.ed1daf0bf`（换版本必须重跑第 7 节全量自测）
 - **来源**：ADR-0001（`kr_mode` 口径）／ADR-0002（浮点可移植性）／切片1·切片2·切片3·切片4·切片5·切片6·切片7·切片8 联调实测
-- **状态**：切片8 全量自测 **222 + 2228 + 142 + 123 + 302 + 41 + 31 + 43 = 3132 项断言 / 0 失败 / 退出码 0**（43 = 切片8；另有切片4 场景冒烟 46 项回归、切片5 场景冒烟 22 项）；🔴 切片4 的 9 项接线冲突（D-1…D-9）已全部拍板（`shop-reroll` §9.2 v1.3）；🟡 切片5 的 4 项新分歧（S5-D1/S5-D2/S5-F1/S5-F2）已全部拍板（`wave-spawner` v0.3）；✅ 切片7 = S5-D1 校准闸门**已过**；✅ 切片8 = 拆除回收 `Salvage`（Q-C3 原文：返还 50% + 装配卡全销毁 + I-9 二次确认 + 仅安全窗）落地，κ 兜底①不回升守护通过，金标本零改动
+- **状态**：切片8 全量自测 **222 + 2228 + 142 + 123 + 302 + 41 + 31 + 58 = 3147 项断言 / 0 失败 / 退出码 0**（58 = 切片8，含 I-7 塔位点选 15 项；另有切片4 场景冒烟 46 项、切片5 场景冒烟 22 项回归）；🔴 切片4 的 9 项接线冲突（D-1…D-9）已全部拍板（`shop-reroll` §9.2 v1.3），其中 **D-9 已落地**（I-7 塔位点选，单塔效果卡 2 次输入购买）；🟡 切片5 的 4 项新分歧（S5-D1/S5-D2/S5-F1/S5-F2）已全部拍板（`wave-spawner` v0.3）；✅ 切片7 = S5-D1 校准闸门**已过**；✅ 切片8 = 拆除回收 `Salvage`（Q-C3 原文）+ I-9 二次确认 + I-7 塔位点选（D-TB-5 默认主塔 / D-TB-6 强制点选）落地，κ 兜底①不回升守护通过，金标本零改动
 
 ---
 
@@ -206,7 +206,7 @@ GODOT="/c/Users/junhewang/Downloads/Godot_v4.7.2-stable_win64.exe/Godot_v4.7.2-s
 - [ ] 🔴 切片5 时间轴红线：`wave_director.gd` 无墙钟/帧计数/`Timer`（单测源码探针）；安全窗 paused → `t_wave` Δ=0
 - [ ] 🔒 切片6 额外确认：`wave_sim.gd` / `shop_ai.gd` / `corebound_sim_v03.py` **零修改**（git diff 证据）；`disabled` 占位 MVP 恒 false → DPS 逐位零影响（AC-S6-1）；断输出不断链（AC-S6-2：E/κ/κ_r 不变 + 全局乘区不变）；硬约束「≥1 安全位」成立（AC-S6-3）；`tower_aggro_enabled` 默认 false（AC-S6-4）
 - [ ] ✅ 切片7 额外确认：`wave_sim.gd` / `run_loop.gd` / `shop_ai.gd` **零修改**（三原型+Elite 走独立 `wave_sim_proto.gd` / `run_loop_proto.gd`，金标本证据链纯净）；S5-D1 校准闸门三闸门全过（①B 起飞率 91.7%≥80% ②起飞点 W13∈W10-15 ③B/A 0.432<1）；AC-S7-1 proto=false 逐位等价金标本（9 波次）
-- [ ] ✅ 切片8 额外确认：`shop_ai.gd` / `player_state.gd` 金标本路径 **零改动**（`invested` 只在玩家路线 `shop_runtime.gd` 记录）；Q-C3 原文落地（返还 50% 向下取整 + 装配卡全销毁 + I-9 二次确认 CanvasLayer 140 自定义 Control 禁 AcceptDialog + 仅安全窗 T-C1/E16）；🔴 兜底① κ 不回升（`n_hist_max` 只增不减，AC-S8-2）；弃卡全销毁腾槽无返还（AC-S8-3）；卸下改投降 1 层（AC-S8-4）
+- [ ] ✅ 切片8 额外确认：`shop_ai.gd` / `player_state.gd` 金标本路径 **零改动**（`invested` 只在玩家路线 `shop_runtime.gd` 记录）；Q-C3 原文落地（返还 50% 向下取整 + 装配卡全销毁 + I-9 二次确认 CanvasLayer 140 自定义 Control 禁 AcceptDialog + 仅安全窗 T-C1/E16）；🔴 兜底① κ 不回升（`n_hist_max` 只增不减，AC-S8-2）；弃卡全销毁腾槽无返还（AC-S8-3）；卸下改投降 1 层（AC-S8-4）；🟡 **I-7 塔位点选**（AC-S8-7）：Tag 合法性 `can_attach_card`/`get_legal_hosts`（D-8① 禁异 Tag · 中性塔收任意）· reinforce 改投点选塔（2 次输入）否则默认主塔（1 次输入）· D-TB-6 强制点选（主塔拒→`选择宿主塔`高亮合法副塔）· 无宿主→H8 `无塔接收该 Tag` · 点选每波清空
 - [ ] 🔴 **玩家路线发牌池口径**（D-4/D-2，v1.3）：金标本 `CARD_NAMES` 是 **7 张**（AI 路线，含 RerollD，MC 来源，不动）；**玩家路线发牌池 = 7 − RerollD = 6 张**（`shop_runtime.player_card_names()` 由金标本派生，有放回抽 3，恒 3 位可重复）。⚠️ 别与**设计卡池 12 张**（card-system §7.3，13→12 移除 G2 `SupplyChain`）混淆——前者是金标本运行时实际抽的 6 张，后者是设计意图的 12 张，两个口径都对，只是作用层不同
 - [ ] 完整输出存档到 `docs/phase3/sliceN-headless-run.log`
 

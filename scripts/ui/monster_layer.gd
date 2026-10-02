@@ -43,11 +43,17 @@ const R_TANK := 10.0
 
 var director: Node = null        # WaveDirector
 var time_director: Node = null   # TimeDirector（读抽屉宽，决定战场可视宽）
+## 🟡 切片8·I-7：商店控制器（读 runtime.snapshot() 画已建塔 + 点选/合法宿主高亮）。
+##   🔴 只读，不写玩法状态（与 WaveDirector 一样是"画面事实"来源）。
+var controller: Node = null
 var _slot_rows: Array = []
 var _snap: Dictionary = {}
 
 
 func _ready() -> void:
+	# 🔴 I-7：点选是商店期交互（安全窗 paused=true 下也要收点击）→ ALWAYS。
+	#    本节点仍只读玩法状态、只发意图信号，process_mode 只影响"能否收输入"。
+	process_mode = Node.PROCESS_MODE_ALWAYS
 	_slot_rows = _PathGeometry.slot_exposure(_Geo6.SLOTS6, 9.0)
 
 
@@ -62,6 +68,18 @@ func bind_time_director(d: Node) -> void:
 		return
 	if not d.is_connected("state_changed", _on_state_changed):
 		d.state_changed.connect(_on_state_changed)
+	queue_redraw()
+
+
+## I-7：注入 ShopController（读 runtime 画已建塔 + 点选/合法宿主高亮）。
+func bind_controller(c: Node) -> void:
+	controller = c
+	if c == null:
+		return
+	if not c.is_connected("shop_changed", _on_state_changed):
+		c.shop_changed.connect(_on_state_changed)
+	if not c.is_connected("run_changed", _on_state_changed):
+		c.run_changed.connect(_on_state_changed)
 	queue_redraw()
 
 
@@ -110,6 +128,133 @@ func _to_screen(p: Vector2) -> Vector2:
 	return Vector2(float(t["ox"]) + p.x * float(t["sc"]), float(t["oy"]) + p.y * float(t["sc"]))
 
 
+## I-7：屏幕坐标 → 塔位世界坐标的逆映射（点击命中判定用）。
+func _to_world(screen_p: Vector2) -> Vector2:
+	var t := _xform()
+	var sc := float(t["sc"])
+	return Vector2((screen_p.x - float(t["ox"])) / sc, (screen_p.y - float(t["oy"])) / sc)
+
+
+## I-7：点击战场上的塔 → 发 `tower_select_requested(slot)`（由 ShopController 接 runtime.select_tower）。
+##   · 只发意图、不改状态（SR-5）；命中半径 = 塔身半径 + 余量（像素级宽容）。
+##   · 🔴 仅商店抽屉展开时响应（战斗/收拢时点击战场不该改点选）。
+func _unhandled_input(event: InputEvent) -> void:
+	if not (event is InputEventMouseButton):
+		return
+	var mb := event as InputEventMouseButton
+	if not mb.pressed or mb.button_index != MOUSE_BUTTON_LEFT:
+		return
+	if controller == null or controller.runtime == null:
+		return
+	# 仅抽屉展开（商店期）可点选塔
+	var drawer_open := false
+	if time_director != null:
+		drawer_open = (int(time_director.sm.clock()["drawer"]) != 0)
+	if not drawer_open:
+		return
+	var hit := _hit_tower_slot(mb.global_position)
+	if hit >= 0:
+		# 交给 ShopController 接线（不直接调 runtime，守 SR-5 依赖方向）
+		if director != null:
+			director.emit_signal("tower_select_requested", hit)
+		get_viewport().set_input_as_handled()
+
+
+## 命中判定：找最近的**已建塔**塔位（世界坐标距离 < 命中半径）。返回 slot 或 -1。
+func _hit_tower_slot(screen_p: Vector2) -> int:
+	var wp := _to_world(screen_p)
+	var t := _xform()
+	var sc := float(t["sc"])
+	var hit_radius_world := maxf(9.0, sc * 1.6)     # 塔身半径 + 余量
+	var best := -1
+	var best_d := INF
+	if controller == null or controller.runtime == null:
+		return -1
+	for tw in controller.runtime.player.towers:
+		var s := int(tw.slot)
+		if s < 0 or s >= _Geo6.SLOTS6.size():
+			continue
+		var d := wp.distance_to(_Geo6.SLOTS6[s])
+		if d < hit_radius_world and d < best_d:
+			best = s
+			best_d = d
+	return best
+
+
+# ---------------------------------------------------------------------------
+#  已建塔渲染（I-7）
+# ---------------------------------------------------------------------------
+# 塔原型配色（占位，与怪物区分：塔偏青绿系）
+const C_TOWER_ARROW := Color(0.40, 0.80, 0.55, 1.0)   # 中性（Arrow）
+const C_TOWER_CANNON := Color(0.95, 0.55, 0.30, 1.0)  # fire（Cannon）
+const C_TOWER_FROST := Color(0.45, 0.70, 0.95, 1.0)   # frost（Frost）
+const C_TOWER_CORE := Color(0.95, 0.85, 0.30, 1.0)    # 主塔描边
+const C_SELECT := Color(0.35, 0.95, 0.95, 1.0)        # I-7 选中高亮
+const C_HOST := Color(0.95, 0.75, 0.35, 0.9)          # D-TB-6 合法宿主高亮
+
+
+func _tower_color(ctype: String) -> Color:
+	match ctype:
+		"Cannon":
+			return C_TOWER_CANNON
+		"Frost":
+			return C_TOWER_FROST
+		_:
+			return C_TOWER_ARROW
+
+
+## 画已建塔：塔原型色实心 + 层数刻度（h 个小点）+ 主塔描边 + 选中/合法宿主高亮。
+func _draw_towers(sc: float) -> void:
+	if controller == null or controller.runtime == null:
+		return
+	var snap: Dictionary = controller.runtime.snapshot()
+	# 🔴 snapshot 里塔位列表键是 "slots"（含 ctype/h/empty）；"towers" 是数量 int。
+	var towers: Array = snap.get("slots", [])
+	var selected: int = int(snap.get("selected_tower_slot", -1))
+	var core_slot: int = int(snap.get("core_tower_slot", -1))
+	var hosts: Array = _forced_select_hosts(snap)
+
+	for tw in towers:
+		if bool(tw.get("empty", true)):
+			continue
+		var slot: int = int(tw.get("slot", -1))
+		if slot < 0 or slot >= _Geo6.SLOTS6.size():
+			continue
+		var sp := _to_screen(_Geo6.SLOTS6[slot])
+		var h: int = int(tw.get("h", 1))
+		var rad := maxf(7.0, sc * 1.1)
+
+		# D-TB-6 合法宿主高亮（在塔身之下，作底圈）
+		if hosts.has(slot):
+			draw_arc(sp, rad + maxf(4.0, sc * 0.7), 0.0, TAU, 30, C_HOST, maxf(2.0, sc * 0.22), true)
+		# 塔身
+		draw_circle(sp, rad, _tower_color(String(tw.get("ctype", "Arrow"))))
+		# 主塔描边
+		if slot == core_slot:
+			draw_arc(sp, rad + maxf(1.5, sc * 0.2), 0.0, TAU, 28, C_TOWER_CORE, maxf(1.5, sc * 0.18), true)
+		# 选中高亮（最外圈，青）
+		if slot == selected:
+			draw_arc(sp, rad + maxf(4.0, sc * 0.6), 0.0, TAU, 30, C_SELECT, maxf(2.5, sc * 0.24), true)
+		# 层数刻度（h 个白点，沿塔身底部排开）
+		var n := mini(h, 8)
+		for k in range(n):
+			var ang := PI * (0.25 + 0.5 * float(k) / float(maxi(1, n - 1)))
+			var dot := Vector2(sp.x + cos(ang) * rad * 0.5, sp.y + sin(ang) * rad * 0.5)
+			draw_circle(dot, maxf(1.2, sc * 0.14), Color(1.0, 1.0, 1.0, 0.9))
+
+
+## D-TB-6：若当前商店焦点位是"需强制点选"的 reinforce 卡，返回其合法宿主塔位；否则空。
+##   🔴 只读 runtime 的 offer + get_legal_hosts，不改任何状态。
+func _forced_select_hosts(snap: Dictionary) -> Array:
+	var offers: Array = snap.get("offers", [])
+	var notes: Array = snap.get("notes", [])
+	var kinds: Array = snap.get("kinds", [])
+	for i in range(mini(offers.size(), notes.size())):
+		if String(kinds[i]) == "单塔效果卡" and String(notes[i]) == "选择宿主塔":
+			return controller.runtime.get_legal_hosts(String(offers[i]))
+	return []
+
+
 # ---------------------------------------------------------------------------
 #  绘制
 # ---------------------------------------------------------------------------
@@ -137,6 +282,9 @@ func _draw() -> void:
 		draw_arc(sp, maxf(5.0, sc * 0.7), 0.0, TAU, 24, C_SLOT, maxf(1.0, sc * 0.10), true)
 		if bool(row["is_exposed"]):
 			draw_arc(sp, maxf(7.0, sc * 1.05), 0.0, TAU, 28, C_EXPOSE, maxf(1.0, sc * 0.08), true)
+
+	# ---- 已建塔（I-7：按塔原型上色 + 层数刻度 + 选中/合法宿主高亮）----
+	_draw_towers(sc)
 
 	# ---- 怪物 ----
 	if _snap.is_empty():

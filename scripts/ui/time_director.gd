@@ -33,6 +33,8 @@ signal buy_requested(slot: int)
 signal lock_toggled(slot: int)
 signal placement_confirmed(slot: int)
 signal salvage_requested()
+## 🟡 切片8·I-7：战场塔位点选请求（MonsterLayer 点击塔 → 本信号 → ShopController 接 runtime.select_tower）
+signal tower_select_requested(slot: int)
 signal placement_cancelled()
 
 

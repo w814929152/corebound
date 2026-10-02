@@ -85,9 +85,12 @@ func bind_director(d: Node) -> void:
 		d.wave_started.connect(_on_wave_started)
 	if not d.is_connected("wave_ended", _on_wave_ended):
 		d.wave_ended.connect(_on_wave_ended)
-	#  salvage_requested：🟡 后续切片（拆除回收结算器），本轮只登记不实现
+	#  salvage_requested：切片8 拆除回收结算器 + I-9 二次确认弹窗
 	if not d.is_connected("salvage_requested", _on_salvage_requested):
 		d.salvage_requested.connect(_on_salvage_requested)
+	#  I-7 塔位点选：MonsterLayer 点击塔 → runtime.select_tower
+	if not d.is_connected("tower_select_requested", _on_tower_select_requested):
+		d.tower_select_requested.connect(_on_tower_select_requested)
 
 
 ## 切片5：`WaveDirector` 注入。波次推进（刷怪 / 伤害 / 漏怪 / 结束判定）由它负责。
@@ -150,18 +153,29 @@ func _on_placement_cancelled() -> void:
 	_emit_shop()
 
 
+## 🟡 切片8·I-7：战场塔位点选接线（MonsterLayer 点击塔 → runtime.select_tower）。
+##   🔴 纯接线：改的是 runtime 的**点选状态**（UI 侧临时选择），不改构筑数值；
+##      点选后 reinforce 卡的宿主由 `_reinforce_host()` 决定（点选合法→该塔，否则→主塔）。
+func _on_tower_select_requested(slot: int) -> void:
+	if runtime == null:
+		return
+	if runtime.select_tower(slot):
+		print("[shop_controller] 点选塔位 %d（reinforce 将投此塔，若 Tag 合法）" % slot)
+		_emit_shop()
+
+
 func _on_salvage_requested() -> void:
 	# 切片8 · 拆除回收 `Salvage`（I-9 二次确认弹窗，Q-C3 原文 / E8 / E15）
 	if runtime == null:
 		return
 	# 🟡 MVP：salvage_requested 无参（I-7 塔位点选随 D-9 后续切片）→ 目标取**主塔**
 	#    （与 reinforce 恒投 core_tower_slot 同口径）。有塔才可拆。
-	var slot := runtime.core_tower_slot()
+	var slot: int = runtime.core_tower_slot()
 	if slot < 0:
 		runtime.last_error = "场上无塔可拆除"
 		_emit_shop()
 		return
-	var prev := runtime.preview_salvage(slot)
+	var prev: Dictionary = runtime.preview_salvage(slot)
 	if not bool(prev["ok"]):
 		runtime.last_error = String(prev["reason"])
 		_emit_shop()
@@ -179,7 +193,7 @@ func _show_salvage_confirm(slot: int, prev: Dictionary) -> void:
 		int(prev["cards_destroyed"]), int(prev["layers_destroyed"])]
 	# 🔴 E15：弹窗打开时世界仍 paused（dialog process_mode=ALWAYS，不解除暂停）
 	dlg.show_confirm("拆除并回收 Salvage？", body, func() -> void:
-		var res := runtime.salvage_tower(slot)
+		var res: Dictionary = runtime.salvage_tower(slot)
 		if bool(res["ok"]):
 			print("[shop_controller] 拆除塔位 %d：返还 %.0f 分 / 销毁 %d 张（%d 层）"
 				% [slot, float(res["refund"]), int(res["cards_destroyed"]), int(res["layers_destroyed"])])

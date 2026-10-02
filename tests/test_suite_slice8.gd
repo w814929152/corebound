@@ -297,11 +297,75 @@ func _test_golden_untouched() -> void:
 
 
 # ===========================================================================
+#  AC-S8-7 · I-7 塔位点选（Tag 合法性 + reinforce 改投 + D-TB-6 强制点选）
+# ===========================================================================
+func _test_tower_selection() -> void:
+	_log("")
+	_log("--- [AC-S8-7] I-7 塔位点选：Tag 合法性 + reinforce 改投 + D-TB-6 强制点选 ---")
+	# 起手清空，建两座塔：Cannon(fire, slot1) 主塔 + Arrow(中性, slot2)
+	var rt = _mk_runtime()
+	rt.player.towers = []
+	rt.player.cards = {}
+	_add_tower(rt, 1, "Cannon", 3, 36.0)     # fire 塔，层数最高 → 主塔
+	_add_tower(rt, 2, "Arrow", 1, 12.0)      # 中性塔（收任意 Tag）
+	rt.player.cards["Arrow"] = true
+
+	# ---- Tag 合法性 ----
+	_check_bool("Cannon(fire) 接收 FireUp", rt.can_attach_card(1, "FireUp"), true)
+	_check_bool("Cannon(fire) 拒绝 FrostUp", rt.can_attach_card(1, "FrostUp"), false)
+	_check_bool("Arrow(中性) 接收 FrostUp", rt.can_attach_card(2, "FrostUp"), true)
+	_check_bool("Arrow(中性) 接收 FireUp", rt.can_attach_card(2, "FireUp"), true)
+
+	# ---- get_legal_hosts ----
+	var hosts := rt.get_legal_hosts("FrostUp")
+	_check_int("FrostUp 合法宿主仅 Arrow(slot2)", hosts.size(), 1)
+	_check_int("FrostUp 合法宿主 = slot2", int(hosts[0]), 2)
+	var hosts2 := rt.get_legal_hosts("FireUp")
+	_check_int("FireUp 合法宿主 = 2 座（fire+中性）", hosts2.size(), 2)
+
+	# ---- reinforce 改投：默认投主塔（fire）----
+	rt.scrap = 200.0
+	rt.offers = ["FireUp"]
+	_check_int("默认宿主 = 主塔 slot1", rt._reinforce_host("FireUp"), 1)
+
+	# ---- 点选副塔 Arrow → 改投 slot2 ----
+	_check_bool("点选 slot2 成功", rt.select_tower(2), true)
+	_check_int("点选后 _reinforce_host(FireUp) = slot2", rt._reinforce_host("FireUp"), 2)
+	# 点选不存在的塔 → 失败
+	_check_bool("点选不存在塔位 → 拒绝", rt.select_tower(9), false)
+
+	# ---- D-TB-6 强制点选：主塔不接收但副塔接收 ----
+	rt.clear_selection()
+	rt.offers = ["FrostUp"]
+	_check_str("主塔Cannon拒FrostUp但Arrow收 → legal_note=选择宿主塔",
+		rt.legal_note(0), "选择宿主塔")
+	# 无任何塔接收 → H8
+	rt.offers = ["ScrapUp"]   # econ 恒 legal，换回 reinforce 测无宿主
+	# 建一座纯 Cannon 场景：把 Arrow 换成 Cannon
+	rt.player.towers = []
+	rt.player.cards = {}
+	_add_tower(rt, 1, "Cannon", 3, 36.0)
+	rt.offers = ["FrostUp"]
+	_check_str("全场fire塔拒FrostUp → 无塔接收该Tag(H8)", rt.legal_note(0), "无塔接收该 Tag")
+
+	# ---- 点选每波清空 ----
+	var rt2 = _mk_runtime()
+	rt2.player.towers = []
+	rt2.player.cards = {}
+	_add_tower(rt2, 1, "Cannon", 3, 36.0)
+	_add_tower(rt2, 2, "Arrow", 1, 12.0)
+	rt2.select_tower(2)
+	_check_int("点选后 selected=2", rt2.selected_tower_slot, 2)
+	rt2.start_wave(3)
+	_check_int("start_wave 清空点选", rt2.selected_tower_slot, -1)
+
+
+# ===========================================================================
 #  汇总
 # ===========================================================================
 func run_all() -> bool:
 	_log("=".repeat(78))
-	_log("切片8 · 拆除回收 Salvage / 弃卡 / 卸下改投 + I-9 二次确认")
+	_log("切片8 · 拆除回收 Salvage / 弃卡 / 卸下改投 + I-9 二次确认 + I-7 塔位点选")
 	_log("=".repeat(78))
 	_test_invested_tracking()
 	_test_salvage_settlement()
@@ -310,6 +374,7 @@ func run_all() -> bool:
 	_test_unequip_downgrade()
 	_test_confirm_dialog_component()
 	_test_golden_untouched()
+	_test_tower_selection()
 	_log("")
 	_log("-".repeat(78))
 	_log("切片8 合计：PASS=%d  FAIL=%d" % [_pass, _fail])

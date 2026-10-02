@@ -384,9 +384,11 @@ func _test_three_way_routing() -> void:
 	_check_int("② 占 1 个强化槽（Arrow + FireUp = 2）", rt.player.cards.size(), 2)
 
 	# ---- D-8① / E9 ----
+	# 🟡 I-7（切片8）：主塔 fire 拒 FrostUp 但场上有中性 Arrow 可收 → D-TB-6 强制点选
+	#    （legal_note = "选择宿主塔"，1 步购买置灰，需先点选合法副塔再买）。
 	rt.offers = ["FrostUp"]
-	_check_str("D-8① 主塔 fire 不接收 frost 卡 → 置灰", rt.legal_note(0), "主塔不接收该 Tag")
-	_check_bool("D-8① 买不了", rt.buy(0), false)
+	_check_str("D-8① 主塔 fire 拒 FrostUp 但有中性塔可收 → D-TB-6 强制点选", rt.legal_note(0), "选择宿主塔")
+	_check_bool("D-8① 1 步购买置灰（需先点选宿主）", rt.buy(0), false)
 	var rt9 = _mk_runtime(2024)
 	rt9.player.towers = []
 	rt9.offers = ["FireUp"]

@@ -1,7 +1,7 @@
-# 切片8 验证报告 · 拆除回收 `Salvage` / 弃卡 / 卸下改投 + I-9 二次确认
+# 切片8 验证报告 · 拆除回收 `Salvage` / 弃卡 / 卸下改投 + I-9 二次确认 + I-7 塔位点选
 
-> **结论**：🟢 **切片8 全量自测 43 项断言 / 0 失败 / 退出码 0**；金标本零改动；切片1-7 逐位等价基线纹丝不动。
-> **意义**：把切片4 遗留的 **I-9 重决策**落地 —— 主动移除 `Salvage`（Q-C3 原文：返还 50% 累计投入 + 装配卡全销毁 + 二次确认 + 仅安全窗）+ 弃卡 + 卸下改投全部可用；🔴 兜底①「拆塔不回升 κ」守护通过。
+> **结论**：🟢 **切片8 全量自测 58 项断言 / 0 失败 / 退出码 0**；金标本零改动；切片1-7 逐位等价基线纹丝不动。
+> **意义**：把切片4 遗留的 **I-9 重决策** + **D-9 单塔效果卡 2 次输入购买（I-7 塔位点选）** 全部落地。
 
 ---
 
@@ -28,6 +28,25 @@
 | `scripts/ui/salvage_confirm_dialog.gd` | I-9 二次确认弹窗（CanvasLayer 140 · 自定义 Control） | 纯展示 + 意图确认，不含玩法口径 |
 | `scripts/gameplay/shop_controller.gd` | `_on_salvage_requested` 接线 + 弹窗组装 + SafeWindow 守卫注入 | 接线层，无口径 |
 
+### 1.4 I-7 塔位点选（D-9 / D-TB-5 / D-TB-6）
+
+| 文件 | 职责 | 与金标本关系 |
+|---|---|---|
+| `scripts/gameplay/shop_runtime.gd` | `selected_tower_slot` 点选状态 + `select_tower`/`clear_selection` + `tower_accepts_tag`/`can_attach_card`/`get_legal_hosts`（D-8① Tag 合法性）+ `_reinforce_host`（点选合法→该塔，否则→主塔） | 玩家路线专属；金标本 AI 恒不点选 |
+| `scripts/ui/monster_layer.gd` | 已建塔渲染（塔原型色 + h 层刻度 + 主塔描边）+ 选中高亮（青圈）+ D-TB-6 合法宿主高亮（橙底圈）+ 点击命中 `_hit_tower_slot` → 发 `tower_select_requested` | 只读 runtime + 只发意图 |
+| `scripts/ui/time_director.gd` | `tower_select_requested(slot)` 意图信号 | 接线，无口径 |
+| `scripts/gameplay/shop_controller.gd` | `_on_tower_select_requested` → `runtime.select_tower` | 接线层 |
+
+**装配宿主判据链**（`_reinforce_host`）：
+```
+① 有点选塔且该塔 Tag 合法 → 投该塔（2 次输入，D-TB-5 可覆盖默认）
+② 否则主塔合法 → 投主塔（1 次输入默认）
+③ 主塔也不合法 → -1（无宿主）
+```
+**legal_note 三态**（D-TB-6 强制点选）：
+- 存在任一塔接收 → 主塔接收 = `""`（1 次输入）；主塔拒但副塔收 = `选择宿主塔`（强制点选，仍 legal）
+- 无任何塔接收 → `无塔接收该 Tag`（H8 置灰）
+
 ### 1.1 逐塔投入追踪（数据前提）
 
 - **建筑卡**：买时入 `pending` + 成本锁进平行数组 `pending_cost`；`confirm_placement` 落子时把成本累加到**具体塔**的 `invested`（build/upgrade 同价 12）。
@@ -52,7 +71,7 @@
 
 ---
 
-## 2. 验收（全绿，43 项）
+## 2. 验收（全绿，58 项）
 
 ### AC-S8-1 · 逐塔投入追踪
 建筑卡 build 记 12 → 装配卡 reinf 累加 9（=21）→ 升级 up 累加 12（=33）。
@@ -80,12 +99,20 @@ FireUp 3 层 → 卸到 2 → 1 → 0（整卡销毁 + 卡册移除 + 塔键移�
 ### AC-S8-6 · 金标本零改动
 金标本 `apply_action` 路径（升级）不写 `invested`（恒 0）—— 证明投入追踪只在玩家路线。
 
+### AC-S8-7 · I-7 塔位点选（Tag 合法性 + reinforce 改投 + D-TB-6 强制点选）
+- **Tag 合法性**：Cannon(fire) 收 FireUp 拒 FrostUp；Arrow(中性) 收 FrostUp/FireUp 任意
+- **get_legal_hosts**：FrostUp 合法宿主仅 Arrow(slot2)；FireUp 合法宿主 = 2 座（fire+中性）
+- **reinforce 改投**：默认宿主 = 主塔 slot1；点选 slot2 后 `_reinforce_host` = slot2；点选不存在塔位 → 拒绝
+- **D-TB-6 强制点选**：主塔 Cannon 拒 FrostUp 但 Arrow 收 → `legal_note = 选择宿主塔`；全场 fire 塔拒 FrostUp → `无塔接收该 Tag`（H8）
+- **点选生命周期**：`select_tower` 设置成功；`start_wave` 清空点选（防跨波残留误投）
+
 ---
 
 ## 3. 回归
 
 - 切片1-7 全量自测 **3089 项断言全过**（本切片未触碰任何 engine/golden 文件）。
-- 全量（含切片8）：**222 + 2228 + 142 + 123 + 302 + 41 + 31 + 43 = 3132 项 / 0 失败 / 退出码 0**。
+- 全量（含切片8）：**222 + 2228 + 142 + 123 + 302 + 41 + 31 + 58 = 3147 项 / 0 失败 / 退出码 0**。
+- 切片5 场景冒烟 **22 项 / 0 失败**（全场景树编译 + 运行，含 MonsterLayer 新绑定 + 塔渲染，零 SCRIPT ERROR）。
 
 ---
 
@@ -93,6 +120,7 @@ FireUp 3 层 → 卸到 2 → 1 → 0（整卡销毁 + 卡册移除 + 塔键移�
 
 | 项 | 说明 |
 |---|---|
-| **I-7 塔位点选** | 当前 `salvage_requested` 无参 → 目标取主塔（与 reinforce 恒投 core_tower 同口径）。D-9「单塔效果卡 2 次输入购买」随战场塔 SubViewport 点选补齐后，salvage 也可支持点选具体塔位。 |
+| ~~**I-7 塔位点选**~~ | ✅ **本切片落地**（D-9 单塔效果卡 2 次输入购买 + D-TB-5 默认主塔 + D-TB-6 强制点选）。 |
 | **被动移除 `Destroyed`** | 返还 0% + 装配卡随 Disabled 冻结，🔒 T1（随塔死亡玩法整体批次）。 |
 | **修复入口** | 🔒 T1（随 `Destroyed` 分支）。 |
+| **C2 高亮 H2-H9** | 切片4 只做了 H1/H4/H8，余下 H2/H3/H5/H6/H7/H9 待补。 |

@@ -63,6 +63,8 @@ func _ready() -> void:
 			ml.bind_director(wave_director)
 		if ml.has_method("bind_time_director"):
 			ml.bind_time_director(director)
+		if ml.has_method("bind_controller"):
+			ml.bind_controller(controller)
 	var hud := get_node_or_null("HudLayer/Hud")
 	if hud != null and hud.has_method("bind_director"):
 		hud.bind_director(director)

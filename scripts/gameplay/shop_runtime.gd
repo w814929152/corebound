@@ -121,6 +121,12 @@ var counts: Dictionary = {}     # 卡名 → 本波已买次数（`action_cost` 
 var last_error: String = ""
 
 var _placing_index: int = -1    # 正在放置的待放置队列下标（-1 = 不在放置中）
+## 🟡 切片8·I-7 · 玩家点选的塔位（-1 = 未点选）。单塔效果卡（reinforce）购买时：
+##   · 有点选且该塔合法接收此卡 → 投该塔（2 次输入：先点塔再买）；
+##   · 否则 → 投主塔 `core_tower_slot()`（1 次输入默认）；
+##   · 主塔也不合法接收 → 无合法宿主（D-TB-6 强制点选 / H8 置灰）。
+## 🔴 仅玩家路线状态；金标本 AI 路线恒不点选（apply_action 恒投传入的 slot）。
+var selected_tower_slot: int = -1
 
 
 # ---------------------------------------------------------------------------
@@ -145,6 +151,7 @@ func setup(p_path: String, seed_value: int, overrides: Dictionary = {}) -> void:
 	pending_cost = []
 	counts = {}
 	_placing_index = -1
+	selected_tower_slot = -1
 	last_error = ""
 
 
@@ -158,6 +165,7 @@ func start_wave(w: int) -> void:
 	lock_index = -1                 # Q-SR4：锁定每波重置
 	counts = {}
 	_placing_index = -1
+	selected_tower_slot = -1        # I-7：点选每波清空（避免跨波残留误投）
 	last_error = ""
 	offers = deal_initial_shop()
 
@@ -343,7 +351,8 @@ func _action_for(nm: String) -> Array:
 			# 建筑卡：买的时候**不落塔**（买/放解耦），落子走 `confirm_placement()`
 			return ["build", nm, null, null]
 		"reinforce":
-			var host := core_tower_slot()
+			# 🟡 I-7：宿主 = 点选合法塔 → 主塔 → 无合法宿主（D-TB-6 强制点选前置）
+			var host := _reinforce_host(nm)
 			if host < 0:
 				return []
 			if player.cards.has(nm):
@@ -377,6 +386,63 @@ func core_tower_slot() -> int:
 	return top
 
 
+# ---------------------------------------------------------------------------
+#  切片8·I-7 · 单塔效果卡装配合法性（D-8①：禁止异 Tag；中性塔可接收任意 Tag）
+#  与 tower-build TB-7 `can_attach` / D-TB-6 `get_legal_hosts` 同口径。
+# ---------------------------------------------------------------------------
+## 某座塔能否接收这张单塔效果卡（Tag 匹配：塔中性 "" 收任意；否则需同 Tag）。
+func tower_accepts_tag(slot: int, card_name: String) -> bool:
+	for t in player.towers:
+		if int(t.slot) == slot:
+			var ctag := _TD.tower_tag(String(t.ctype))
+			if ctag == "":
+				return true                          # 中性塔（Arrow/Beacon）收任意 Tag
+			return ctag == _TD.reinf_tag(card_name)
+	return false
+
+
+## 该卡能否装配到指定塔（塔存在 + Tag 合法）。
+func can_attach_card(slot: int, card_name: String) -> bool:
+	if _tower_index(slot) < 0:
+		return false
+	return tower_accepts_tag(slot, card_name)
+
+
+## D-TB-6 强制点选用：所有能接收该卡的塔位（Array[int]）。
+func get_legal_hosts(card_name: String) -> Array:
+	var out: Array = []
+	for t in player.towers:
+		var s := int(t.slot)
+		if tower_accepts_tag(s, card_name):
+			out.append(s)
+	return out
+
+
+## I-7 点选/取消点选一座塔（供战场点击接线）。返回是否成功（塔位存在才可点）。
+func select_tower(slot: int) -> bool:
+	if _tower_index(slot) < 0:
+		last_error = "塔位 %d 不存在" % slot
+		return false
+	selected_tower_slot = slot
+	last_error = ""
+	return true
+
+
+func clear_selection() -> void:
+	selected_tower_slot = -1
+
+
+## 单塔效果卡的**实际宿主**：点选合法 → 用点选塔；否则 → 主塔（1 次输入默认）。
+## 返回 -1 = 无合法宿主（D-TB-6 强制点选 / H8 置灰的前置判据）。
+func _reinforce_host(card_name: String) -> int:
+	if selected_tower_slot >= 0 and can_attach_card(selected_tower_slot, card_name):
+		return selected_tower_slot
+	var core := core_tower_slot()
+	if core >= 0 and can_attach_card(core, card_name):
+		return core
+	return -1
+
+
 ## H8「无合法目标」的判定（E1 建筑卡 / E9 单塔效果卡）；全局卡恒 true。
 func legal_at(slot: int) -> bool:
 	return legal_note(slot) == ""
@@ -403,16 +469,15 @@ func legal_note(slot: int) -> String:
 		"reinforce":
 			if player.towers.is_empty():
 				return "需先建造一座塔"                     # E9
-			var host := core_tower_slot()
-			if host < 0:
-				return "需先建造一座塔"
-			var ctag := ""
-			for t in player.towers:
-				if int(t.slot) == host:
-					ctag = _TD.tower_tag(String(t.ctype))
-			# D-8①：禁止异 Tag 装配；🔴 中性塔（tag == ""）可接收任意 Tag 卡
-			if ctag != "" and ctag != _TD.reinf_tag(nm):
-				return "主塔不接收该 Tag"                   # 🟡 点选副塔 = 2 次输入，后续切片
+			# 🟡 I-7：合法 = **存在任一塔可接收**（不只看主塔）。
+			#    · 主塔接收 → 1 次输入默认投主塔（legal_note=""）；
+			#    · 主塔不接收但有副塔接收 → D-TB-6 强制点选（仍 legal，只是要 2 次输入）；
+			#    · 无任何塔接收 → H8 置灰。
+			var hosts := get_legal_hosts(nm)
+			if hosts.is_empty():
+				return "无塔接收该 Tag"                   # H8：无任何合法宿主
+			if _reinforce_host(nm) < 0:
+				return "选择宿主塔"                       # D-TB-6：主塔不接收，需点选副塔
 			return ""
 		"econ":
 			return ""
@@ -796,6 +861,7 @@ func snapshot() -> Dictionary:
 		"income_mult": float(player.income_mult),
 		"reroll_disc": float(player.reroll_disc),
 		"core_tower_slot": core_tower_slot(),
+		"selected_tower_slot": selected_tower_slot,   # I-7：点选塔位（-1=无）
 		"slots": slots,
 		"place_modes": place_modes,
 		"build": _SimPlayer.build_str(player),
