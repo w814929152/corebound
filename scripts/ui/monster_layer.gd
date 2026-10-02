@@ -76,14 +76,20 @@ func bind_controller(c: Node) -> void:
 	controller = c
 	if c == null:
 		return
-	if not c.is_connected("shop_changed", _on_state_changed):
-		c.shop_changed.connect(_on_state_changed)
-	if not c.is_connected("run_changed", _on_state_changed):
-		c.run_changed.connect(_on_state_changed)
+	if not c.is_connected("shop_changed", _on_shop_run_changed):
+		c.shop_changed.connect(_on_shop_run_changed)
+	if not c.is_connected("run_changed", _on_shop_run_changed):
+		c.run_changed.connect(_on_shop_run_changed)
 	queue_redraw()
 
 
+## state_changed（TimeDirector）携带 (from, to) 两参。
 func _on_state_changed(_from: int, _to: int) -> void:
+	queue_redraw()
+
+
+## shop_changed / run_changed（ShopController）为 0 参信号，用无参回调避免参数不匹配报错。
+func _on_shop_run_changed() -> void:
 	queue_redraw()
 
 
