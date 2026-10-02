@@ -18,6 +18,14 @@ class TowerState extends RefCounted:
 	##   🔴 MVP 恒 false → 该乘数恒 1.0 → 对定稿 DPS **逐位零影响**（金标本零改动、判据链不变）。
 	##   塔死亡玩法（HP0/维修/暴露度实战）整体留后续批次 + 300 局 MC 重扫后上线。
 	var disabled: bool = false
+	## 🔒 T1（Q-T2 = ① 已定稿冻结）：塔的战斗运行时耐久。
+	##   `hp_max = HP0 × h^0.6`（`MonsterData.tower_hp`，复用 tower_stack_exp=0.6）。
+	##   波首由 `WaveDirector` 重置为满血（MVP 无修复机制 → 每波满血是最简口径；
+	##   Disabled 塔在波次间由玩家三选一修复/拆除/放着，T1 后续批次实现修复入口）。
+	##   🔴 金标本 AI 路线（`shop_ai.gd`）**不读不写** hp/hp_max → 金标本零改动。
+	##   🔴 MVP 塔不死（tower_aggro_enabled=false）→ hp 恒不被扣减、恒等于 hp_max。
+	var hp: float = 0.0
+	var hp_max: float = 0.0
 	## 🟡 切片8 · 逐塔累计投入（拆除回收 `Salvage` 的数据前提，card-system §4.3 / §7.2.2 / Q-C3）：
 	##   记录**这座塔**累计吃掉的分数（建筑卡 build/upgrade 分 + 装配卡 reinforce 分）。
 	##   `salvage_tower()` 据此返还 **50% 累计投入**（向下取整）。

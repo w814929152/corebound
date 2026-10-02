@@ -75,6 +75,9 @@ signal wave_result(w: int, result: Dictionary)   # 实时结算（本波结束�
 signal monster_spawned(m)                        # I-3 的运行时侧（渲染层订阅）
 signal monster_killed(m)
 signal monster_leaked(m)                         # → Core.hp -= 50
+## 🔒 T1（Q-T4 = ① 已定稿）：塔被仇恨打死 → 进入 Disabled 中间态（断输出不断链）。
+##   携带塔位 slot。渲染层订阅做「塔体损伤演出」（T-C2 余光编码，不做数字条）。
+signal tower_destroyed(slot: int)
 signal run_lost(w: int)                          # E-W3：核心 HP ≤ 0 立即失败
 ## 🟢 切片8续3（可玩 MVP）：通关胜利 —— 打完最后一波（W_MAX_WAVE）且核心未归零。
 ##   与 `run_lost` 对称：`run_lost` = 核心归零失败，`run_won` = 全波次清空胜利。
@@ -222,7 +225,24 @@ func start_wave(p_w: int) -> void:
 	monsters = []
 	last_result_w = -1
 	_build_spawn_table()
+	# 🔒 T1（Q-T2 = ①）：仇恨开启时，波首把未 Disabled 的塔重置为满血。
+	#   MVP 无修复机制 → 每波满血是最简口径（Disabled 塔保持 Disabled，
+	#   留给后续批次的波次间「修复/拆除/放着不管」三选一）。
+	#   🔴 仅 tower_aggro_enabled 时触碰 player.towers → 金标本等价口径零扰动。
+	if tower_aggro_enabled:
+		_init_tower_hp()
 	state = State.SPAWNING
+
+
+## 🔒 T1：把未 Disabled 的塔按 `HP0 × h^0.6` 重置满血（Q-T2 = ①）。
+func _init_tower_hp() -> void:
+	if player == null:
+		return
+	var exp := float(cfg.get("tower_stack_exp", 0.6))
+	for t in player.towers:
+		if not bool(t.disabled):
+			t.hp_max = _MonsterData.tower_hp(int(t.h), exp)
+			t.hp = t.hp_max
 
 
 ## 本波出生表（纯确定性，无 RNG）
@@ -322,10 +342,16 @@ func _substep() -> void:
 			dmg = 0.0
 
 	# ---- ③ 前进：判死 / 漏怪（原地压缩，保持相对顺序）----
+	#   🔒 T1：AggroTower 态怪物**停下**（t_remain 冻结，不前进、不漏怪）。
 	var wpos := 0
 	var leak_dmg := float(cfg.get("leak_damage", 50.0))
 	for m2 in monsters:
 		if float(m2.hp) <= 0.0:
+			continue
+		if tower_aggro_enabled and m2.state == MState.AGGRO_TOWER:
+			# 停下攻塔：冻结 t_remain，仍留在队列（不漏怪、不前进）
+			monsters[wpos] = m2
+			wpos += 1
 			continue
 		m2.t_remain = float(m2.t_remain) - _WaveSim.DT
 		if float(m2.t_remain) <= 0.0:
@@ -343,6 +369,115 @@ func _substep() -> void:
 		monsters[wpos] = m2
 		wpos += 1
 	monsters.resize(wpos)
+
+	# ---- ④ 🔒 T1 仇恨行为（Q-T3 机会型仇恨 · 仅 tower_aggro_enabled 时生效）----
+	#   设计铁律「仇恨只改路径不改 DPS 分配」：本阶段只改怪物态（Marching↔AggroTower）
+	#   与塔损耗，**不动** ② 的 DPS 分配口径（全场池→t_remain 排序→填满→结转）。
+	if tower_aggro_enabled:
+		_apply_aggro()
+
+
+## 🔒 T1（Q-T3 = ① 机会型仇恨）：每子步的仇恨判定（GDD §2.6 状态机）。
+##   · Marching 怪：当前位置与某座 **未 Disabled** 塔的距离 ≤ AGGRO_R → 转 AggroTower，
+##     目标 = 最近的塔（迟滞带内锁定）。
+##   · AggroTower 怪：目标塔消失 / 已 Disabled / 距离 > AGGRO_EXIT（迟滞带退出）
+##     → 回 Marching；否则对目标塔造成 `ATTRITION × HP0 × m_dps` 伤害。
+##     塔 hp 归零 → 进入 Disabled 中间态（断输出不断链）→ 发 tower_destroyed。
+##   🔴 迟滞带（AGGRO_R=9.0 进 / AGGRO_EXIT=10.8 出）防边界抖动（Q-T3 R4）。
+func _apply_aggro() -> void:
+	if player == null:
+		return
+	var v0x := v0_
+	for m in monsters:
+		if m == null or float(m.hp) <= 0.0:
+			continue
+		match m.state:
+			MState.MARCHING:
+				var slot := _nearest_exposed_tower(m, v0x)
+				if slot >= 0:
+					m.state = MState.AGGRO_TOWER
+					m.target_slot = slot
+			MState.AGGRO_TOWER:
+				if not _aggro_target_valid(m, v0x):
+					m.state = MState.MARCHING
+					m.target_slot = -1
+				else:
+					_damage_tower(m)
+
+
+## 找最近的**未 Disabled** 塔（距离 ≤ AGGRO_R）。返回塔位 slot，无则 -1。
+func _nearest_exposed_tower(m, v0x: float) -> int:
+	if player == null:
+		return -1
+	var mpos: Vector2 = m.pos(v0x)
+	var best := -1
+	var best_d := _MonsterData.AGGRO_R
+	for t in player.towers:
+		if bool(t.disabled):
+			continue
+		var spos: Vector2 = _tower_pos(t)
+		var d := mpos.distance_squared_to(spos)
+		if d <= _MonsterData.AGGRO_R * _MonsterData.AGGRO_R and d < best_d * best_d:
+			best_d = d
+			best = int(t.slot)
+	return best
+
+
+## AggroTower 怪的目标塔是否仍合法（存在 + 未 Disabled + 在迟滞带内）。
+func _aggro_target_valid(m, v0x: float) -> bool:
+	if player == null or m.target_slot < 0:
+		return false
+	var t = _tower_by_slot(m.target_slot)
+	if t == null or bool(t.disabled):
+		return false
+	var mpos: Vector2 = m.pos(v0x)
+	var spos: Vector2 = _tower_pos(t)
+	# 🔴 用 AGGRO_EXIT（10.8 = 9.0×1.2）作退出阈值（迟滞带，防边界抖动）
+	return mpos.distance_squared_to(spos) <= _MonsterData.AGGRO_EXIT * _MonsterData.AGGRO_EXIT
+
+
+## AggroTower 怪对目标塔造成伤害；塔归零 → Disabled 中间态。
+func _damage_tower(m) -> void:
+	var t = _tower_by_slot(m.target_slot)
+	if t == null or bool(t.disabled):
+		return
+	# 对塔 DPS = ATTRITION × HP0 × m_dps(proto)（V-1 复合比口径）
+	var dmg := _MonsterData.ATTRITION * _MonsterData.HP0 * float(m.m_dps) * _WaveSim.DT
+	t.hp = float(t.hp) - dmg
+	if float(t.hp) <= 0.0:
+		t.hp = 0.0
+		t.disabled = true          # 进入 Disabled 中间态（断输出不断链）
+		# 🔴 塔死亡 → 全场 DPS 立即下降（disabled 乘数生效）。本波 dps 是波首算的
+		#    常量，此处重算让**下一子步**的集火用新 DPS（批处理镜像同处理 → 逐位一致）。
+		dps = _DE.dps_only(player, cfg, geo)
+		emit_signal("tower_destroyed", int(t.slot))
+
+
+## 按塔位取塔（player.towers 里查 slot）。
+func _tower_by_slot(slot: int):
+	for t in player.towers:
+		if int(t.slot) == slot:
+			return t
+	return null
+
+
+## 塔的世界坐标（XZ 平面）：优先用 geo.slots，退回 PathGeometry 无此塔位则用 slot 索引兜底。
+func _tower_pos(t) -> Vector2:
+	if geo != null and int(t.slot) >= 0 and int(t.slot) < geo.slots.size():
+		return geo.slots[int(t.slot)]
+	# 兜底：塔位坐标缺失时返回核心（不会进仇恨判定，安全）
+	return _PathGeometry.CORE_POS
+
+
+## 🔒 T1：本局已 Disabled 的塔数（供 last_result / snapshot 断言塔死亡后果）。
+func _count_disabled_towers() -> int:
+	if player == null:
+		return 0
+	var c := 0
+	for t in player.towers:
+		if bool(t.disabled):
+			c += 1
+	return c
 
 
 func _spawn_one(idx: int) -> void:
@@ -421,6 +556,8 @@ func _end_wave() -> void:
 		victory = true
 		last_result["won"] = true
 		emit_signal("run_won", w)
+	# 🔒 T1：记录本波结束时已 Disabled 的塔数（供 UI/单测断言塔死亡后果）。
+	last_result["towers_disabled"] = _count_disabled_towers()
 	emit_signal("wave_result", w, last_result)
 	# 时钟侧：进安全窗（TimeDirector 会写 paused 并广播 wave_ended）
 	if director != null:
@@ -442,7 +579,18 @@ func snapshot() -> Dictionary:
 			"s": m.arc_s(v0_),
 			"pos": m.pos(v0_),
 			"state": int(m.state),
+			"target_slot": int(m.target_slot),
 		})
+	# 🔒 T1：每座塔的运行时耐久 + Disabled 态（供渲染层做塔体损伤演出，T-C2 余光编码）
+	var towers: Array = []
+	if player != null:
+		for t in player.towers:
+			towers.append({
+				"slot": int(t.slot),
+				"hp": float(t.hp),
+				"hp_max": float(t.hp_max),
+				"disabled": bool(t.disabled),
+			})
 	return {
 		"w": w,
 		"state": state,
@@ -463,6 +611,8 @@ func snapshot() -> Dictionary:
 		"v0": v0_,
 		"t_reach": t_reach,
 		"monsters": live,
+		"towers": towers,
+		"towers_disabled": _count_disabled_towers(),
 		"prototype_split_enabled": prototype_split_enabled,
 		"elite_waves_enabled": elite_waves_enabled,
 		"tower_aggro_enabled": tower_aggro_enabled,

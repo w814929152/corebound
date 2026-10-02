@@ -48,10 +48,34 @@ const AGGRO_R := 9.0                # R1 转向半径（水平面 XZ，不判 Y�
 const AGGRO_TICK := 0.10            # R3 判定频率（与 sim 真身 dt=0.1 对齐）
 const AGGRO_EXIT := 10.8            # R4 迟滞带退出阈值 = 9.0 × 1.2
 
+## 🔒 T1（Q-T2/Q-T3 已定稿冻结 · V-1 扫参项）：ATTRITION = 怪物对塔 DPS ÷ HP0。
+##   GDD §2.1/§4.2 明确：塔死亡频率由**复合比** `ATTRITION = 怪物对塔DPS ÷ HP0`
+##   决定（HP0 与对塔 DPS 是一对共轭参数，只扫这一个复合比）。
+##   · 塔受到的对塔 DPS = `ATTRITION × HP0 × m_dps(proto)` —— m_dps 提供原型分化
+##     （Rush 0.80 / Swarm 0.60 / Tank 2.20，§2.5.2 冻结），ATTRITION 是唯一的扫描基比。
+##   · 🔴 **PLACEHOLDER**：本值待 300 局 MC 重扫定稿（V-1 扫参区间 [0.5, 8]）。
+##     MVP 恒不开数值（tower_aggro_enabled=false → 从不消费）；仅 T1 激活后消费。
+const ATTRITION := 0.5              # PLACEHOLDER · 怪物对塔 DPS ÷ HP0（基比，V-1 扫参）
+
+const _FpPow := preload("res://scripts/engine/fp_pow.gd")
+
 # ---- GDD §2.2.1 派生基准速度 ----
 ## v₀ = L / t_reach = 101.0 / 10.0 = 10.10 unit/s
 static func v0(total_len: float, t_reach: float) -> float:
 	return total_len / t_reach
+
+
+# ---- GDD §2.1 塔被攻击死亡（🔒 T1 生效；Q-T2 = ① 已定稿冻结）----
+## 🔴 定稿：`HP_i = HP0 × h_i^0.6`（Q-T2 = ①）。
+##   · HP0 = 120（全场统一，不按原型区分——刻意只开 1 个新参数）。
+##   · 指数 0.6 复用 `tower_stack_exp`（与 `Base_i = base_dps × h^0.6` 同一指数）
+##     → 「塔的等级同时决定输出与耐久，都是次线性 ∝ h^0.6」。
+##   · 🔴 浮点口径与 `damage_engine` 的 Base 计算**逐位同**（都走 `_FpPow.pow_py`
+##     + 同一个 `tower_stack_exp`）→ 金标本零改动、判据链不受影响。
+##   · MVP 恒不开数值（塔不死）；本函数只在 T1 仇恨激活后被 `WaveDirector` 消费。
+const HP0 := 120.0
+static func tower_hp(h: int, exp: float = 0.6) -> float:
+	return HP0 * _FpPow.pow_py(float(h), exp)
 
 
 # ---------------------------------------------------------------------------

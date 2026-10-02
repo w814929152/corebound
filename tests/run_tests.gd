@@ -27,12 +27,13 @@ const TestSuiteSlice5 := preload("res://tests/test_suite_slice5.gd")
 const TestSuiteSlice6 := preload("res://tests/test_suite_slice6.gd")
 const TestSuiteSlice7 := preload("res://tests/test_suite_slice7.gd")
 const TestSuiteSlice8 := preload("res://tests/test_suite_slice8.gd")
+const TestSuiteT1Aggro := preload("res://tests/test_suite_t1_aggro.gd")
 
 
 func _initialize() -> void:
 	var only := ""
 	for a in OS.get_cmdline_user_args():
-		if a.begins_with("slice"):
+		if a.begins_with("slice") or a.begins_with("t1"):
 			only = a
 
 	var ok := true
@@ -52,5 +53,7 @@ func _initialize() -> void:
 		ok = TestSuiteSlice7.new().run_all() and ok
 	if only == "" or only == "slice8":
 		ok = TestSuiteSlice8.new().run_all() and ok
+	if only == "" or only == "t1aggro":
+		ok = TestSuiteT1Aggro.new().run_all() and ok
 
 	quit(0 if ok else 1)
