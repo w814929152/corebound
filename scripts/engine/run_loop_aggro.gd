@@ -35,7 +35,8 @@ const _MonsterData := preload("res://scripts/data/monster_data.gd")
 # 镜像 RunLoop.run（唯一差异：simulate_wave → simulate_wave_aggro）
 # ---------------------------------------------------------------------------
 static func run(path: String, cfg: Dictionary, max_wave: int = 20, geo = null, rng = null,
-		aggro_enabled: bool = true, exp: float = 0.6) -> Dictionary:
+		aggro_enabled: bool = true, exp: float = 0.6, attrition: float = -1.0,
+		warmup_waves: int = 0) -> Dictionary:
 	var c: Dictionary = cfg.duplicate(true)
 	if geo == null:
 		geo = _Geo6.build() if int(c["n_slots"]) >= 6 else _Geo6.build4()
@@ -47,7 +48,7 @@ static func run(path: String, cfg: Dictionary, max_wave: int = 20, geo = null, r
 	var cum_rerolls := 0
 
 	for w in range(1, max_wave + 1):
-		var res := _WaveSimAggro.simulate_wave_aggro(player, w, c, geo, aggro_enabled, exp)
+		var res := _WaveSimAggro.simulate_wave_aggro(player, w, c, geo, aggro_enabled, exp, attrition, warmup_waves)
 		core_hp -= float(res["core_damage"])
 		var income := float(res["scrap_earned"]) * (1.0 + float(player.income_mult))
 		cum += income
@@ -72,6 +73,9 @@ static func run(path: String, cfg: Dictionary, max_wave: int = 20, geo = null, r
 			"income": _Stats.pround(income, 1),
 			"rerolls": int(shop[1]), "cum_rerolls": cum_rerolls,
 			"towers": player.towers.size(), "towers_disabled": int(res["towers_disabled"]),
+			# 🔒 T1 V-1：本波**毛新增** Disabled 塔数（simulate_wave_aggro 内统计塔被打停
+			#   次数，不受波次间修复干扰，恒 ≥0）→ 供判据 T-A/T-B/T-C 阶段平均。
+			"dis_new": int(res["dis_new"]),
 			"build": _SimPlayer.build_str(player),
 			"kills": int(res["kills"]), "leaked": int(res["leaked"]),
 		})
@@ -86,14 +90,15 @@ static func run(path: String, cfg: Dictionary, max_wave: int = 20, geo = null, r
 # ---------------------------------------------------------------------------
 static func takeoff_rate(path: String, cfg: Dictionary, runs: int = 300,
 		max_wave: int = 20, actions: int = 12, rng = null,
-		aggro_enabled: bool = true, exp: float = 0.6) -> Dictionary:
+		aggro_enabled: bool = true, exp: float = 0.6, attrition: float = -1.0,
+		warmup_waves: int = 0) -> Dictionary:
 	var takeoffs := 0
 	var survives := 0
 	var hits: Array = []
 	for _i in range(runs):
 		var cx: Dictionary = cfg.duplicate(true)
 		cx["max_actions"] = actions
-		var out := run(path, cx, max_wave, null, rng, aggro_enabled, exp)
+		var out := run(path, cx, max_wave, null, rng, aggro_enabled, exp, attrition, warmup_waves)
 		var rows: Array = out["rows"]
 		var alive := (not rows.is_empty()) and float(rows[-1]["core_hp"]) > 0.0
 		if alive:

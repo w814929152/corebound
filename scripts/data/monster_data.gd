@@ -57,6 +57,15 @@ const AGGRO_EXIT := 10.8            # R4 迟滞带退出阈值 = 9.0 × 1.2
 ##     MVP 恒不开数值（tower_aggro_enabled=false → 从不消费）；仅 T1 激活后消费。
 const ATTRITION := 0.5              # PLACEHOLDER · 怪物对塔 DPS ÷ HP0（基比，V-1 扫参）
 
+## 🔒 T1 V-1 扫参：解析生效的 ATTRITION。
+##   · `override < 0`（默认）→ 返回定稿常量 `ATTRITION`（金标本零改动：运行时/单测
+##     不传覆盖值时行为完全不变，判据链与逐位对齐基线不受影响）。
+##   · `override >= 0` → 返回覆盖值（仅供扫参脚本遍历 [0.5, 8] 用；扫参定稿后回写常量）。
+##   🔴 两处消费点（`WaveDirector._damage_tower` / `WaveSimAggro._damage_tower`）
+##     一律经此函数取值，禁止就地读 `ATTRITION`，否则扫参覆盖失效。
+static func resolve_attrition(override: float = -1.0) -> float:
+	return override if override >= 0.0 else ATTRITION
+
 const _FpPow := preload("res://scripts/engine/fp_pow.gd")
 
 # ---- GDD §2.2.1 派生基准速度 ----

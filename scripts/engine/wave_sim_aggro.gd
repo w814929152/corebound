@@ -54,7 +54,8 @@ const DT := 0.1
 #   state: 0=Marching 1=AggroTower
 # ---------------------------------------------------------------------------
 static func simulate_wave_aggro(player, w: int, cfg: Dictionary, geo,
-		aggro_enabled: bool = true, exp: float = 0.6) -> Dictionary:
+		aggro_enabled: bool = true, exp: float = 0.6, attrition: float = -1.0,
+		warmup_waves: int = 0) -> Dictionary:
 	var ms := _WaveSim.monster_stats(w, cfg)
 	var D := float(ms["D"])
 	var n := int(ms["n"])
@@ -82,6 +83,10 @@ static func simulate_wave_aggro(player, w: int, cfg: Dictionary, geo,
 	# 🔴 Godot 坑（control-manifest §4）：headless 下内联 func() 捕获标量局部变量
 	#    **不回写外层** → dps 用**单元素 Array 可变容器**（引用捕获）传递/回写。
 	var dps_box: Array = [dps]
+	# 🔒 T1 V-1：本波**毛新增** Disabled 塔数（塔在本波被打停的转换次数）。用单元素
+	#    Array 计数器（同 dps_box，绕开 headless 闭包标量不回写坑）。区别于存量差：
+	#    玩家波次间会修复 Disabled 塔 → 存量差可为负，毛新增恒 ≥0 才是判据要的量。
+	var dis_new_box: Array = [0]
 
 	while time <= limit:
 		# ---- ① 刷新 ----
@@ -122,8 +127,14 @@ static func simulate_wave_aggro(player, w: int, cfg: Dictionary, geo,
 		monsters = alive
 
 		# ---- ④ 仇恨行为（Q-T3 机会型仇恨）----
-		if aggro_enabled:
-			_apply_aggro(monsters, v0_, slot_positions, cfg, player, geo, dps_box)
+		#   🔒 T1 起手保护（warmup_waves，默认 0 = 不保护，金标本零改动）：
+		#   当 >0 时，W1..warmup 期间仇恨不激活（塔不会被打死），让"起手单暴露塔"
+		#   金标本配置有喘息期——否则起手塔 W1 必死、机制在玩家有冗余塔之前就造成崩盘
+		#   （对照诊断证实 aggro=true 无保护时起飞率 0%）。机制从 W(warmup+1) 起才致命，
+		#   贴合 GDD「苟活期可感知、成型期才致命」的意图。🔴 仅扫参显式启用（可回退）。
+		if aggro_enabled and w > warmup_waves:
+			_apply_aggro(monsters, v0_, slot_positions, cfg, player, geo, dps_box,
+				_MonsterData.resolve_attrition(attrition), dis_new_box)
 
 		time += DT
 
@@ -134,6 +145,7 @@ static func simulate_wave_aggro(player, w: int, cfg: Dictionary, geo,
 		"threshold": hp_unit * float(n) / (D + t_reach),
 		"n": n, "hp_each": hp_unit,
 		"towers_disabled": _count_disabled(player),
+		"dis_new": int(dis_new_box[0]),
 	}
 
 
@@ -173,7 +185,8 @@ static func _count_disabled(player) -> int:
 #             dps 成员变量重算逐位一致）
 # ---------------------------------------------------------------------------
 static func _apply_aggro(monsters: Array, v0_: float, slot_positions: Array,
-		cfg: Dictionary, player, geo, dps_box: Array) -> void:
+		cfg: Dictionary, player, geo, dps_box: Array, attrition: float = 0.5,
+		dis_new_box: Array = [0]) -> void:
 	for m in monsters:
 		if float(m[0]) <= 0.0:
 			continue
@@ -189,7 +202,7 @@ static func _apply_aggro(monsters: Array, v0_: float, slot_positions: Array,
 				m[2] = 0
 				m[3] = -1
 			else:
-				_damage_tower(m, player, cfg, geo, dps_box)
+				_damage_tower(m, player, cfg, geo, dps_box, attrition, dis_new_box)
 
 
 static func _monster_pos(m: Array, v0_: float) -> Vector2:
@@ -236,17 +249,21 @@ static func _aggro_target_valid(m: Array, v0_: float, player, slot_positions: Ar
 
 ## AggroTower 怪对目标塔造成伤害；塔归零 → Disabled 中间态 → 重算 dps。
 ## 🔴 直接改 player.towers 的 hp/disabled（单一数据源）→ dps_only 重算读到新 disabled。
-static func _damage_tower(m: Array, player, cfg: Dictionary, geo, dps_box: Array) -> void:
+static func _damage_tower(m: Array, player, cfg: Dictionary, geo, dps_box: Array,
+		attrition: float, dis_new_box: Array = [0]) -> void:
 	var slot: int = int(m[3])
 	var t = _tower_by_slot(player, slot)
 	if t == null or bool(t.disabled):
 		return
-	# 对塔 DPS = ATTRITION × HP0 × m_dps(proto)（V-1 复合比口径）
-	var dmg := _MonsterData.ATTRITION * _MonsterData.HP0 * float(m[4]) * DT
+	# 对塔 DPS = ATTRITION × HP0 × m_dps(proto)（V-1 复合比口径；attrition 经扫参覆盖解析）
+	var dmg := attrition * _MonsterData.HP0 * float(m[4]) * DT
 	t.hp = float(t.hp) - dmg
 	if float(t.hp) <= 0.0:
 		t.hp = 0.0
 		t.disabled = true          # 进入 Disabled 中间态（断输出不断链）
+		# 🔒 T1 V-1：本波毛新增 +1（塔在本子步被打停；每塔每次被打停计一次，
+		#    修复后再次被打停会再计 → 毛流量语义，不受跨波修复干扰）。
+		dis_new_box[0] = int(dis_new_box[0]) + 1
 		# 🔴 塔死亡 → 全场 DPS 立即重算写回 dps_box[0]（引用捕获，与实时版 dps 成员
 		#    变量重算逐位一致；🔴 不用闭包标量回写，headless 下不回写外层）。
 		dps_box[0] = _DE.dps_only(player, cfg, geo)

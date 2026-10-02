@@ -89,6 +89,10 @@ signal run_won(w: int)
 # ---------------------------------------------------------------------------
 ## 🔒 T1：Q-T3 机会型仇恨（AGGRO_R = 9.0）。MVP 恒 false → 怪物恒 MARCHING。
 var tower_aggro_enabled: bool = false
+## 🔒 T1 V-1 扫参：ATTRITION 覆盖值。默认 -1 = 读定稿常量（金标本零改动）；
+##   >= 0 时覆盖 `_damage_tower` 的对塔 DPS 复合比（供扫参脚本与实时↔批处理一致性
+##   在扫参值下守护）。扫参定稿后回写 `MonsterData.ATTRITION`，此成员退回默认。
+var attrition_override: float = -1.0
 ## 🟡 S5-D1：GDD §2.5.3 三原型分化。MVP 恒 false（= 单一基准怪 = 金标本口径）。
 var prototype_split_enabled: bool = false
 ## 🟡 S5-D1：GDD §2.5.4 词缀版 Elite 波。MVP 恒 false。
@@ -441,8 +445,8 @@ func _damage_tower(m) -> void:
 	var t = _tower_by_slot(m.target_slot)
 	if t == null or bool(t.disabled):
 		return
-	# 对塔 DPS = ATTRITION × HP0 × m_dps(proto)（V-1 复合比口径）
-	var dmg := _MonsterData.ATTRITION * _MonsterData.HP0 * float(m.m_dps) * _WaveSim.DT
+	# 对塔 DPS = ATTRITION × HP0 × m_dps(proto)（V-1 复合比口径；attrition_override>=0 时覆盖）
+	var dmg := _MonsterData.resolve_attrition(attrition_override) * _MonsterData.HP0 * float(m.m_dps) * _WaveSim.DT
 	t.hp = float(t.hp) - dmg
 	if float(t.hp) <= 0.0:
 		t.hp = 0.0
