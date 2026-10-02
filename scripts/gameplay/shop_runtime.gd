@@ -106,8 +106,8 @@ var director: Node = null
 var path: String = "B"
 var wave: int = 0
 var scrap: float = 0.0          # 积分（🔴 M5：仅击杀获得；商店不产出、不回收）
-var core_hp: float = 0.0
-var core_hp_max: float = 0.0
+## 🔴 切片8续3（可玩 MVP）：核心 HP 不再是本类独立账本 —— 一律读写 `player.core_hp`
+##   （单一数据源，与 WaveDirector 战斗侧共用）。本类只保留 `scrap` 经济账。
 
 var rerolls: int = 0            # n：本波已刷新次数（每波重置）
 var lock_index: int = -1        # 锁定的商品位（-1 = 无；3 位中可锁 1，每波重置）
@@ -143,8 +143,11 @@ func setup(p_path: String, seed_value: int, overrides: Dictionary = {}) -> void:
 	rng = _PyRandom.new(seed_value)
 	wave = 0
 	scrap = 0.0
-	core_hp_max = float(cfg["core_hp"])
-	core_hp = core_hp_max
+	# 🔴 切片8续3：核心 HP 初值由 SimPlayer.new_player 按（可能被 overrides 覆盖的）
+	#   cfg.core_hp 设定 → 这里不再重复赋值，只确保与 cfg 一致（幂等）。
+	if player != null:
+		player.core_hp_max = float(cfg["core_hp"])
+		player.core_hp = player.core_hp_max
 	rerolls = 0
 	lock_index = -1
 	offers = []
@@ -943,10 +946,13 @@ func simulate_wave_result(w: int) -> Dictionary:
 	return _WaveSim.simulate_wave(player, w, cfg, geo)
 
 
-## R3：收入 = 本波击杀废铁 × (1 + income_mult)；漏怪扣核心 HP。
+## R3：收入 = 本波击杀废铁 × (1 + income_mult)。
+## 🔴 切片8续3（可玩 MVP）：核心 HP 扣减**不再**在此处 —— 实时战斗里 `WaveDirector`
+##   已在漏怪当刻把 `player.core_hp` 扣到单一数据源上（E-W3 实时失败判定 + HUD 实时读数）。
+##   若此处再按 `core_damage` 扣一次就是**双重扣血**（金标本 `run_loop` 是独立本地变量、
+##   不走本函数，故不受影响）。本函数只入积分账。
 func grant_wave_result(res: Dictionary) -> void:
 	scrap += float(res["scrap_earned"]) * (1.0 + float(player.income_mult))
-	core_hp = maxf(0.0, core_hp - float(res["core_damage"]))
 
 
 # ---------------------------------------------------------------------------
@@ -994,8 +1000,8 @@ func snapshot() -> Dictionary:
 	return {
 		"wave": wave,
 		"scrap": scrap,
-		"core_hp": core_hp,
-		"core_hp_max": core_hp_max,
+		"core_hp": player.core_hp,
+		"core_hp_max": player.core_hp_max,
 		"rerolls": rerolls,
 		"reroll_cost": reroll_cost(),
 		"lock_index": lock_index,

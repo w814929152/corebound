@@ -1,7 +1,7 @@
-# 切片8 验证报告 · 拆除回收 `Salvage` / 弃卡 / 卸下改投 + I-9 二次确认 + I-7 塔位点选 + C2 智能高亮
+# 切片8 验证报告 · 拆除回收 `Salvage` / 弃卡 / 卸下改投 + I-9 二次确认 + I-7 塔位点选 + C2 智能高亮 + 可玩 MVP 胜负结算
 
-> **结论**：🟢 **切片8 全量自测 71 项断言 / 0 失败 / 退出码 0**；金标本零改动；切片1-7 逐位等价基线纹丝不动。
-> **意义**：把切片4 遗留的 **I-9 重决策** + **D-9 单塔效果卡 2 次输入购买（I-7 塔位点选）** + **C2 智能高亮 H2/H3/H5/H6/H7/H9** 全部落地。
+> **结论**：🟢 **切片8 全量自测 92 项断言 / 0 失败 / 退出码 0**；金标本零改动；切片1-7 逐位等价基线纹丝不动。
+> **意义**：把切片4 遗留的 **I-9 重决策** + **D-9 单塔效果卡 2 次输入购买（I-7 塔位点选）** + **C2 智能高亮 H2/H3/H5/H6/H7/H9** 全部落地，并在 **切片8续3** 把已验证系统串成 **W1→W20 完整可试玩一局**（含胜负结算 + 核心 HP 归零判定）。
 
 ---
 
@@ -60,6 +60,29 @@
 
 🔴 **SR-R2 合规**：全部只标事实（grep 推荐/最优/best/recommend/suggest 在商店源码零命中，仅规则注释 + 命中测试变量 `best`）。SR-6：overlay 事件驱动（订阅 `shop_changed`/`run_changed`）调一次 `highlights()`，不每帧重算。H10 暴露度 🔒 T1 不做。
 
+### 1.6 可玩 MVP 胜负结算（切片8续3 · W1→W20 完整一局）
+
+把已验证系统（伤害引擎 + 实时商店 + 真实刷怪战斗 + 拆除回收 + 点选 + 高亮）串成从头到尾可试玩的一局，补齐三处「能玩起来」的缺口：
+
+**① 核心 HP 单一数据源（消除双账本）**
+- 之前 `WaveDirector.core_hp`（战斗侧扣）与 `ShopRuntime.core_hp`（HUD/商店读）**各扣各的** → HUD 读数与真实战斗脱节。
+- 现统一到 `player.core_hp`（`PlayerState` 新增字段，`SimPlayer.new_player` 按 `cfg.core_hp` 初始化）：
+  - `WaveDirector`：`setup` 从 player 读初值、漏怪扣血**写回** player（单一权威）；
+  - `ShopRuntime`：删除独立 `core_hp`/`core_hp_max`，`snapshot` 读 `player.core_hp`；
+  - `grant_wave_result` **不再**二次扣血（扣减已在漏怪当刻完成，避免双扣）；
+  - `CoreHpBar`：新增 `bind_controller`，订阅 `run_changed` 实时读 player 刷新（≤25% 告警红）。
+
+**② 胜利条件（打完 W20 通关）**
+- `WaveDirector` 新增 `MAX_WAVE=20`（对齐金标本 `run_loop` 默认）、`run_won` 信号、`victory` 标志（🔴 变量名不能与 signal `run_won` 同名 → Godot 解析冲突，故用 `victory`）。
+- 🔴 **等价性零扰动**：胜利判定放在 `_end_wave` 记录 `last_result`（真实 kills/scrap）**之后** —— W20 全清 = 40 杀的真实结算先落盘，再判胜。若判胜提前返回会抹掉 W20 结算、破坏 slice5 的 W20 逐位等价断言（曾导致 `kills 1 vs 40` 回归，已修正）。
+
+**③ 胜负展示 + 重开（`result_overlay.gd` 新建）**
+- CanvasLayer **150**（高于弹窗 140 / 商店 100），`show_result(won, wave, hp, hp_max, scrap)` 纯展示 + 重开/退出意图。
+- `ShopController` 接 `run_lost`→失败弹窗、`run_won`→胜利弹窗；「再来一局」→ `runtime.setup` 重建 + `wave_director.bind_runtime` 刷新 player 引用 + `start_run(1)`。
+- HUD 终局状态行追加「通关胜利 / 核心归零·失败」标记。
+
+🔴 **金标本零改动**：`run_loop.gd` 用独立本地 `core_hp` 变量、不走 `grant_wave_result`，故上述改动对 MC 判据链零影响。
+
 ### 1.1 逐塔投入追踪（数据前提）
 
 - **建筑卡**：买时入 `pending` + 成本锁进平行数组 `pending_cost`；`confirm_placement` 落子时把成本累加到**具体塔**的 `invested`（build/upgrade 同价 12）。
@@ -84,7 +107,7 @@
 
 ---
 
-## 2. 验收（全绿，71 项）
+## 2. 验收（全绿，92 项）
 
 ### AC-S8-1 · 逐塔投入追踪
 建筑卡 build 记 12 → 装配卡 reinf 累加 9（=21）→ 升级 up 累加 12（=33）。
@@ -127,14 +150,33 @@ FireUp 3 层 → 卸到 2 → 1 → 0（整卡销毁 + 卡册移除 + 塔键移�
 - **H6 κ 折价预告**：Cannon 新建塔触发（N=2→3 disc 0→0.01），文案含「建造新塔」+「拆除塔不会让 κ 回升」；升级同塔不触发
 - **H3 +1 档位**：fire 投入 2 层 → 再投 1 层跨档 3 = plus_one；投入 3 层未跨 20 档 = 非 plus_one
 
+### AC-S8-9 · 核心 HP 单一数据源（切片8续3）
+- `player.core_hp` 初值 = `cfg.core_hp`（1000）· `core_hp_max` = 1000
+- `runtime.snapshot.core_hp` 读 player（1000）
+- 战斗侧扣到 player=500 → snapshot 同步 500（单一数据源）
+- `grant_wave_result` 入积分 40 · **不再**扣核心 HP（仍 500，无双扣）
+
+### AC-S8-10a · 失败（核心归零 run_failed）
+- 零 DPS（拆光塔）→ W1 10 只全漏 → 核心 1000→500（未失败）
+- 续 W2 第 20 只漏怪 → 核心归零 0 → `run_failed=true`（E-W3 立即失败）
+- `run_lost` 信号发一次 · `run_won`/`victory` 保持 false（二者互斥）· `player.core_hp` 同步归零
+
+### AC-S8-10b · 胜利（通关 run_won）
+- 超强构筑（核心塔 + 5 座 Cannon h=400）→ W1..W20 全清不漏
+- 打完 W20 → `victory=true`（通关胜利）· `run_won` 信号发一次 · `run_lost` 未发
+- 通关时核心仍满血 1000（零漏怪）· `last_result["won"]=true`
+- 🔴 逐波推进（模拟玩家一波波打），W20 真实结算 40 杀先落盘再判胜（等价性零扰动）
+
 ---
 
 ## 3. 回归
 
 - 切片1-7 全量自测 **3089 项断言全过**（本切片未触碰任何 engine/golden 文件）。
-- 全量（含切片8）：**222 + 2228 + 142 + 123 + 302 + 41 + 31 + 71 = 3160 项 / 0 失败 / 退出码 0**。
-- 切片5 场景冒烟 **22 项 / 0 失败**（全场景树编译 + 运行，含 overlay C2 高亮渲染 + MonsterLayer 塔渲染，零 SCRIPT ERROR）。
+- 全量（含切片8）：**222 + 2228 + 142 + 123 + 302 + 41 + 31 + 92 = 3181 项 / 0 失败 / 退出码 0**。
+  - 切片8 从 71 → 92 项（+21）：新增 AC-S8-9（核心 HP 单一数据源 6 项）+ AC-S8-10a（失败 9 项）+ AC-S8-10b（胜利 8 项，减去共享的互斥断言）。
+- 切片5 场景冒烟 **22 项 / 0 失败**（全场景树编译 + 运行，含 overlay C2 高亮渲染 + MonsterLayer 塔渲染 + 核心 HP 条接线，零新增 SCRIPT ERROR）。
 - 🔴 **SR-R2 合规**：商店源码 grep 推荐/最优/best/recommend/suggest 零命中（仅规则注释 + 命中测试变量）。
+- 🔴 **金标本零改动**：`run_loop.gd` / `wave_sim.gd` / `shop_ai.gd` 均未改；胜负结算只在玩家路线 + WaveDirector 战斗侧。
 
 ---
 
@@ -146,3 +188,5 @@ FireUp 3 层 → 卸到 2 → 1 → 0（整卡销毁 + 卡册移除 + 塔键移�
 | **被动移除 `Destroyed`** | 返还 0% + 装配卡随 Disabled 冻结，🔒 T1（随塔死亡玩法整体批次）。 |
 | **修复入口** | 🔒 T1（随 `Destroyed` 分支）。 |
 | ~~**C2 高亮 H2-H9**~~ | ✅ **本切片落地**（H2/H3/H5/H6/H7/H9 + SR-R2 只标事实合规；H10 暴露度 🔒 T1）。 |
+| ~~**可玩 MVP 胜负结算**~~ | ✅ **切片8续3 落地**（核心 HP 单一数据源 + W20 通关胜利 + 核心归零失败 + 结算覆盖层 + 重开）。 |
+| **T1 仇恨真激活** | 🔒 后续批次（现有 `wave_sim_proto`/`run_loop_proto` 范式可复用，需先设计「仇恨只改路径不改 DPS 分配」等价口径）。 |

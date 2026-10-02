@@ -29,6 +29,8 @@ const _Cfg := preload("res://scripts/engine/mvp_config.gd")
 const _TSM := preload("res://scripts/engine/time_state_machine.gd")
 const _ShopRuntime := preload("res://scripts/gameplay/shop_runtime.gd")
 const _SalvageDialog := preload("res://scripts/ui/salvage_confirm_dialog.gd")
+## 🟢 切片8续3（可玩 MVP）：一局结算覆盖层（胜负展示 + 重开/退出）
+const _ResultOverlay := preload("res://scripts/ui/result_overlay.gd")
 
 # 交互局 RNG 种子（= MC 定稿种子，便于复现；不是平衡参数）
 const DEFAULT_RUN_SEED := 20260930
@@ -104,6 +106,9 @@ func bind_wave_director(wd: Node) -> void:
 		wd.wave_result.connect(_on_wave_result)
 	if not wd.is_connected("run_lost", _on_run_lost):
 		wd.run_lost.connect(_on_run_lost)
+	# 🟢 切片8续3（可玩 MVP）：通关胜利信号
+	if not wd.is_connected("run_won", _on_run_won):
+		wd.run_won.connect(_on_run_won)
 	if runtime != null:
 		wd.bind_runtime(runtime)
 
@@ -116,6 +121,46 @@ func _on_run_lost(p_w: int) -> void:
 	over = true
 	print("[shop_controller] 核心 HP 归零（W%d）→ 停止推进（E-W3 立即失败）" % p_w)
 	_emit_run()
+	_show_result(false, p_w)
+
+
+func _on_run_won(p_w: int) -> void:
+	over = true
+	print("[shop_controller] 通关胜利（打完 W%d 且核心未归零）" % p_w)
+	_emit_run()
+	_show_result(true, p_w)
+
+
+## 🟢 切片8续3（可玩 MVP）：挂结算覆盖层（幂等——一局只弹一次，因为 over 已置位）。
+func _show_result(p_won: bool, p_wave: int) -> void:
+	if runtime == null:
+		return
+	var hp := float(runtime.player.core_hp) if runtime.player != null else 0.0
+	var hp_max := float(runtime.player.core_hp_max) if runtime.player != null else 0.0
+	var scrap := float(runtime.scrap)
+	var ov = _ResultOverlay.new()
+	add_child(ov)
+	# 🔴 结算期间世界保持 paused（覆盖层 process_mode=ALWAYS 仍可点按钮）；
+	#   重开 → 重新走 start_run；退出 → 退出场景树（headless 下仅打印）。
+	ov.show_result(p_won, p_wave, hp, hp_max, scrap,
+		Callable(self, "_on_restart_requested"), Callable(self, "_on_quit_requested"))
+
+
+func _on_restart_requested() -> void:
+	# 重开一局：复位 over → runtime 重建（清 scrap/core_hp/构筑/待放置）→
+	#   刷新 WaveDirector 的 player 引用（setup 会 new_player）→ 重新开波 W1。
+	over = false
+	if runtime != null:
+		runtime.setup("B", DEFAULT_RUN_SEED)
+	if wave_director != null:
+		wave_director.bind_runtime(runtime)   # 刷新 player / core_hp 引用
+	_emit_run()
+	print("[shop_controller] 再来一局 → 重新开波 W1")
+	start_run(1)
+
+
+func _on_quit_requested() -> void:
+	print("[shop_controller] 退出本局（headless 下仅记录；图形端可 get_tree().quit()）")
 
 
 func _on_reroll_requested() -> void:
@@ -244,7 +289,9 @@ func _on_wave_ended(w: int) -> void:
 		print("[shop_controller][WARN] W%d 实时结果与金标本口径不一致（三原型/Elite 已开）"
 			% w + " → 收入回落金标本（S5-D1 待拍板）")
 	runtime.grant_wave_result(res)   # R3：击杀收入 × (1 + income_mult)
-	if runtime.core_hp <= 0.0:
+	# 🔴 切片8续3：核心 HP 单一数据源 → 读 player.core_hp（实时战斗已在漏怪当刻扣好）。
+	#   失败判定主路由是 WaveDirector.run_lost → _on_run_lost（E-W3 实时）；此处仅作兜底。
+	if runtime.player != null and float(runtime.player.core_hp) <= 0.0 and not over:
 		over = true
 		print("[shop_controller] 核心 HP 归零（W%d）→ 停止推进" % w)
 	_emit_shop()

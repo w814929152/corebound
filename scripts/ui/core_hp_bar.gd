@@ -11,15 +11,17 @@ extends Control
 
 const C_BG := Color(0.04, 0.05, 0.07, 0.92)
 const C_FILL := Color(0.24, 0.78, 0.83, 1.0)
+const C_FILL_LOW := Color(0.86, 0.20, 0.20, 1.0)   # 🟢 切片8续3：核心 HP ≤ 25% 告警红
 const C_TEXT := Color(1.0, 1.0, 1.0, 1.0)
 
 const HP_MAX := 1000.0     # core-defense GDD v0.5：核心 HP 1000
-const HP_NOW := 720.0      # 骨架占位值（等 wave-spawner 供数）
+const HP_NOW := 720.0      # 骨架占位初值（接线后由 runtime 单一数据源覆盖）
 
 
 var _fill: ColorRect
 var _label: Label
 var _director: Node = null
+var _controller: Node = null   # 🟢 切片8续3：读 runtime.player.core_hp（单一数据源）
 
 
 func _ready() -> void:
@@ -29,7 +31,21 @@ func _ready() -> void:
 
 
 func bind_director(d: Node) -> void:
-	_director = d       # 骨架阶段不需要，先留接口（后续接 WS-5）
+	_director = d
+
+
+## 🟢 切片8续3（可玩 MVP）：注入 controller，读 runtime.player.core_hp 实时刷新。
+func bind_controller(c: Node) -> void:
+	_controller = c
+	if c == null:
+		return
+	if not c.is_connected("run_changed", _on_run_changed):
+		c.run_changed.connect(_on_run_changed)
+	call_deferred("_on_run_changed")
+
+
+func _on_run_changed() -> void:
+	_refresh_hp()
 
 
 func _build() -> void:
@@ -65,7 +81,22 @@ func _refresh_size() -> void:
 
 
 func set_hp(hp: float, hp_max: float) -> void:
-	# [接口] 后续 `wave-spawner` 的 WS-5 直接调这里
+	# [接口] 后续 `wave-spawner` 的 WS-5 直接调这里（骨架占位用；接线后走 _refresh_hp）
 	var r: float = clampf(hp / maxf(1.0, hp_max), 0.0, 1.0)
 	_fill.anchor_right = r
-	_label.text = "核心 HP %d / %d（骨架占位 · 穿透层 130）" % [int(hp), int(hp_max)]
+	_label.text = "核心 HP %d / %d（穿透层 130）" % [int(hp), int(hp_max)]
+
+
+## 🟢 切片8续3（可玩 MVP）：从 runtime.player 读核心 HP 单一数据源实时刷新。
+func _refresh_hp() -> void:
+	if _controller == null or _controller.runtime == null:
+		return
+	var p = _controller.runtime.player
+	if p == null:
+		return
+	var hp: float = float(p.core_hp)
+	var hp_max: float = float(p.core_hp_max)
+	set_hp(hp, hp_max)
+	# 低血量告警红（≤ 25%）
+	var r: float = clampf(hp / maxf(1.0, hp_max), 0.0, 1.0)
+	_fill.color = C_FILL_LOW if r <= 0.25 else C_FILL

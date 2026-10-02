@@ -76,6 +76,9 @@ signal monster_spawned(m)                        # I-3 的运行时侧（渲染�
 signal monster_killed(m)
 signal monster_leaked(m)                         # → Core.hp -= 50
 signal run_lost(w: int)                          # E-W3：核心 HP ≤ 0 立即失败
+## 🟢 切片8续3（可玩 MVP）：通关胜利 —— 打完最后一波（W_MAX_WAVE）且核心未归零。
+##   与 `run_lost` 对称：`run_lost` = 核心归零失败，`run_won` = 全波次清空胜利。
+signal run_won(w: int)
 
 
 # ---------------------------------------------------------------------------
@@ -116,6 +119,9 @@ var leaked_count: int = 0
 var scrap_earned: float = 0.0
 var core_hp: float = 1000.0
 var run_failed: bool = false
+## 🟢 切片8续3：通关标志（打完 W_MAX_WAVE 且核心未归零）。与 run_failed 互斥。
+##   🔴 变量名用 `victory`（不能与 signal `run_won` 同名 → Godot 解析冲突）。
+var victory: bool = false
 
 # ---- 本波出生表（静态预计算，波首算一次）----
 var _proto_seq: Array = []
@@ -130,6 +136,10 @@ var last_result_w: int = -1
 #    只影响"追赶速度"，不影响任何数值口径（子步总数由 `t_wave` 与 `limit` 决定）。
 const MAX_SUBSTEPS_PER_FRAME := 64
 
+## 🟢 切片8续3（可玩 MVP）：一局总波数（W1..W20）。与金标本 `run_loop` 的
+##    `max_wave = 20` 默认值对齐。打完 W20 且核心未归零 → 通关（`run_won`）。
+const MAX_WAVE := 20
+
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
@@ -143,8 +153,14 @@ func setup(p_player, p_cfg: Dictionary, p_geo = null) -> void:
 	player = p_player
 	cfg = p_cfg
 	geo = p_geo
-	core_hp = float(cfg.get("core_hp", 1000.0))
+	# 🔴 切片8续3：核心 HP 单一数据源 —— 若注入了 player，就以其为权威初值（跨波延续）；
+	#   否则退回 cfg.core_hp（headless 单测里 setup 早于 player 建好的情形）。
+	if player != null and "core_hp" in player:
+		core_hp = float(player.core_hp)
+	else:
+		core_hp = float(cfg.get("core_hp", 1000.0))
 	run_failed = false
+	victory = false
 	state = State.IDLE
 	last_result_w = -1
 
@@ -316,6 +332,9 @@ func _substep() -> void:
 			m2.state = MState.LEAKED
 			leaked_count += 1
 			core_hp = maxf(0.0, core_hp - leak_dmg)
+			# 🔴 切片8续3：核心 HP 单一数据源 → 同步写回 player（供 HUD/商店读同一份）。
+			if player != null and "core_hp" in player:
+				player.core_hp = core_hp
 			emit_signal("monster_leaked", m2)
 			if core_hp <= 0.0 and not run_failed:
 				run_failed = true
@@ -365,6 +384,8 @@ func _check_end() -> bool:
 		_end_wave()
 		return true
 	# E-W2：到达 `D + t_reach` → 残留怪**直接移除**（不扣血、不给分，与 sim 真身同口径）
+	#   🔴 顺序关键：W20 也走这条"正常收尾"路径 → 先把真实 kills/scrap 记进 last_result，
+	#      再由 _end_wave 内的胜利判定（w >= MAX_WAVE 且未失败）判胜。等价性零扰动。
 	if t_wave > limit:
 		_end_wave()
 		return true
@@ -390,8 +411,16 @@ func _end_wave() -> void:
 		"t_wave": t_wave,
 		"core_hp": core_hp,
 		"failed": run_failed,
+		"won": victory,
 	}
 	last_result_w = w
+	# 🟢 切片8续3（可玩 MVP）：通关胜利判定放在 last_result 记录**之后** ——
+	#   此时 kills/scrap_earned 已是本波真实值（W20 全清 = 40 杀），等价性零扰动。
+	#   条件：打完最后一波（w >= MAX_WAVE）且核心未归零（not run_failed）。
+	if w >= MAX_WAVE and not run_failed and not victory:
+		victory = true
+		last_result["won"] = true
+		emit_signal("run_won", w)
 	emit_signal("wave_result", w, last_result)
 	# 时钟侧：进安全窗（TimeDirector 会写 paused 并广播 wave_ended）
 	if director != null:
@@ -426,6 +455,7 @@ func snapshot() -> Dictionary:
 		"scrap_earned": scrap_earned,
 		"core_hp": core_hp,
 		"failed": run_failed,
+		"won": victory,
 		"dps": dps,
 		"interval": interval,
 		"limit": limit,

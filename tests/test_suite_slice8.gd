@@ -32,6 +32,12 @@ extends RefCounted
 const _ShopRuntime := preload("res://scripts/gameplay/shop_runtime.gd")
 const _PS := preload("res://scripts/engine/player_state.gd")
 const _SalvageDialog := preload("res://scripts/ui/salvage_confirm_dialog.gd")
+## 🟢 切片8续3（可玩 MVP）：胜负结算 + 核心 HP 单一数据源
+const _WaveDirector := preload("res://scripts/gameplay/wave_director.gd")
+const _WaveSim := preload("res://scripts/engine/wave_sim.gd")
+const _SimPlayer := preload("res://scripts/engine/sim_player.gd")
+const _Geo6 := preload("res://scripts/geo/geo6.gd")
+const _Cfg := preload("res://scripts/engine/mvp_config.gd")
 
 var _pass = 0
 var _fail = 0
@@ -432,9 +438,96 @@ func _test_c2_highlights() -> void:
 # ===========================================================================
 #  汇总
 # ===========================================================================
+# ===========================================================================
+#  AC-S8-9 · 核心 HP 单一数据源（切片8续3 · 可玩 MVP）
+# ===========================================================================
+func _test_core_hp_single_source() -> void:
+	_log("")
+	_log("--- [AC-S8-9] 核心 HP 单一数据源：player.core_hp 为权威，runtime 只读它 ---")
+	var rt = _mk_runtime()
+	# ① new_player / setup 后核心 HP = cfg.core_hp（1000），runtime.snapshot 读同一份
+	_check("player.core_hp 初值 = cfg.core_hp (1000)", float(rt.player.core_hp), 1000.0)
+	_check("player.core_hp_max = 1000", float(rt.player.core_hp_max), 1000.0)
+	_check("runtime.snapshot.core_hp 读 player (1000)", float(rt.snapshot()["core_hp"]), 1000.0)
+	# ② 战斗侧漏怪扣血写在 player 上（模拟 WaveDirector 的行为）→ runtime 立即读到同一份
+	rt.player.core_hp = 500.0
+	_check("战斗侧扣到 player=500 → snapshot 同步 500", float(rt.snapshot()["core_hp"]), 500.0)
+	# ③ grant_wave_result 不再二次扣血（扣减已移到 WaveDirector 漏怪当刻）→ 只入积分
+	var scrap_before: float = rt.scrap
+	rt.grant_wave_result({"scrap_earned": 40.0, "core_damage": 200.0})
+	_check("grant_wave_result 入积分 40", rt.scrap, scrap_before + 40.0)
+	_check("grant_wave_result 不再扣核心 HP（仍 500，无双扣）", float(rt.player.core_hp), 500.0)
+
+
+# ===========================================================================
+#  AC-S8-10 · 胜负结算（切片8续3 · 可玩 MVP）：run_lost / run_won
+# ===========================================================================
+func _mk_battle_director(p_w: int, player):
+	var cfg = _Cfg.cfg_of("B")
+	var geo = _Geo6.build()
+	var wd = _WaveDirector.new()
+	wd.setup(player, cfg, geo)
+	wd.w = p_w
+	return wd
+
+
+## 零 DPS 玩家（拆掉全部塔）→ 全漏 → 核心归零失败
+func _test_run_lost() -> void:
+	_log("")
+	_log("--- [AC-S8-10a] 失败：零 DPS → 漏怪扣血 → 核心归零 run_failed ---")
+	var p = _SimPlayer.new_player("B", _Cfg.cfg_of("B"), _Geo6.build())
+	p.towers = []                    # 拆光 → 零 DPS
+	var wd = _mk_battle_director(1, p)
+	# 🔴 Godot 坑（control-manifest §4）：内联 func() 捕获标量局部变量 headless 下不回写外层
+	#   → 用 Dictionary 引用捕获（与 slice5 AC-W6 的 box[0] 范式同款）。
+	var lost_box := { "n": 0 }
+	wd.run_lost.connect(func(_w: int) -> void: lost_box["n"] = int(lost_box["n"]) + 1)
+	wd.start_wave(1)
+	wd.run_to_end()
+	_check_int("W1 零 DPS → 10 只全漏", wd.leaked_count, 10)
+	_check("W1 后核心 1000 → 500", wd.core_hp, 500.0)
+	_check_bool("W1 后未失败（核心未归零）", wd.run_failed, false)
+	_check_bool("W1 未判胜", wd.victory, false)
+	# 续 W2：第 20 只漏怪把核心打到 0 → 立即失败
+	wd.start_wave(2)
+	wd.run_to_end()
+	_check("W2 后核心归零 0", wd.core_hp, 0.0)
+	_check_bool("核心归零 → run_failed=true（E-W3 立即失败）", wd.run_failed, true)
+	_check_bool("失败时 run_won 保持 false（二者互斥）", wd.victory, false)
+	_check_bool("run_lost 信号发过一次", int(lost_box["n"]), 1)
+	_check("player.core_hp 同步归零（单一数据源）", float(p.core_hp), 0.0)
+
+
+## 超强 DPS → W1..W20 全清不漏 → 打完 W20 判胜 run_won
+func _test_run_won() -> void:
+	_log("")
+	_log("--- [AC-S8-10b] 胜利：全清 W1..W20 → 打完最后一波 run_won ---")
+	var p = _SimPlayer.new_player("B", _Cfg.cfg_of("B"), _Geo6.build())
+	# 超强构筑：核心塔 + 5 座高塔，保证 W1..W20 全清不漏（否则 balance 依赖）
+	p.towers[0].h = 400
+	for s in [1, 2, 3, 4, 5]:
+		p.towers.append(_PS.make_tower(s, "Cannon", 400, {}))
+	var wd = _mk_battle_director(1, p)
+	# 🔴 Godot 坑：内联 func() 捕获标量不回写外层 → 用 Dictionary 引用捕获
+	var won_box := { "n": 0 }
+	var lost_box := { "n": 0 }
+	wd.run_won.connect(func(_w: int) -> void: won_box["n"] = int(won_box["n"]) + 1)
+	wd.run_lost.connect(func(_w: int) -> void: lost_box["n"] = int(lost_box["n"]) + 1)
+	# 逐波推进（模拟玩家一波波打）
+	for w in range(1, _WaveDirector.MAX_WAVE + 1):
+		wd.start_wave(w)
+		wd.run_to_end()
+	_check_bool("全程无漏怪失败（run_failed=false）", wd.run_failed, false)
+	_check_bool("打完 W20 → run_won=true（通关胜利）", wd.victory, true)
+	_check_bool("胜利时 run_lost 未发", int(lost_box["n"]), 0)
+	_check_bool("run_won 信号发过一次", int(won_box["n"]), 1)
+	_check("通关时核心仍满血 1000（零漏怪）", wd.core_hp, 1000.0)
+	_check("last_result 带 won=true", bool(wd.last_result["won"]), true)
+
+
 func run_all() -> bool:
 	_log("=".repeat(78))
-	_log("切片8 · 拆除回收 Salvage / 弃卡 / 卸下改投 + I-9 二次确认 + I-7 塔位点选 + C2 高亮")
+	_log("切片8 · 拆除回收 Salvage / 弃卡 / 卸下改投 + I-9 二次确认 + I-7 塔位点选 + C2 高亮 + 可玩MVP胜负")
 	_log("=".repeat(78))
 	_test_invested_tracking()
 	_test_salvage_settlement()
@@ -445,6 +538,9 @@ func run_all() -> bool:
 	_test_golden_untouched()
 	_test_tower_selection()
 	_test_c2_highlights()
+	_test_core_hp_single_source()
+	_test_run_lost()
+	_test_run_won()
 	_log("")
 	_log("-".repeat(78))
 	_log("切片8 合计：PASS=%d  FAIL=%d" % [_pass, _fail])

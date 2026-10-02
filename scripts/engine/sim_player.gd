@@ -33,6 +33,9 @@ static func new_player(path: String, cfg: Dictionary, geo = null):
 	p.income_mult = 0.0
 	p.reroll_disc = 0.0
 	p.n_hist_max = 0
+	# 🔴 切片8续3（可玩 MVP）：核心 HP 单一数据源初值（cfg.core_hp，默认 1000）。
+	p.core_hp_max = float(cfg.get("core_hp", 1000.0))
+	p.core_hp = p.core_hp_max
 	# v03 L698-699：起手送 Arrow@slot0（h=1），且 Arrow 进卡册
 	p.towers.append(_PS.make_tower(0, "Arrow", 1, {}))
 	p.cards["Arrow"] = true

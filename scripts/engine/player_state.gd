@@ -33,6 +33,12 @@ var n_hist_max: int = 0       # 兜底①：本局历史最大塔数（只增不
 var income_mult: float = 0.0
 var reroll_disc: float = 0.0
 var cards: Dictionary = {}
+## 🔴 切片8续3（可玩 MVP）：核心 HP 单一数据源。
+##   战斗侧（WaveDirector 漏怪扣血）与商店侧（ShopRuntime / HUD / 核心 HP 条）
+##   一律读写这同一份，杜绝两份 core_hp 各扣各的、HUD 读数与真实战斗脱节。
+##   初值在 `SimPlayer.new_player()` 里按 cfg.core_hp 设定（默认 1000）。
+var core_hp_max: float = 1000.0
+var core_hp: float = 1000.0
 
 
 static func make_tower(slot: int, ctype: String, h: int, attach: Dictionary = {}) -> TowerState:

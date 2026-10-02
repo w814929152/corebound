@@ -75,8 +75,11 @@ func _ready() -> void:
 	if pulse != null and pulse.has_method("bind_director"):
 		pulse.bind_director(director)
 	var hp := get_node_or_null("CoreHpLayer/CoreHpBar")
-	if hp != null and hp.has_method("bind_director"):
-		hp.bind_director(director)
+	if hp != null:
+		if hp.has_method("bind_director"):
+			hp.bind_director(director)
+		if hp.has_method("bind_controller"):
+			hp.bind_controller(controller)   # 🟢 切片8续3：核心 HP 单一数据源实时刷新
 
 	# ---- 运行时快照注入 UI（只读）----
 	for n in [hud, shop]:

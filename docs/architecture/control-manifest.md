@@ -5,7 +5,7 @@
 - **维护人**：程基岩（工程主理人）
 - **适用引擎**：Godot `v4.7.2.stable.official.ed1daf0bf`（换版本必须重跑第 7 节全量自测）
 - **来源**：ADR-0001（`kr_mode` 口径）／ADR-0002（浮点可移植性）／切片1·切片2·切片3·切片4·切片5·切片6·切片7·切片8 联调实测
-- **状态**：切片8 全量自测 **222 + 2228 + 142 + 123 + 302 + 41 + 31 + 71 = 3160 项断言 / 0 失败 / 退出码 0**（71 = 切片8，含 I-7 塔位点选 15 项 + C2 高亮 13 项；另有切片4 场景冒烟 46 项、切片5 场景冒烟 22 项回归）；🔴 切片4 的 9 项接线冲突（D-1…D-9）已全部拍板（`shop-reroll` §9.2 v1.3），其中 **D-9 已落地**（I-7 塔位点选）；🟡 切片5 的 4 项新分歧（S5-D1/S5-D2/S5-F1/S5-F2）已全部拍板（`wave-spawner` v0.3）；✅ 切片7 = S5-D1 校准闸门**已过**；✅ 切片8 = 拆除回收 `Salvage`（Q-C3 原文）+ I-9 二次确认 + I-7 塔位点选 + **C2 智能高亮 H2/H3/H5/H6/H7/H9**（SR-R2 只标事实合规）全部落地，κ 兜底①不回升守护通过，金标本零改动
+- **状态**：切片8 全量自测 **222 + 2228 + 142 + 123 + 302 + 41 + 31 + 92 = 3181 项断言 / 0 失败 / 退出码 0**（92 = 切片8，含 I-7 塔位点选 + C2 高亮 + **续3 可玩 MVP 胜负结算 21 项**；另有切片4 场景冒烟 46 项、切片5 场景冒烟 22 项回归）；🔴 切片4 的 9 项接线冲突（D-1…D-9）已全部拍板（`shop-reroll` §9.2 v1.3），其中 **D-9 已落地**（I-7 塔位点选）；🟡 切片5 的 4 项新分歧（S5-D1/S5-D2/S5-F1/S5-F2）已全部拍板（`wave-spawner` v0.3）；✅ 切片7 = S5-D1 校准闸门**已过**；✅ 切片8 = 拆除回收 `Salvage`（Q-C3 原文）+ I-9 二次确认 + I-7 塔位点选 + **C2 智能高亮 H2/H3/H5/H6/H7/H9**（SR-R2 只标事实合规）+ **续3 可玩 MVP 胜负结算**（核心 HP 单一数据源 + W20 通关胜利 + 核心归零失败 + 结算覆盖层 + 重开）全部落地，κ 兜底①不回升守护通过，金标本零改动
 
 ---
 
@@ -194,7 +194,7 @@ GODOT="/c/Users/junhewang/Downloads/Godot_v4.7.2-stable_win64.exe/Godot_v4.7.2-s
 
 对照检查项：
 
-- [ ] 退出码 **0**，且日志里八段汇总齐全：`通过 222 项`（切片1）/ `通过 2228 项`（切片2）/ `通过 142 项`（切片3）/ `通过 123 项`（切片4）/ `通过 302 项`（切片5）/ `通过 41 项`（切片6）/ `通过 31 项`（切片7）/ `通过 43 项`（切片8）
+- [ ] 退出码 **0**，且日志里八段汇总齐全：`通过 222 项`（切片1）/ `通过 2228 项`（切片2）/ `通过 142 项`（切片3）/ `通过 123 项`（切片4）/ `通过 302 项`（切片5）/ `通过 41 项`（切片6）/ `通过 31 项`（切片7）/ `通过 92 项`（切片8，含续3 可玩 MVP 胜负结算 21 项）
 - [ ] 定稿判据链 16 条逐条对上（A 起飞 W8 / B 起飞 W12 / B÷A **0.458** / cross **16-4** / flips **1** /
       三阶段健康 A **2.4** / B **3.0** 单调上升）
 - [ ] MC：**A 69.3%（208/300）/ B 91.3%（274/300）**，中位起飞波 A W8.0 / B W13.0；
@@ -208,6 +208,7 @@ GODOT="/c/Users/junhewang/Downloads/Godot_v4.7.2-stable_win64.exe/Godot_v4.7.2-s
 - [ ] ✅ 切片7 额外确认：`wave_sim.gd` / `run_loop.gd` / `shop_ai.gd` **零修改**（三原型+Elite 走独立 `wave_sim_proto.gd` / `run_loop_proto.gd`，金标本证据链纯净）；S5-D1 校准闸门三闸门全过（①B 起飞率 91.7%≥80% ②起飞点 W13∈W10-15 ③B/A 0.432<1）；AC-S7-1 proto=false 逐位等价金标本（9 波次）
 - [ ] ✅ 切片8 额外确认：`shop_ai.gd` / `player_state.gd` 金标本路径 **零改动**（`invested` 只在玩家路线 `shop_runtime.gd` 记录）；Q-C3 原文落地（返还 50% 向下取整 + 装配卡全销毁 + I-9 二次确认 CanvasLayer 140 自定义 Control 禁 AcceptDialog + 仅安全窗 T-C1/E16）；🔴 兜底① κ 不回升（`n_hist_max` 只增不减，AC-S8-2）；弃卡全销毁腾槽无返还（AC-S8-3）；卸下改投降 1 层（AC-S8-4）；🟡 **I-7 塔位点选**（AC-S8-7）：Tag 合法性 `can_attach_card`/`get_legal_hosts`（D-8① 禁异 Tag · 中性塔收任意）· reinforce 改投点选塔（2 次输入）否则默认主塔（1 次输入）· D-TB-6 强制点选（主塔拒→`选择宿主塔`高亮合法副塔）· 无宿主→H8 `无塔接收该 Tag` · 点选每波清空
 - [ ] ✅ 切片8·C2 智能高亮额外确认：H2 Tag 协同脉冲 / H3 +1 档位角标 / H5 层数→下一层 / H6 κ 折价预告（含不可逆披露）/ H7 槽位占用事实 / H9 ΔDPS 相对增量 %（读 `damage_engine` 纯函数，SR-1）全部只读 `highlights()` / `slot_usage()`；🔴 **SR-R2 只标事实**（grep 推荐/最优/best/recommend/suggest 在商店源码零命中，仅规则注释 + 命中测试变量）；SR-6 事件驱动刷新（overlay 订阅 shop_changed/run_changed，不每帧调 `evaluate_delta`）；H10 暴露度 🔒 T1 不做
+- [ ] 🟢 切片8续3·可玩 MVP 胜负结算额外确认：核心 HP **单一数据源**（`player.core_hp`，`WaveDirector` 漏怪扣血写回 player / `ShopRuntime` 只读 / `grant_wave_result` 不再二次扣血，AC-S8-9）；**胜利** = 打完 W20（`MAX_WAVE=20`）且核心未归零 → `run_won` 信号 + `victory` 标志（🔴 变量名不能与 signal `run_won` 同名 → 用 `victory`；🔴 判胜放在 `last_result` 记录真实 kills/scrap **之后** → W20 逐位等价零扰动，AC-S8-10b）；**失败** = 核心归零 → `run_lost`（E-W3 实时，AC-S8-10a）；结算覆盖层 `result_overlay.gd`（CanvasLayer 150 纯展示 + 重开/退出）；HUD 终局状态行 + 核心 HP 条低血量告警红
 - [ ] 🔴 **玩家路线发牌池口径**（D-4/D-2，v1.3）：金标本 `CARD_NAMES` 是 **7 张**（AI 路线，含 RerollD，MC 来源，不动）；**玩家路线发牌池 = 7 − RerollD = 6 张**（`shop_runtime.player_card_names()` 由金标本派生，有放回抽 3，恒 3 位可重复）。⚠️ 别与**设计卡池 12 张**（card-system §7.3，13→12 移除 G2 `SupplyChain`）混淆——前者是金标本运行时实际抽的 6 张，后者是设计意图的 12 张，两个口径都对，只是作用层不同
 - [ ] 完整输出存档到 `docs/phase3/sliceN-headless-run.log`
 
@@ -243,9 +244,10 @@ GODOT="/c/Users/junhewang/Downloads/Godot_v4.7.2-stable_win64.exe/Godot_v4.7.2-s
 | 切片7 自测 | `tests/test_suite_slice7.gd`（31 项：AC-S7-1 proto=false 逐位等价金标本 · AC-S7-2 确实换口径 · AC-S7-3 闸门①②③） |
 | 切片7 批处理战斗结算（金标本不动） | `scripts/engine/wave_sim_proto.gd`（`simulate_wave_proto`，镜像 `WaveDirector._substep`）· `scripts/engine/run_loop_proto.gd`（MC 重扫运行器，shop_ai 金标本不变） |
 | 切片8 验证报告 | `docs/phase3/slice8-verify.md`（拆除回收 `Salvage` Q-C3 原文落地 + I-9 二次确认 + κ 不回升守护，金标本零改动） |
-| 切片8 自测 | `tests/test_suite_slice8.gd`（43 项：AC-S8-1 逐塔投入追踪 · AC-S8-2 拆除返还 50%+全销毁+κ 不回升 · AC-S8-3 弃卡 · AC-S8-4 卸下改投 · AC-S8-5 I-9 弹窗组件 · AC-S8-6 金标本零改动） |
-| 切片8 结算核心（玩家路线，金标本不动） | `scripts/gameplay/shop_runtime.gd`（`salvage_tower` / `discard_card` / `unequip_downgrade` / `preview_salvage` + `pending_cost` 平行数组 + `invested` 累加）· `scripts/engine/player_state.gd`（`TowerState.invested: float = 0.0`） |
+| 切片8 自测 | `tests/test_suite_slice8.gd`（**92 项**：AC-S8-1 逐塔投入追踪 · AC-S8-2 拆除返还 50%+全销毁+κ 不回升 · AC-S8-3 弃卡 · AC-S8-4 卸下改投 · AC-S8-5 I-9 弹窗组件 · AC-S8-6 金标本零改动 · AC-S8-7 I-7 塔位点选 · AC-S8-8 C2 高亮 · **AC-S8-9 核心 HP 单一数据源 · AC-S8-10a 失败 run_failed · AC-S8-10b 胜利 run_won**） |
+| 切片8 结算核心（玩家路线，金标本不动） | `scripts/gameplay/shop_runtime.gd`（`salvage_tower` / `discard_card` / `unequip_downgrade` / `preview_salvage` + `pending_cost` 平行数组 + `invested` 累加；续3：`core_hp` 迁到 `player`，`grant_wave_result` 只入积分不扣血）· `scripts/engine/player_state.gd`（`TowerState.invested` + 续3 `core_hp`/`core_hp_max` 单一数据源）· `scripts/engine/sim_player.gd`（续3 按 `cfg.core_hp` 初始化核心 HP） |
 | 切片8 I-9 二次确认弹窗 | `scripts/ui/salvage_confirm_dialog.gd`（CanvasLayer 140 · 自定义 Control 禁 AcceptDialog · `show_confirm(title,body,on_confirm)`）· `scripts/gameplay/shop_controller.gd`（`_on_salvage_requested` 接线 + 弹窗组装 + SafeWindow 守卫注入） |
+| 切片8续3 可玩 MVP 胜负结算 | `scripts/gameplay/wave_director.gd`（`MAX_WAVE=20` + `run_won` 信号 + `victory` 标志 + 判胜放 `last_result` 后保等价）· `scripts/ui/result_overlay.gd`（CanvasLayer 150 结算覆盖层 · 胜负展示 + 重开/退出）· `scripts/gameplay/shop_controller.gd`（`_on_run_lost`/`_on_run_won` 接弹窗 · `_on_restart_requested` 重开一局）· `scripts/ui/hud.gd`（终局状态行）· `scripts/ui/core_hp_bar.gd`（`bind_controller` 实时读 player + 低血量告警红） |
 | 切片4 拍板留档（设计侧） | `design/gdd/shop-reroll.md` §9.2（v1.3，D-1~D-7 拍板）· `design/gdd/card-system.md` A4/§7.3（v1.1.6，D-4 卡池 13→12） |
 | 口径 / 浮点决策记录 | `docs/architecture/adr-0001-kr-tier-vs-flat.md`、`adr-0002-float-portability.md` |
 | 引擎 | `scripts/engine/{damage_engine,wave_sim,shop_ai,run_loop,stats,softcap,mvp_config,player_state,sim_player,py_random,fp_pow,fp_sum,time_state_machine}.gd` |

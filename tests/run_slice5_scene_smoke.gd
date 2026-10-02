@@ -178,7 +178,7 @@ class Driver extends Node:
 		# ---- 收入入账（M5）----
 		var rt = controller.runtime
 		_tally("④ 击杀收入已入账（M5）", float(rt.scrap) >= 0.0)
-		print("  积分 %.0f · 核心 %.0f/%.0f" % [float(rt.scrap), float(rt.core_hp), float(rt.core_hp_max)])
+		print("  积分 %.0f · 核心 %.0f/%.0f" % [float(rt.scrap), float(rt.player.core_hp), float(rt.player.core_hp_max)])
 
 		# =====================================================================
 		# 4. 再开一波（证明波次循环能持续）

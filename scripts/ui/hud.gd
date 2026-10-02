@@ -198,6 +198,16 @@ func _refresh_run_line() -> void:
 		(r["pending"] as Array).size(),
 		int(r["cards"]), int(r["cards_max"]),
 		int(r["towers"]), int(r["towers_max"])]
+	# 🟢 切片8续3（可玩 MVP）：终局状态行（胜负已由 WaveDirector 判定、controller.over 置位）
+	if bool(controller.over):
+		var wd: Node = controller.wave_director
+		var won: bool = false
+		if wd != null and "run_won" in wd:
+			won = bool(wd.run_won)
+		if won:
+			_run_label.text += "   【通关胜利】"
+		else:
+			_run_label.text += "   【核心归零 · 失败】"
 
 
 ## 切片5：真实刷怪读数（**只读** `WaveDirector.snapshot()`，UI 不持有玩法状态）
