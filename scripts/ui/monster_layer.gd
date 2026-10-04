@@ -23,6 +23,7 @@ extends Node2D
 const _PathGeometry := preload("res://scripts/geo/path_geometry.gd")
 const _Geo6 := preload("res://scripts/geo/geo6.gd")
 const _ShopLayout := preload("res://scripts/ui/shop_layout.gd")
+const _TSM := preload("res://scripts/engine/time_state_machine.gd")
 
 const MARGIN := 48.0
 const C_PATH := Color(0.34, 0.30, 0.22, 1.0)
@@ -30,6 +31,9 @@ const C_PATH_DOT := Color(0.55, 0.48, 0.32, 1.0)
 const C_CORE := Color(0.35, 0.85, 0.95, 1.0)
 const C_SLOT := Color(0.45, 0.50, 0.55, 0.85)
 const C_EXPOSE := Color(0.95, 0.30, 0.25, 0.75)
+# 🔒 T1 H10 暴露度显式图标（玩法①）：决策期在空塔位标"会挨打/安全"（只标事实，SR-R2）。
+const C_EXPOSE_ICON := Color(0.98, 0.32, 0.28, 1.0)   # 暴露位 = 红 X（会挨打）
+const C_SAFE_ICON := Color(0.42, 0.82, 0.55, 1.0)     # 安全位 = 绿盾（安全）
 
 # 原型配色 / 半径（占位美术，无玩法含义）
 const C_RUSH := Color(0.98, 0.45, 0.25, 1.0)
@@ -262,6 +266,62 @@ func _forced_select_hosts(snap: Dictionary) -> Array:
 
 
 # ---------------------------------------------------------------------------
+#  🔒 T1 H10 暴露度显式图标（玩法① · GDD mechanics-tower-life-death §3 玩法①）
+#  ---------------------------------------------------------------------------
+#  目的：把"这个塔位会不会挨打"从隐含红环升级为**显式可读事实**，让玩家在放塔/保塔
+#    决策时一眼看懂 —— 兑现 V-2 定稿"把保塔决策交还玩家"（单核流保塔是 AI 做不到、
+#    玩家能做到的事，可行性由暴露度 UI 支撑）。
+#  🔴 只标事实（暴露/安全），**不标推荐**（SR-R2：不写"建议放这里"）—— 图标只回答
+#    "会/不会挨打"，不回答"该不该放"。
+#  显示时机：**决策期**（抽屉展开 = 商店/放置/安全窗，state != COMBAT）；战斗中不显示。
+#  图标语义：暴露位（d_path ≤ 9.0）= 红 X「会挨打」；安全位 = 绿盾「安全」。
+#  🔴 只标**空塔位**（已建塔的暴露度由塔身 + 红环已表达，避免叠图干扰）。
+func _draw_exposure_icons(sc: float) -> void:
+	if time_director == null or time_director.sm == null:
+		return
+	# 仅决策期（非战斗）显示；战斗中（COMBAT）保持观赏清爽
+	if int(time_director.sm.state) == _TSM.State.COMBAT:
+		return
+	# 已建塔塔位不叠加图标（塔身 + 红环已表达暴露事实）
+	var occupied: Dictionary = {}
+	if controller != null and controller.runtime != null:
+		for tw in controller.runtime.player.towers:
+			occupied[int(tw.slot)] = true
+	var icon_r := maxf(5.0, sc * 0.62)
+	for row in _slot_rows:
+		var slot: int = int(row["slot"])
+		if occupied.has(slot):
+			continue
+		var sp: Vector2 = _to_screen(row["pos"])
+		# 图标画在塔位上方（避开塔位圆环）
+		var ip := Vector2(sp.x, sp.y - maxf(11.0, sc * 1.5))
+		if bool(row["is_exposed"]):
+			_draw_cross(ip, icon_r, C_EXPOSE_ICON)     # 暴露 = 红 X（会挨打）
+		else:
+			_draw_shield(ip, icon_r, C_SAFE_ICON)      # 安全 = 绿盾
+
+
+## 画"会挨打"图标 = 红 X（两条交叉线，直观表达"此处会被攻击"）。
+func _draw_cross(c: Vector2, r: float, col: Color) -> void:
+	var d := r * 0.7
+	draw_line(Vector2(c.x - d, c.y - d), Vector2(c.x + d, c.y + d), col, maxf(1.6, r * 0.28), true)
+	draw_line(Vector2(c.x - d, c.y + d), Vector2(c.x + d, c.y - d), col, maxf(1.6, r * 0.28), true)
+
+
+## 画"安全"图标 = 绿盾（圆顶 + 方底简化盾形，直观表达"此处挨不到"）。
+func _draw_shield(c: Vector2, r: float, col: Color) -> void:
+	var top := Vector2(c.x, c.y - r * 0.75)
+	var right := Vector2(c.x + r * 0.7, c.y - r * 0.35)
+	var br := Vector2(c.x + r * 0.55, c.y + r * 0.6)
+	var bottom := Vector2(c.x, c.y + r * 0.95)
+	var bl := Vector2(c.x - r * 0.55, c.y + r * 0.6)
+	var left := Vector2(c.x - r * 0.7, c.y - r * 0.35)
+	var pts: PackedVector2Array = [top, right, br, bottom, bl, left]
+	draw_colored_polygon(pts, Color(col.r, col.g, col.b, 0.9))
+	draw_polyline(pts, col, maxf(1.2, r * 0.2), true)
+
+
+# ---------------------------------------------------------------------------
 #  绘制
 # ---------------------------------------------------------------------------
 func _draw() -> void:
@@ -288,6 +348,10 @@ func _draw() -> void:
 		draw_arc(sp, maxf(5.0, sc * 0.7), 0.0, TAU, 24, C_SLOT, maxf(1.0, sc * 0.10), true)
 		if bool(row["is_exposed"]):
 			draw_arc(sp, maxf(7.0, sc * 1.05), 0.0, TAU, 28, C_EXPOSE, maxf(1.0, sc * 0.08), true)
+
+	# ---- 🔒 T1 H10 暴露度显式图标（玩法①）：决策期在**空塔位**标"会挨打/安全" ----
+	#    只标事实（暴露/安全），不标推荐（SR-R2）；战斗中（非决策期）不显示，保持观赏清爽。
+	_draw_exposure_icons(sc)
 
 	# ---- 已建塔（I-7：按塔原型上色 + 层数刻度 + 选中/合法宿主高亮）----
 	_draw_towers(sc)

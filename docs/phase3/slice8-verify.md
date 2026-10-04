@@ -58,7 +58,7 @@
 | **H7** 槽位占用 | `强化槽 x/5 · 全局槽 y/3 · 塔位 z/6`（只读） | `slot_usage()` |
 | **H9** ΔDPS | 买下后相对增量 %（`投主塔 DPS +X%`），读 `damage_engine` 纯函数（SR-1），🔴 只给 % 不给多步预演 | `action_value` snap/apply/after/rest |
 
-🔴 **SR-R2 合规**：全部只标事实（grep 推荐/最优/best/recommend/suggest 在商店源码零命中，仅规则注释 + 命中测试变量 `best`）。SR-6：overlay 事件驱动（订阅 `shop_changed`/`run_changed`）调一次 `highlights()`，不每帧重算。H10 暴露度 🔒 T1 不做。
+🔴 **SR-R2 合规**：全部只标事实（grep 推荐/最优/best/recommend/suggest 在商店源码零命中，仅规则注释 + 命中测试变量 `best`）。SR-6：overlay 事件驱动（订阅 `shop_changed`/`run_changed`）调一次 `highlights()`，不每帧重算。H10 暴露度 ✅ 已落地（见 §1.5 遗留表 H10 行 · 方案A 显式图标，同受 SR-R2 只标事实约束）。
 
 ### 1.6 可玩 MVP 胜负结算（切片8续3 · W1→W20 完整一局）
 
@@ -243,9 +243,9 @@ FireUp 3 层 → 卸到 2 → 1 → 0（整卡销毁 + 卡册移除 + 塔键移�
 | ~~**I-7 塔位点选**~~ | ✅ **本切片落地**（D-9 单塔效果卡 2 次输入购买 + D-TB-5 默认主塔 + D-TB-6 强制点选）。 |
 | ~~**被动移除 `Destroyed`**~~ | ✅ **T1 批次落地**（Q-T4 = ① `Disabled` 中间态：塔归零 → `disabled=true` 断输出不断链、仍占塔位供 `h_j`、返还 0%、装配卡冻结；战斗内禁操作 T-C1）。 |
 | ~~**修复入口**~~ | ✅ **T1 批次落地**（Q-T4 三选一 + Q-T8 数值：`repair_tower` 修复 `ceil(0.30×累计投入)` 回满 HP 保留装配卡 · `salvage_disabled_tower` 被动拆除返还 0% · 放着不管 no-op；E-T4 永不死锁：没钱可放着/0 元拆除；E-T2 `list_disabled_towers` 合并弹窗数据）。 |
-| ~~**C2 高亮 H2-H9**~~ | ✅ **本切片落地**（H2/H3/H5/H6/H7/H9 + SR-R2 只标事实合规；H10 暴露度 🔒 T1）。 |
+| ~~**C2 高亮 H2-H9**~~ | ✅ **本切片落地**（H2/H3/H5/H6/H7/H9 + SR-R2 只标事实合规；H10 暴露度 ✅ 已落地，见遗留表 H10 行）。 |
 | ~~**可玩 MVP 胜负结算**~~ | ✅ **切片8续3 落地**（核心 HP 单一数据源 + W20 通关胜利 + 核心归零失败 + 结算覆盖层 + 重开）。 |
 | ~~**T1 仇恨真激活**~~ | ✅ **T1 批次落地**（Q-T3 = ① 机会型仇恨 `AGGRO_R=9.0`/`AGGRO_EXIT=10.8` 迟滞带：怪进圈且塔 `!disabled` → 转 `AggroTower` 停下打塔；塔死 → DPS 下降）。新建镜像 `wave_sim_aggro.gd`/`run_loop_aggro.gd`（金标本零改动）；「仇恨只改路径不改 DPS 分配」口径落地；`aggro=false` 与金标本逐位等价由单测守护。 |
 | ~~**ATTRITION 扫参（V-1）**~~ | ✅ **V-1 定稿 = 1.50**（300 局 MC 扫参，首个全判据通过点；T-A=1.81/T-B=0.46/T-C=0.0/起飞B=0.883 全过）。🔴 与 **WARMUP=2 起手保护成对定稿**（W1–2 仇恨不激活，机制 W3 起才致命；实时版 `WaveDirector.warmup_waves` + 批处理镜像 `simulate_wave_aggro` warmup_waves 对称）。扫参脚本 `tests/scan_attrition.gd`。 |
 | ~~🟡 **起飞率 A 破线（V-2 专项）**~~ | ✅ **V-2 已诊断定稿（2026-10-04，方案④）**：根因 = 单核零冗余 × 全暴露位 × 金标本 AI 不保塔 三重结构性碰撞（非数值失衡）。`tests/scan_protect_core.gd` 300 局 `protect_core` 对照：A 无保护 **0.393** / A 保主力塔 **0.583**（仍破 0.60）/ B **0.883**。处置 = 承认"单核高风险画像"为设计预期（60% 红线针对会保塔的玩家；AI 0.393 = 不保塔下限 / 0.583 = 半保塔上限，均非玩家真实水平），不动红线 / 金标本。真实可行性由暴露度 UI（玩法①）支撑。详见 GDD §4.2 V-2 定稿行。 |
-| 🟡 **H10 暴露度 UI** | 🔒 **下一批次（T1 玩法①）**：⚔会挨打/🛡安全 只标事实。数据地基 `d_path`/`is_exposed` 已随切片5 落地（`path_geometry.gd :: slot_exposure`）。V-2 定稿后，H10 是兑现"玩家主动保塔"的关键——把 AI 做不到的保塔决策交还玩家（符合 P4）。属独立 UI 接线 + 场景冒烟批次，不混入 V-2 定稿批次。 |
+| ~~🟡 **H10 暴露度 UI**~~ | ✅ **本批次落地（T1 玩法① · 方案A 显式图标）**：决策期（非 COMBAT）在**空塔位**上方标 ⚔红 X「会挨打」/ 🛡绿盾「安全」——把 V-2 定稿"把保塔决策交还玩家"落地（单核流保塔是 AI 做不到、玩家能做到的事，可行性由暴露度 UI 支撑）。实现 `monster_layer.gd :: _draw_exposure_icons/_draw_cross/_draw_shield`（新增 `_TSM` preload + `C_EXPOSE_ICON`/`C_SAFE_ICON` 配色）。🔴 SR-R2 合规：只标事实（会/不会挨打），不标推荐（该不该放）。数据地基 `d_path`/`is_exposed` 复用切片5 `path_geometry.gd :: slot_exposure`（4 暴露 / 2 安全，AC-W2 逐位守护，无新逻辑）。只标空塔位避免与塔身+红环叠图；战斗中不显示保持观赏清爽。验证：切片5 场景冒烟 22/0 全通过（真实场景树编译+运行零 SCRIPT ERROR，覆盖 `monster_layer` 全分支）。 |
