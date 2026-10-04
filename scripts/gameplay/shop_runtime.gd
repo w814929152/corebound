@@ -1128,9 +1128,11 @@ func snapshot() -> Dictionary:
 	for i in range(int(cfg["n_slots"])):
 		if by_slot.has(i):
 			var t2 = by_slot[i]
-			slots.append({"slot": i, "ctype": String(t2.ctype), "h": int(t2.h), "empty": false})
+			# 🔒 T1 修复入口 UI：暴露 disabled 状态供重决策面板红点计数（有受损塔才亮「处置受损塔」按钮）
+			slots.append({"slot": i, "ctype": String(t2.ctype), "h": int(t2.h),
+				"empty": false, "disabled": bool(t2.disabled)})
 		else:
-			slots.append({"slot": i, "ctype": "", "h": 0, "empty": true})
+			slots.append({"slot": i, "ctype": "", "h": 0, "empty": true, "disabled": false})
 		place_modes.append(placement_mode_for(i) if _placing_index >= 0 else "")
 
 	return {

@@ -29,6 +29,8 @@ const _Cfg := preload("res://scripts/engine/mvp_config.gd")
 const _TSM := preload("res://scripts/engine/time_state_machine.gd")
 const _ShopRuntime := preload("res://scripts/gameplay/shop_runtime.gd")
 const _SalvageDialog := preload("res://scripts/ui/salvage_confirm_dialog.gd")
+## 🔒 T1 修复入口：多塔处置弹窗（Disabled 塔三选一：修复/被动拆除/放着不管）
+const _DisabledTowerDialog := preload("res://scripts/ui/disabled_tower_dialog.gd")
 ## 🟢 切片8续3（可玩 MVP）：一局结算覆盖层（胜负展示 + 重开/退出）
 const _ResultOverlay := preload("res://scripts/ui/result_overlay.gd")
 
@@ -90,6 +92,9 @@ func bind_director(d: Node) -> void:
 	#  salvage_requested：切片8 拆除回收结算器 + I-9 二次确认弹窗
 	if not d.is_connected("salvage_requested", _on_salvage_requested):
 		d.salvage_requested.connect(_on_salvage_requested)
+	# 🔒 T1 修复入口：重决策面板「处置受损塔」→ 多塔处置弹窗（修复/被动拆除/放着不管）
+	if not d.is_connected("repair_requested", _on_repair_requested):
+		d.repair_requested.connect(_on_repair_requested)
 	#  I-7 塔位点选：MonsterLayer 点击塔 → runtime.select_tower
 	if not d.is_connected("tower_select_requested", _on_tower_select_requested):
 		d.tower_select_requested.connect(_on_tower_select_requested)
@@ -247,6 +252,77 @@ func _show_salvage_confirm(slot: int, prev: Dictionary) -> void:
 		_emit_shop()
 		_emit_run()
 	)
+
+
+# ---------------------------------------------------------------------------
+#  🔒 T1 修复入口（Q-T4 三选一 · E-T2 多塔列表 · E-T4 永不死锁）
+# ---------------------------------------------------------------------------
+## 「处置受损塔」按钮 → 读 list_disabled_towers() 组装多塔处置弹窗。
+func _on_repair_requested() -> void:
+	if runtime == null:
+		return
+	var rows: Array = runtime.list_disabled_towers()
+	if rows.is_empty():
+		runtime.last_error = "当前没有受损塔需要处置"
+		_emit_shop()
+		return
+	_show_repair_dialog(rows)
+
+
+## 组装多塔处置弹窗（E-T2：每座一行三选一）。
+##   🔴 每座预计算 `can_repair`（积分是否够修），供弹窗置灰「修复」按钮（E-T4）。
+##   🔴 E15：弹窗打开时世界仍 paused（dialog process_mode=ALWAYS，不解除暂停）。
+func _show_repair_dialog(rows: Array) -> void:
+	var dlg = _DisabledTowerDialog.new()
+	add_child(dlg)
+	# 组装行数据：加 can_repair 布尔（积分够不够修这一座）
+	var scrap_now := float(runtime.scrap)
+	var prepared: Array = []
+	for row in rows:
+		prepared.append({
+			"slot": int(row["slot"]),
+			"invested": float(row["invested"]),
+			"repair_cost": int(row["repair_cost"]),
+			"attach_layers": int(row["attach_layers"]),
+			"can_repair": scrap_now >= float(row["repair_cost"]),
+		})
+	# 玩家点「修复」→ 结算 + 刷新剩余受损塔列表（可能修好后列表变短/空）
+	dlg.tower_repair_requested.connect(func(slot: int) -> void:
+		var res: Dictionary = runtime.repair_tower(slot)
+		if bool(res["ok"]):
+			print("[shop_controller] 修复塔位 %d：花 %.0f 分回满 HP（保留装配卡）"
+				% [slot, float(res["cost"])])
+		else:
+			runtime.last_error = String(res["reason"])
+		_emit_shop()
+		_emit_run()
+		# 重算剩余受损塔 → 刷新弹窗（空则自动关闭）
+		dlg.refresh(_remaining_disabled_rows())
+	)
+	# 玩家点「被动拆除」→ 结算 + 刷新剩余列表
+	dlg.tower_salvage_requested.connect(func(slot: int) -> void:
+		var res: Dictionary = runtime.salvage_disabled_tower(slot)
+		if bool(res["ok"]):
+			print("[shop_controller] 被动拆除塔位 %d：销毁 %d 张卡（%d 层）· 返还 0%%"
+				% [slot, int(res["cards_destroyed"]), int(res["layers_destroyed"])])
+		else:
+			runtime.last_error = String(res["reason"])
+		_emit_shop()
+		_emit_run()
+		dlg.refresh(_remaining_disabled_rows())
+	)
+	# 「放着不管」/ 关闭 → 释放弹窗（no-op；下次安全窗仍在）
+	dlg.closed.connect(func() -> void:
+		dlg.queue_free()
+	)
+	dlg.show_towers(prepared)
+
+
+## 🔴 只读：重算当前剩余受损塔的弹窗行数据（某座修复/拆除后供 refresh 用）。
+func _remaining_disabled_rows() -> Array:
+	if runtime == null:
+		return []
+	return runtime.list_disabled_towers()
 
 
 # ---- 待放置队列 → 进入放置模式（I-8 的前半段）----

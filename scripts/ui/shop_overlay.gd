@@ -63,6 +63,7 @@ var _heavy_panel: VBoxContainer      # 重决策入口组（仅 SafeWindow 露�
 var _salvage_btn: Button
 var _discard_btn: Button
 var _detach_btn: Button
+var _repair_btn: Button              # 🔒 T1 修复入口：处置受损塔（有 disabled 塔才亮 + 红点计数）
 var _pending_label: Label
 var _pending_box: VBoxContainer
 var _place_box: VBoxContainer
@@ -221,12 +222,18 @@ func _build() -> void:
 	_discard_btn = Button.new(); _discard_btn.text = "弃卡（🟡 后续切片）"
 	_detach_btn = Button.new(); _detach_btn.text = "卸下改投（🟡 后续切片）"
 	_salvage_btn = Button.new(); _salvage_btn.text = "拆除并回收 Salvage（🟡 后续切片）"
+	# 🔒 T1 修复入口（Q-T4 三选一）：处置受损塔。有 disabled 塔才亮 + 红点计数(N)。
+	_repair_btn = Button.new(); _repair_btn.text = "处置受损塔"
 	_heavy_panel.add_child(_discard_btn)
 	_heavy_panel.add_child(_detach_btn)
 	_heavy_panel.add_child(_salvage_btn)
+	_heavy_panel.add_child(_repair_btn)
 	_salvage_btn.pressed.connect(func() -> void:
 		if director != null:
 			director.emit_signal("salvage_requested"))
+	_repair_btn.pressed.connect(func() -> void:
+		if director != null:
+			director.emit_signal("repair_requested"))
 
 	# ---- 留白撑开 ----
 	var spacer := Control.new()
@@ -373,8 +380,34 @@ func _refresh_shop() -> void:
 	_reroll_btn.disabled = not can_reroll
 	_reroll_btn.add_theme_color_override("font_color", C_TEXT if can_reroll else C_WARN)
 
+	# ---- 🔒 T1 修复入口：统计受损塔（disabled）数，更新「处置受损塔」按钮（红点计数）----
+	_refresh_repair_btn(s)
+
 	_refresh_pending(s)
 	_refresh_placement(s)
+
+
+## 🔒 T1 修复入口 UI（Q-T4 三选一 · SR-R2 只标事实）：
+##   · 统计 snapshot `slots` 里 `disabled=true` 的塔数；
+##   · 有受损塔 → 按钮显示计数（"处置受损塔 (N)"）+ 红点；无 → 文案回落"处置受损塔"。
+##   · 🔴 可否点 = 有受损塔 **且** 安全窗（heavy_on）——非安全窗一律置灰（T-C1 / E16）。
+##   · 🔴 只标事实（有几座受损），不标推荐（该修还是该拆由玩家判断）。
+func _refresh_repair_btn(s: Dictionary) -> void:
+	var n := 0
+	for row in s.get("slots", []):
+		if bool(row.get("disabled", false)):
+			n += 1
+	var heavy_on := false
+	if director != null:
+		heavy_on = (int(director.sm.clock()["drawer"]) == _TSM.Drawer.HEAVY)
+	if n > 0:
+		_repair_btn.text = "处置受损塔 (%d)" % n
+		_repair_btn.add_theme_color_override("font_color", C_WARN)   # 红点提示有待处置
+	else:
+		_repair_btn.text = "处置受损塔"
+		_repair_btn.add_theme_color_override("font_color", C_DIM)
+	# 🔴 可否点 = 有受损塔 且 安全窗（两者缺一不可）
+	_repair_btn.disabled = not (n > 0 and heavy_on)
 
 
 func _refresh_pending(s: Dictionary) -> void:
@@ -488,6 +521,8 @@ func _refresh_mode(drawer: int) -> void:
 	_discard_btn.disabled = not heavy_on
 	_detach_btn.disabled = not heavy_on
 	_salvage_btn.disabled = not heavy_on
+	# 🔒 T1 修复入口：基础置灰跟随安全窗；具体「有受损塔才亮 + 计数」在 _refresh_shop 里按 snapshot 更新
+	_repair_btn.disabled = not heavy_on
 
 
 func _on_budget_changed(left: float, budget_max: float) -> void:

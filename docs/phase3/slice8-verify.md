@@ -242,7 +242,7 @@ FireUp 3 层 → 卸到 2 → 1 → 0（整卡销毁 + 卡册移除 + 塔键移�
 |---|---|
 | ~~**I-7 塔位点选**~~ | ✅ **本切片落地**（D-9 单塔效果卡 2 次输入购买 + D-TB-5 默认主塔 + D-TB-6 强制点选）。 |
 | ~~**被动移除 `Destroyed`**~~ | ✅ **T1 批次落地**（Q-T4 = ① `Disabled` 中间态：塔归零 → `disabled=true` 断输出不断链、仍占塔位供 `h_j`、返还 0%、装配卡冻结；战斗内禁操作 T-C1）。 |
-| ~~**修复入口**~~ | ✅ **T1 批次落地**（Q-T4 三选一 + Q-T8 数值：`repair_tower` 修复 `ceil(0.30×累计投入)` 回满 HP 保留装配卡 · `salvage_disabled_tower` 被动拆除返还 0% · 放着不管 no-op；E-T4 永不死锁：没钱可放着/0 元拆除；E-T2 `list_disabled_towers` 合并弹窗数据）。 |
+| ~~**修复入口**~~ | ✅ **T1 批次落地（逻辑 + UI 弹窗）**。逻辑层：`repair_tower` 修复 `ceil(0.30×累计投入)` 回满 HP 保留装配卡 · `salvage_disabled_tower` 被动拆除返还 0% · 放着不管 no-op；E-T4 永不死锁；E-T2 `list_disabled_towers` 合并弹窗数据。UI 层（方案B 重决策面板入口）：安全窗 `_heavy_panel` 加「处置受损塔 (N)」按钮（有受损塔才亮 + 红点计数，SR-R2 只标事实）→ `repair_requested` 信号 → `ShopController._show_repair_dialog` 弹多塔处置弹窗 `disabled_tower_dialog.gd`（CanvasLayer 140 自定义 Control，每座一行三选一：修复/被动拆除/放着不管；修复按钮积分不足置灰 E-T4；处置后 `refresh` 重算剩余列表，空则自动关闭）。数据源 = `snapshot()` 的 `slots[].disabled`（AC-T1-15 守护）。验证：切片5 场景冒烟 22/0 + T1 单测 74 项（含 AC-T1-15）。 |
 | ~~**C2 高亮 H2-H9**~~ | ✅ **本切片落地**（H2/H3/H5/H6/H7/H9 + SR-R2 只标事实合规；H10 暴露度 ✅ 已落地，见遗留表 H10 行）。 |
 | ~~**可玩 MVP 胜负结算**~~ | ✅ **切片8续3 落地**（核心 HP 单一数据源 + W20 通关胜利 + 核心归零失败 + 结算覆盖层 + 重开）。 |
 | ~~**T1 仇恨真激活**~~ | ✅ **T1 批次落地**（Q-T3 = ① 机会型仇恨 `AGGRO_R=9.0`/`AGGRO_EXIT=10.8` 迟滞带：怪进圈且塔 `!disabled` → 转 `AggroTower` 停下打塔；塔死 → DPS 下降）。新建镜像 `wave_sim_aggro.gd`/`run_loop_aggro.gd`（金标本零改动）；「仇恨只改路径不改 DPS 分配」口径落地；`aggro=false` 与金标本逐位等价由单测守护。 |

@@ -11,7 +11,7 @@ extends Node
 ##    实测依据见 `docs/phase3/slice3-godot47-api-probe.log`。
 ##
 ## 后续切片要接的**意图信号**已在下方声明（骨架阶段只发不实现）：
-##   reroll_requested / buy_requested / lock_toggled / placement_confirmed / salvage_requested
+##   reroll_requested / buy_requested / lock_toggled / placement_confirmed / salvage_requested / repair_requested
 ##
 
 # 🔴 G6：headless 无 global_script_class_cache → 一律 preload
@@ -33,6 +33,9 @@ signal buy_requested(slot: int)
 signal lock_toggled(slot: int)
 signal placement_confirmed(slot: int)
 signal salvage_requested()
+## 🔒 T1 修复入口 UI（Q-T4 三选一）：安全窗重决策面板「处置受损塔」按钮 →
+##   ShopController 读 runtime.list_disabled_towers() 弹出多塔处置弹窗（修复/被动拆除/放着不管）。
+signal repair_requested()
 ## 🟡 切片8·I-7：战场塔位点选请求（MonsterLayer 点击塔 → 本信号 → ShopController 接 runtime.select_tower）
 signal tower_select_requested(slot: int)
 signal placement_cancelled()

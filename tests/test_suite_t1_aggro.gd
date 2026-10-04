@@ -409,6 +409,53 @@ func _test_disabled_noop_never_deadlock() -> void:
 
 
 # ===========================================================================
+#  AC-T1-15 · 修复入口 UI 数据源（snapshot slots.disabled 红点计数）
+#  ---------------------------------------------------------------------------
+#  H10 后续 · UI 层接修复弹窗（方案B 重决策面板入口）的数据地基：
+#  shop_runtime.snapshot() 的 `slots` 每座带 `disabled` 布尔，供 shop_overlay
+#  统计受损塔数 → 「处置受损塔 (N)」按钮红点计数（SR-R2 只标事实）。
+#  🔴 本单测守护 snapshot 的 disabled 字段正确反映塔的真实状态（金标本零改动：
+#     snapshot 是玩家路线 UI 数据，AI 路线不读）。
+# ===========================================================================
+func _test_repair_ui_snapshot_datasource() -> void:
+	_log("")
+	_log("--- [AC-T1-15] 修复入口 UI 数据源：snapshot slots.disabled 红点计数 ---")
+	# ① 单座 Disabled 塔 → 该 slot 的 disabled=true
+	var rt = _mk_rt_with_disabled_tower(0, 1, 100.0, 500.0)
+	var snap: Dictionary = rt.snapshot()
+	_check_bool("snapshot 有 slots 字段", snap.has("slots"), true)
+	var rows: Array = snap["slots"]
+	_check_bool("slots 每座带 disabled 字段", rows[0].has("disabled"), true)
+	_check_bool("受损塔 slot 0 的 disabled=true", bool(rows[0]["disabled"]), true)
+	# ② 修复后 → disabled=false（红点应消失）
+	rt.repair_tower(0)
+	var snap2: Dictionary = rt.snapshot()
+	var rows2: Array = snap2["slots"]
+	_check_bool("修复后 slot 0 的 disabled=false", bool(rows2[0]["disabled"]), false)
+	# ③ 多塔混合：一座受损 + 一座正常 → 计数 = 1（只标事实，不标推荐）
+	var rt3 = _ShopRuntime.new()
+	rt3.setup("B", 20261002)
+	rt3.player.towers = []
+	var td := _PS.make_tower(0, "Cannon", 1, {})   # 受损
+	td.invested = 100.0; td.disabled = true; td.hp = 0.0
+	td.hp_max = _MonsterData.tower_hp(1)
+	var tn := _PS.make_tower(1, "Arrow", 2, {})    # 正常
+	tn.invested = 50.0; tn.disabled = false
+	rt3.player.towers.append(td)
+	rt3.player.towers.append(tn)
+	rt3.scrap = 500.0
+	var snap3: Dictionary = rt3.snapshot()
+	var rows3: Array = snap3["slots"]
+	var n_disabled := 0
+	for r in rows3:
+		if bool(r["disabled"]):
+			n_disabled += 1
+	_check_int("多塔混合：snapshot 受损塔计数 = 1", n_disabled, 1)
+	_check_bool("slot 0（受损）disabled=true", bool(rows3[0]["disabled"]), true)
+	_check_bool("slot 1（正常）disabled=false", bool(rows3[1]["disabled"]), false)
+
+
+# ===========================================================================
 #  AC-T1-13 · V-1 定稿：ATTRITION=1.50 + 起手保护 WARMUP=2（实时↔批处理对称）
 # ===========================================================================
 func _test_v1_finalized_attrition_and_warmup() -> void:
@@ -483,6 +530,7 @@ func run_all() -> bool:
 	_test_repair_entry()
 	_test_salvage_disabled()
 	_test_disabled_noop_never_deadlock()
+	_test_repair_ui_snapshot_datasource()
 	_test_v1_finalized_attrition_and_warmup()
 	_test_v2_diagnose_protect_core()
 	_log("")
