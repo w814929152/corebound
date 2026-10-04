@@ -55,7 +55,7 @@ const DT := 0.1
 # ---------------------------------------------------------------------------
 static func simulate_wave_aggro(player, w: int, cfg: Dictionary, geo,
 		aggro_enabled: bool = true, exp: float = 0.6, attrition: float = -1.0,
-		warmup_waves: int = 0) -> Dictionary:
+		warmup_waves: int = 0, protect_core: bool = false) -> Dictionary:
 	var ms := _WaveSim.monster_stats(w, cfg)
 	var D := float(ms["D"])
 	var n := int(ms["n"])
@@ -134,7 +134,7 @@ static func simulate_wave_aggro(player, w: int, cfg: Dictionary, geo,
 		#   贴合 GDD「苟活期可感知、成型期才致命」的意图。🔴 仅扫参显式启用（可回退）。
 		if aggro_enabled and w > warmup_waves:
 			_apply_aggro(monsters, v0_, slot_positions, cfg, player, geo, dps_box,
-				_MonsterData.resolve_attrition(attrition), dis_new_box)
+				_MonsterData.resolve_attrition(attrition), dis_new_box, protect_core)
 
 		time += DT
 
@@ -186,14 +186,14 @@ static func _count_disabled(player) -> int:
 # ---------------------------------------------------------------------------
 static func _apply_aggro(monsters: Array, v0_: float, slot_positions: Array,
 		cfg: Dictionary, player, geo, dps_box: Array, attrition: float = 0.5,
-		dis_new_box: Array = [0]) -> void:
+		dis_new_box: Array = [0], protect_core: bool = false) -> void:
 	for m in monsters:
 		if float(m[0]) <= 0.0:
 			continue
 		var st: int = int(m[2])
 		if st == 0:   # Marching → 找最近未 Disabled 塔（≤ AGGRO_R）
 			var mpos: Vector2 = _monster_pos(m, v0_)
-			var slot := _nearest_exposed_tower(mpos, player, slot_positions)
+			var slot := _nearest_exposed_tower(mpos, player, slot_positions, protect_core)
 			if slot >= 0:
 				m[2] = 1
 				m[3] = slot
@@ -212,9 +212,24 @@ static func _monster_pos(m: Array, v0_: float) -> Vector2:
 
 ## 找最近的**未 Disabled** 塔（距离 ≤ AGGRO_R）。返回塔位 slot，无则 -1。
 ## 🔴 直接读 player.towers（单一数据源）→ 与实时版一致。
-static func _nearest_exposed_tower(mpos: Vector2, player, slot_positions: Array) -> int:
+## 🔒 T1 V-2 诊断（protect_core）：模拟"玩家保护主力塔"（肉盾吸引/放安全位）——
+##   当 true 时**跳过 h 最高的主力塔**（= 金标本 AI 认定的 carry 塔），怪物转而
+##   攻击副塔。这干净隔离"主力塔被打停"单一变量：不改 build/DPS，只改仇恨目标。
+##   🔴 金标本零改动：默认 false，运行时/扫参不传则行为完全不变。
+static func _nearest_exposed_tower(mpos: Vector2, player, slot_positions: Array,
+		protect_core: bool = false) -> int:
 	if player == null:
 		return -1
+	# 主力塔 = h 最高的那座（金标本 AI 的 carry 塔；单核流 A 全押这一座）
+	var core_slot := -1
+	var core_h := -1
+	if protect_core:
+		for t in player.towers:
+			if bool(t.disabled):
+				continue
+			if int(t.h) > core_h:
+				core_h = int(t.h)
+				core_slot = int(t.slot)
 	var best := -1
 	var best_d2 := _MonsterData.AGGRO_R * _MonsterData.AGGRO_R
 	for t in player.towers:
@@ -223,6 +238,8 @@ static func _nearest_exposed_tower(mpos: Vector2, player, slot_positions: Array)
 		var slot: int = int(t.slot)
 		if slot < 0 or slot >= slot_positions.size():
 			continue
+		if protect_core and slot == core_slot:
+			continue   # 保护主力塔：怪物不选它
 		var spos: Vector2 = slot_positions[slot]
 		var d2 := mpos.distance_squared_to(spos)
 		if d2 <= best_d2:

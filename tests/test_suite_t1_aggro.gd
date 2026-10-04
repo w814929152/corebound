@@ -436,6 +436,40 @@ func _test_v1_finalized_attrition_and_warmup() -> void:
 	_check("实时版 warmup_waves 默认 = WARMUP=2", float(wd_default.warmup_waves), 2.0)
 
 
+# ===========================================================================
+#  AC-T1-14 · V-2 诊断留档：protect_core 主力塔保护干预（金标本零改动）
+#  ---------------------------------------------------------------------------
+#  V-2 定稿（2026-10-04，方案④）的根因诊断干预：protect_core=true 时怪物跳过
+#  h 最高的主力塔、专打副塔。本单测守护两件事：
+#    ① 干预生效：单塔场景 protect_core=true → 唯一塔（=主力塔）被跳过 → 不死；
+#       protect_core=false → 暴露塔被打死。
+#    ② 金标本零改动：protect_core 默认 false → 行为与不传完全一致（等价守护）。
+#  🔴 这是诊断工具的存在性 + 零改动守护，不断言"起飞率"（那走 scan_protect_core.gd）。
+# ===========================================================================
+func _test_v2_diagnose_protect_core() -> void:
+	_log("")
+	_log("--- [AC-T1-14] V-2 诊断：protect_core 主力塔保护干预（金标本零改动）---")
+	var geo = _Geo6.build()
+	var cfg = _Cfg.cfg_of("B")
+	# ① 默认 false == 不传（等价守护）：暴露位 S0 单塔，warmup=0，aggro=true → 塔死
+	var p0 = _mk_player_with_tower(0, "Arrow", 1)   # h=1 暴露位 S0
+	var off := _WaveSimAggro.simulate_wave_aggro(p0, 1, cfg, geo, true, 0.6, -1.0, 0, false)
+	_check("protect_core=false（默认）：暴露位 S0 塔被打死（towers_disabled=1）",
+		float(off["towers_disabled"]), 1.0)
+	# ② protect_core=true：唯一塔 = 主力塔被跳过 → 无目标 → 塔不死
+	var p1 = _mk_player_with_tower(0, "Arrow", 1)
+	var on := _WaveSimAggro.simulate_wave_aggro(p1, 1, cfg, geo, true, 0.6, -1.0, 0, true)
+	_check("protect_core=true：主力塔被跳过 → 无目标 → S0 塔不死（towers_disabled=0）",
+		float(on["towers_disabled"]), 0.0)
+	_check_bool("protect_core=true：S0 塔未进入 Disabled",
+		bool(p1.towers[0].disabled), false)
+	# ③ 金标本零改动：默认参数（不传 protect_core）与显式 false 逐位一致
+	var p2 = _mk_player_with_tower(0, "Arrow", 1)
+	var default := _WaveSimAggro.simulate_wave_aggro(p2, 1, cfg, geo, true)
+	_check("金标本零改动：默认参数 == 显式 protect_core=false（towers_disabled 一致）",
+		float(default["towers_disabled"]), float(off["towers_disabled"]))
+
+
 func run_all() -> bool:
 	_test_tower_hp_derivation()
 	_test_aggro_constants()
@@ -450,6 +484,7 @@ func run_all() -> bool:
 	_test_salvage_disabled()
 	_test_disabled_noop_never_deadlock()
 	_test_v1_finalized_attrition_and_warmup()
+	_test_v2_diagnose_protect_core()
 	_log("")
 	_log("T1 仇恨 汇总：通过 %d 项 / 失败 %d 项" % [_pass, _fail])
 	return _fail == 0
