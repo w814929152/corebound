@@ -55,7 +55,11 @@ const DT := 0.1
 # ---------------------------------------------------------------------------
 static func simulate_wave_aggro(player, w: int, cfg: Dictionary, geo,
 		aggro_enabled: bool = true, exp: float = 0.6, attrition: float = -1.0,
-		warmup_waves: int = 0, protect_core: bool = false) -> Dictionary:
+		warmup_waves: int = 0, protect_core: bool = false, bulwark: bool = false) -> Dictionary:
+	# 🔒 T1 肉盾塔诊断（bulwark）：模拟"玩家把主力塔放安全位"（理想肉盾策略）。
+	#   必须在塔 HP 初始化 / 战斗结算**之前**重定位 → dps_only 重算读到新 slot 的 E。
+	if bulwark and player != null and w > warmup_waves:
+		_relocate_carry_to_safe(player, geo)
 	var ms := _WaveSim.monster_stats(w, cfg)
 	var D := float(ms["D"])
 	var n := int(ms["n"])
@@ -147,6 +151,78 @@ static func simulate_wave_aggro(player, w: int, cfg: Dictionary, geo,
 		"towers_disabled": _count_disabled(player),
 		"dis_new": int(dis_new_box[0]),
 	}
+
+
+# ---------------------------------------------------------------------------
+# 🔒 T1 肉盾塔诊断（bulwark）：把主力塔重定位到安全位（模拟"玩家理想保塔"）
+# ---------------------------------------------------------------------------
+## 把 h 最高的主力塔移到**安全位**（d_path > AGGRO_R，打不到），量化"保命 vs 降 E/DPS"
+##   的净效果。若目标安全位已有塔，则把它换到主力塔**旧的暴露位**充当肉盾（扛伤）。
+##   🔴 纯 slot 交换：塔数、h 值、装配卡都不变，只改各塔落位 → dps_only 重算读到新 E。
+##   🔴 与 protect_core 的差异：protect_core = 主力塔隐身（怪物跳过它，塔仍在暴露位、
+##      E 不变）；bulwark = 主力塔**真挪到安全位**（E 会变，因为安全位 S4/S5 度 3、
+##      非枢纽 → 共鸣下降），更贴近玩家真实保塔操作，代价是 DPS 下降。
+##   🔴 金标本零改动：默认不启用（bulwark=false），运行时/扫参不传则行为完全不变。
+##   🔴 仅在 w > warmup_waves 时调用（与仇恨激活同门槛，起手保护期不重定位）。
+static func _relocate_carry_to_safe(player, geo) -> void:
+	if player == null or geo == null:
+		return
+	var slots: Array = []
+	for p in geo.slots:
+		slots.append(p)
+	# 找主力塔 = h 最高的**未 Disabled** 塔（金标本 AI 认定的 carry；单核流 A 全押这一座）。
+	#   🔴 跳过已 Disabled 塔：死塔无需保（保它无意义），且避免把活塔换到死塔位。
+	var carry_idx := -1
+	var carry_h := -1
+	for i in range(player.towers.size()):
+		var t = player.towers[i]
+		if bool(t.disabled):
+			continue
+		if int(t.h) > carry_h:
+			carry_h = int(t.h)
+			carry_idx = i
+	if carry_idx < 0:
+		return
+	var carry_slot := int(player.towers[carry_idx].slot)
+	# 安全位 = d_path > AGGRO_R（S4/S5）；暴露位 = ≤ AGGRO_R
+	var rows: Array = _PathGeometry.slot_exposure(slots, _MonsterData.AGGRO_R)
+	var safe_slots: Array = []
+	for r in rows:
+		if not bool(r["is_exposed"]):
+			safe_slots.append(int(r["slot"]))
+	# 主力塔已在安全位 → 无需动（玩家已保塔）
+	if safe_slots.has(carry_slot):
+		return
+	# 目标安全位：优先未被占的；否则占一个安全位并把它的塔换到 carry 旧暴露位（肉盾）
+	var target_safe := -1
+	for s in safe_slots:
+		if not _slot_has_tower(player, s):
+			target_safe = s
+			break
+	if target_safe < 0:
+		target_safe = int(safe_slots[0])   # 全被占 → 取第一个安全位（交换）
+	var occupant_idx := _tower_index_at(player, target_safe)
+	if occupant_idx >= 0:
+		# 交换：安全位的塔 → carry 旧的暴露位（充当肉盾，扛伤）
+		player.towers[occupant_idx].slot = carry_slot
+	# 主力塔 → 安全位
+	player.towers[carry_idx].slot = target_safe
+
+
+## 某塔位是否有塔。
+static func _slot_has_tower(player, slot: int) -> bool:
+	for t in player.towers:
+		if int(t.slot) == slot:
+			return true
+	return false
+
+
+## 取某塔位上的塔在 player.towers 的下标，无则 -1。
+static func _tower_index_at(player, slot: int) -> int:
+	for i in range(player.towers.size()):
+		if int(player.towers[i].slot) == slot:
+			return i
+	return -1
 
 
 # ---------------------------------------------------------------------------

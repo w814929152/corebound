@@ -517,6 +517,66 @@ func _test_v2_diagnose_protect_core() -> void:
 		float(default["towers_disabled"]), float(off["towers_disabled"]))
 
 
+# ===========================================================================
+#  AC-T1-16 · 肉盾塔诊断（bulwark）：主力塔重定位到安全位（金标本零改动）
+#  ---------------------------------------------------------------------------
+#  V-2 后续 · 肉盾塔玩法② 定稿（2026-10-07，涌现策略 + ①理想肉盾建模）的诊断干预：
+#  bulwark=true 时把 h 最高的**未 Disabled** 主力塔移到安全位（d_path > AGGRO_R），
+#  原安全位的塔换到主力塔旧暴露位充当肉盾。本单测守护两件事：
+#    ① 重定位生效：主力塔从暴露位 S0 移到安全位（S4/S5）；
+#    ② 金标本零改动：bulwark 默认 false → 塔位与不传完全一致（等价守护）。
+#  🔴 这是诊断工具的存在性 + 零改动守护，不断言"起飞率"（那走 scan_bulwark.gd）。
+# ===========================================================================
+func _test_bulwark_relocate() -> void:
+	_log("")
+	_log("--- [AC-T1-16] 肉盾塔诊断：bulwark 主力塔重定位到安全位（金标本零改动）---")
+	var geo = _Geo6.build()
+	var cfg = _Cfg.cfg_of("A")
+	# 双塔：主力塔 h=50（超高 HP 打不死，确保重定位干净执行）在暴露位 S0，副塔 h=1 在安全位 S4
+	var mk := func() -> Variant:
+		var p = _SimPlayer.new_player("A", cfg, geo)
+		p.towers = []
+		var tc = _PS.make_tower(0, "Cannon", 50, {})  # 主力塔（h 最高，暴露位 S0；h=50 → HP≈1122 打不死）
+		tc.invested = 100.0
+		var tn = _PS.make_tower(4, "Arrow", 1, {})    # 副塔（安全位 S4）
+		tn.invested = 20.0
+		p.towers.append(tc)
+		p.towers.append(tn)
+		return p
+	# ① bulwark=true：主力塔应移到安全位（S4 或 S5），S4 原副塔换到 S0（肉盾）
+	var pb = mk.call()
+	_WaveSimAggro.simulate_wave_aggro(pb, 3, cfg, geo, true, 0.6, -1.0, 0, false, true)
+	var carry_slot := -1
+	var carry_h := -1
+	for t in pb.towers:
+		if int(t.h) > carry_h:
+			carry_h = int(t.h)
+			carry_slot = int(t.slot)
+	_check("bulwark：主力塔（h 最高）已移到安全位（S4/S5）",
+		(carry_slot == 4 or carry_slot == 5), true)
+	# ② 金标本零改动：bulwark=false（默认）→ 主力塔仍在暴露位 S0
+	var pn = mk.call()
+	_WaveSimAggro.simulate_wave_aggro(pn, 3, cfg, geo, true, 0.6, -1.0, 0, false, false)
+	var carry_slot_n := -1
+	var carry_h_n := -1
+	for t in pn.towers:
+		if int(t.h) > carry_h_n:
+			carry_h_n = int(t.h)
+			carry_slot_n = int(t.slot)
+	_check("金标本零改动：bulwark=false 主力塔仍在暴露位 S0", carry_slot_n, 0)
+	# ③ 金标本零改动：默认参数（不传 bulwark）== 显式 false（塔位一致）
+	var pd = mk.call()
+	_WaveSimAggro.simulate_wave_aggro(pd, 3, cfg, geo, true)
+	var carry_slot_d := -1
+	var carry_h_d := -1
+	for t in pd.towers:
+		if int(t.h) > carry_h_d:
+			carry_h_d = int(t.h)
+			carry_slot_d = int(t.slot)
+	_check("金标本零改动：默认参数 == 显式 bulwark=false（主力塔位一致）",
+		carry_slot_d, carry_slot_n)
+
+
 func run_all() -> bool:
 	_test_tower_hp_derivation()
 	_test_aggro_constants()
@@ -533,6 +593,7 @@ func run_all() -> bool:
 	_test_repair_ui_snapshot_datasource()
 	_test_v1_finalized_attrition_and_warmup()
 	_test_v2_diagnose_protect_core()
+	_test_bulwark_relocate()
 	_log("")
 	_log("T1 仇恨 汇总：通过 %d 项 / 失败 %d 项" % [_pass, _fail])
 	return _fail == 0

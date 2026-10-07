@@ -24,6 +24,7 @@ const _PathGeometry := preload("res://scripts/geo/path_geometry.gd")
 const _Geo6 := preload("res://scripts/geo/geo6.gd")
 const _ShopLayout := preload("res://scripts/ui/shop_layout.gd")
 const _TSM := preload("res://scripts/engine/time_state_machine.gd")
+const _WD := preload("res://scripts/gameplay/wave_director.gd")   # 仅取 MState 枚举（AGGRO_TOWER）
 
 const MARGIN := 48.0
 const C_PATH := Color(0.34, 0.30, 0.22, 1.0)
@@ -34,6 +35,9 @@ const C_EXPOSE := Color(0.95, 0.30, 0.25, 0.75)
 # 🔒 T1 H10 暴露度显式图标（玩法①）：决策期在空塔位标"会挨打/安全"（只标事实，SR-R2）。
 const C_EXPOSE_ICON := Color(0.98, 0.32, 0.28, 1.0)   # 暴露位 = 红 X（会挨打）
 const C_SAFE_ICON := Color(0.42, 0.82, 0.55, 1.0)     # 安全位 = 绿盾（安全）
+# 🔒 T1 肉盾塔可读性（R-T4 余光预警）：战斗态标"正在被仇恨锁定挨打的塔" = 橙色环。
+#   与 H10 决策期暴露度图标互补：决策期看"会不会挨打"（红X/绿盾），战斗期看"正在挨打"。
+const C_UNDER_ATTACK := Color(1.0, 0.55, 0.20, 0.95)  # 正在挨打 = 橙环（肉盾塔在扛伤）
 
 # 原型配色 / 半径（占位美术，无玩法含义）
 const C_RUSH := Color(0.98, 0.45, 0.25, 1.0)
@@ -321,6 +325,37 @@ func _draw_shield(c: Vector2, r: float, col: Color) -> void:
 	draw_polyline(pts, col, maxf(1.2, r * 0.2), true)
 
 
+## 🔒 T1 肉盾塔可读性（R-T4 余光预警 · GDD mechanics-tower-life-death §5 R-T4）：
+##   战斗态（有怪锁定塔时）在**正在被仇恨锁定挨打的塔**上标橙环——让玩家余光看懂
+##   "哪座塔正在替后排扛伤"（肉盾塔的作用可视化）。
+##   🔴 只标事实（正在挨打），不标推荐（SR-R2：不写"该保这座"）。
+##   🔴 数据源 = WaveDirector.snapshot() 里 state==AGGRO_TOWER 的怪的 target_slot
+##      （怪物锁定塔 → 停下打它，见 wave_director._apply_aggro）。
+##   🔴 仅战斗态显示（决策期无怪锁定，_snap 里无 AGGRO_TOWER 怪 → 自然不画）。
+##   🔴 MVP 金标本口径（tower_aggro_enabled=false）下无怪进 AGGRO_TOWER → 本函数零绘制，
+##      对切片5 冒烟/金标本等价零扰动。
+func _draw_under_attack(sc: float) -> void:
+	if _snap.is_empty():
+		return
+	# 收集正在被仇恨锁定的塔位（有怪 state==AGGRO_TOWER 且 target_slot 有效）
+	var attacked: Dictionary = {}
+	var ms: Array = _snap.get("monsters", [])
+	for m in ms:
+		if int(m.get("state", 0)) == _WD.MState.AGGRO_TOWER:
+			var ts: int = int(m.get("target_slot", -1))
+			if ts >= 0:
+				attacked[ts] = true
+	if attacked.is_empty():
+		return
+	var ring_r := maxf(8.0, sc * 1.15)
+	for slot in attacked:
+		if slot < 0 or slot >= _Geo6.SLOTS6.size():
+			continue
+		var sp := _to_screen(_Geo6.SLOTS6[slot])
+		# 橙色攻击环（在塔身之上，醒目但不遮挡塔体损伤演出）
+		draw_arc(sp, ring_r, 0.0, TAU, 32, C_UNDER_ATTACK, maxf(2.0, sc * 0.24), true)
+
+
 # ---------------------------------------------------------------------------
 #  绘制
 # ---------------------------------------------------------------------------
@@ -352,6 +387,10 @@ func _draw() -> void:
 	# ---- 🔒 T1 H10 暴露度显式图标（玩法①）：决策期在**空塔位**标"会挨打/安全" ----
 	#    只标事实（暴露/安全），不标推荐（SR-R2）；战斗中（非决策期）不显示，保持观赏清爽。
 	_draw_exposure_icons(sc)
+
+	# ---- 🔒 T1 肉盾塔可读性（R-T4）：战斗态在**被仇恨锁定挨打的塔**上标橙环 ----
+	#    只标事实（正在挨打），不标推荐（SR-R2）；仅战斗态（有怪锁定塔时）显示。
+	_draw_under_attack(sc)
 
 	# ---- 已建塔（I-7：按塔原型上色 + 层数刻度 + 选中/合法宿主高亮）----
 	_draw_towers(sc)
