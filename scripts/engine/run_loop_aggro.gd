@@ -36,7 +36,8 @@ const _MonsterData := preload("res://scripts/data/monster_data.gd")
 # ---------------------------------------------------------------------------
 static func run(path: String, cfg: Dictionary, max_wave: int = 20, geo = null, rng = null,
 		aggro_enabled: bool = true, exp: float = 0.6, attrition: float = -1.0,
-		warmup_waves: int = 0, protect_core: bool = false, bulwark: bool = false) -> Dictionary:
+		warmup_waves: int = 0, protect_core: bool = false, bulwark: bool = false,
+		sapper: bool = false) -> Dictionary:
 	var c: Dictionary = cfg.duplicate(true)
 	if geo == null:
 		geo = _Geo6.build() if int(c["n_slots"]) >= 6 else _Geo6.build4()
@@ -48,7 +49,7 @@ static func run(path: String, cfg: Dictionary, max_wave: int = 20, geo = null, r
 	var cum_rerolls := 0
 
 	for w in range(1, max_wave + 1):
-		var res := _WaveSimAggro.simulate_wave_aggro(player, w, c, geo, aggro_enabled, exp, attrition, warmup_waves, protect_core, bulwark)
+		var res := _WaveSimAggro.simulate_wave_aggro(player, w, c, geo, aggro_enabled, exp, attrition, warmup_waves, protect_core, bulwark, sapper)
 		core_hp -= float(res["core_damage"])
 		var income := float(res["scrap_earned"]) * (1.0 + float(player.income_mult))
 		cum += income
@@ -91,14 +92,15 @@ static func run(path: String, cfg: Dictionary, max_wave: int = 20, geo = null, r
 static func takeoff_rate(path: String, cfg: Dictionary, runs: int = 300,
 		max_wave: int = 20, actions: int = 12, rng = null,
 		aggro_enabled: bool = true, exp: float = 0.6, attrition: float = -1.0,
-		warmup_waves: int = 0, protect_core: bool = false, bulwark: bool = false) -> Dictionary:
+		warmup_waves: int = 0, protect_core: bool = false, bulwark: bool = false,
+		sapper: bool = false) -> Dictionary:
 	var takeoffs := 0
 	var survives := 0
 	var hits: Array = []
 	for _i in range(runs):
 		var cx: Dictionary = cfg.duplicate(true)
 		cx["max_actions"] = actions
-		var out := run(path, cx, max_wave, null, rng, aggro_enabled, exp, attrition, warmup_waves, protect_core, bulwark)
+		var out := run(path, cx, max_wave, null, rng, aggro_enabled, exp, attrition, warmup_waves, protect_core, bulwark, sapper)
 		var rows: Array = out["rows"]
 		var alive := (not rows.is_empty()) and float(rows[-1]["core_hp"]) > 0.0
 		if alive:

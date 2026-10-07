@@ -402,7 +402,13 @@ func _apply_aggro() -> void:
 			continue
 		match m.state:
 			MState.MARCHING:
-				var slot := _nearest_exposed_tower(m, v0x)
+				# 🔒 T1 ⑤ Sapper：出生即锁最近塔，无视 AGGRO_R 距离门槛（直奔最近的塔）。
+				#   普通怪走 ≤ AGGRO_R 机会型门槛。
+				var slot := -1
+				if m.sapper:
+					slot = _nearest_tower_any(m, v0x)
+				else:
+					slot = _nearest_exposed_tower(m, v0x)
 				if slot >= 0:
 					m.state = MState.AGGRO_TOWER
 					m.target_slot = slot
@@ -432,6 +438,25 @@ func _nearest_exposed_tower(m, v0x: float) -> int:
 	return best
 
 
+## 🔒 T1 ⑤ Sapper：找全局最近的**未 Disabled** 塔（**无视 AGGRO_R** 距离门槛）。
+##   Sapper「直奔最近的塔」→ 不论远近都锁。与批处理镜像 _nearest_tower_any 逐位对齐。
+func _nearest_tower_any(m, v0x: float) -> int:
+	if player == null:
+		return -1
+	var mpos: Vector2 = m.pos(v0x)
+	var best := -1
+	var best_d := INF
+	for t in player.towers:
+		if bool(t.disabled):
+			continue
+		var spos: Vector2 = _tower_pos(t)
+		var d := mpos.distance_squared_to(spos)
+		if d < best_d:
+			best_d = d
+			best = int(t.slot)
+	return best
+
+
 ## AggroTower 怪的目标塔是否仍合法（存在 + 未 Disabled + 在迟滞带内）。
 func _aggro_target_valid(m, v0x: float) -> bool:
 	if player == null or m.target_slot < 0:
@@ -439,6 +464,9 @@ func _aggro_target_valid(m, v0x: float) -> bool:
 	var t = _tower_by_slot(m.target_slot)
 	if t == null or bool(t.disabled):
 		return false
+	# 🔒 T1 ⑤ Sapper：锁定后**不因距离退出**（直奔最近的塔，committed 攻击）。
+	if m.sapper:
+		return true
 	var mpos: Vector2 = m.pos(v0x)
 	var spos: Vector2 = _tower_pos(t)
 	# 🔴 用 AGGRO_EXIT（10.8 = 9.0×1.2）作退出阈值（迟滞带，防边界抖动）
@@ -451,7 +479,9 @@ func _damage_tower(m) -> void:
 	if t == null or bool(t.disabled):
 		return
 	# 对塔 DPS = ATTRITION × HP0 × m_dps(proto)（V-1 复合比口径；attrition_override>=0 时覆盖）
-	var dmg := _MonsterData.resolve_attrition(attrition_override) * _MonsterData.HP0 * float(m.m_dps) * _WaveSim.DT
+	# 🔒 T1 ⑤ Sapper：对塔伤害 ×3（m.sapper 标志）。
+	var mdps: float = float(m.m_dps) * (_MonsterData.SAPPER_DMG_MULT if m.sapper else 1.0)
+	var dmg := _MonsterData.resolve_attrition(attrition_override) * _MonsterData.HP0 * mdps * _WaveSim.DT
 	t.hp = float(t.hp) - dmg
 	if float(t.hp) <= 0.0:
 		t.hp = 0.0
@@ -497,6 +527,18 @@ func _spawn_one(idx: int) -> void:
 	var tr := t_reach / mspd
 	var m = _Monster.new()
 	m.setup(idx, proto, elite, hp, mspd, tr)
+	# 🔒 T1 ⑤ Sapper：Elite 波（每5波）里沿波次均匀铺开的精英怪 = Sapper（锁塔 ×3 增伤）。
+	#   与批处理镜像 WaveSimAggro._build_sapper_flags 逐位对齐（同一 elite_indices 算法）。
+	#   🔴 金标本零改动：elite_waves_enabled=false → 不标记任何 sapper。
+	#   🔴 不依赖 `elite`（_elite_flags 在 MVP prototype_split_enabled=false 下恒 false）——
+	#      Sapper 由 elite_waves_enabled 独立驱动，与批处理镜像同口径（直接判 is_elite_wave）。
+	if elite_waves_enabled and _MonsterData.is_elite_wave(w):
+		var n_e := _MonsterData.elite_count(w, n)
+		var eidx: Array = _MonsterData.elite_indices(n, n_e)
+		for e in eidx:
+			if int(e) == idx:
+				m.sapper = true
+				break
 	monsters.append(m)
 	emit_signal("monster_spawned", m)
 
@@ -589,6 +631,7 @@ func snapshot() -> Dictionary:
 			"pos": m.pos(v0_),
 			"state": int(m.state),
 			"target_slot": int(m.target_slot),
+			"sapper": bool(m.sapper),   # 🔒 T1 ⑤ Sapper：供渲染层做 Elite 锁塔怪标识（MVP 恒 false）
 		})
 	# 🔒 T1：每座塔的运行时耐久 + Disabled 态（供渲染层做塔体损伤演出，T-C2 余光编码）
 	var towers: Array = []

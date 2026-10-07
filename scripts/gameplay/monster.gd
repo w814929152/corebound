@@ -45,6 +45,10 @@ var t_remain_max: float = 10.0
 
 var state: int = State.MARCHING
 var target_slot: int = -1   # 当前攻击的塔位（-1 = 无）
+## 🔒 T1 ⑤ Sapper 精英：Elite 波（每5波）里的一种精英怪 —— **无视距离直奔最近的塔
+##   并锁定攻击、对塔伤害 ×3**（GDD Q-T11 顺序3「锁定增伤流」）。由 elite_waves_enabled
+##   诊断开关控制，MVP 恒 false（金标本零改动）。
+var sapper: bool = false
 
 
 func setup(p_index: int, p_proto: String, p_elite: bool, p_hp: float, p_m_spd: float, p_t_remain: float) -> void:
@@ -59,6 +63,7 @@ func setup(p_index: int, p_proto: String, p_elite: bool, p_hp: float, p_m_spd: f
 	t_remain_max = float(p_t_remain)
 	state = State.MARCHING
 	target_slot = -1
+	sapper = false
 
 
 ## 当前弧长 s（派生量，供渲染 / 仇恨判定用）

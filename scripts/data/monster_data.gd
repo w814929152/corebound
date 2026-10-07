@@ -43,6 +43,12 @@ const ELITE_SHARE := 0.10           # n_e = max(2, round(0.10·N))
 const ELITE_MIN := 2
 const ELITE_HP_MULT := 2.5          # m_hp_elite（浓缩口径：Elite 单只 = 2.5 × HP_unit）
 
+## 🔒 T1 ⑤ Sapper 精英（Q-T11 顺序3「锁定增伤流」）：Sapper 对塔伤害倍率 ×3。
+##   Sapper = Elite 波（每5波）里的精英怪 —— 无视距离直奔最近的塔并锁定攻击。
+##   对塔 DPS = `ATTRITION × HP0 × m_dps × SAPPER_DMG_MULT`。
+##   🔴 金标本零改动：Sapper 由 elite_waves_enabled 诊断开关控制，MVP 恒 false → 本值不消费。
+const SAPPER_DMG_MULT := 3.0        # Sapper 对塔伤害 ×3（塔杀手）
+
 # ---- GDD §2.6 仇恨（🔒 T1 生效；MVP 骨架登记，不进判定）----
 const AGGRO_R := 9.0                # R1 转向半径（水平面 XZ，不判 Y）
 const AGGRO_TICK := 0.10            # R3 判定频率（与 sim 真身 dt=0.1 对齐）

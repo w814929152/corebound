@@ -577,6 +577,154 @@ func _test_bulwark_relocate() -> void:
 		carry_slot_d, carry_slot_n)
 
 
+# ===========================================================================
+#  AC-T1-17 · ⑤ Sapper 精英（实时版）：Elite 波锁塔 ×3、无视距离、金标本零改动
+#  ---------------------------------------------------------------------------
+#  Sapper = Elite 波（每5波）里沿波次均匀铺开的精英怪：无视 AGGRO_R 距离门槛
+#  直奔最近的塔并锁定攻击、对塔伤害 ×3。由 elite_waves_enabled 诊断开关控制，
+#  MVP 恒 false（金标本零改动）。
+# ===========================================================================
+func _mk_director_sapper(player, aggro: bool, elite_on: bool):
+	var cfg = _Cfg.cfg_of("B")
+	var geo = _Geo6.build()
+	var wd = _WaveDirector.new()
+	wd.tower_aggro_enabled = aggro
+	wd.elite_waves_enabled = elite_on
+	wd.warmup_waves = 0    # 绕过起手保护，测能力本身
+	wd.setup(player, cfg, geo)
+	return wd
+
+
+func _snap_monster_is_sapper(snap: Dictionary, slot: int) -> bool:
+	for m in snap["monsters"]:
+		if bool(m.get("sapper", false)) and int(m["target_slot"]) == slot:
+			return true
+	return false
+
+
+func _snap_any_sapper(snap: Dictionary) -> bool:
+	for m in snap["monsters"]:
+		if bool(m.get("sapper", false)):
+			return true
+	return false
+
+
+## 推进 wave 若干子步直到出现 sapper 怪（或跑完），返回是否出现过。
+## 🔴 必须真正推进时间让怪出生（snapshot 在 t=0 时 monsters=[] 测不到）。
+func _advance_until_sapper(wd, max_steps: int = 400) -> bool:
+	for _i in range(max_steps):
+		wd.advance(_WaveSim.DT)
+		if _snap_any_sapper(wd.snapshot()):
+			return true
+	return false
+
+
+func _test_sapper_realtime() -> void:
+	_log("")
+	_log("--- [AC-T1-17] ⑤ Sapper 精英（实时版）：Elite 波锁塔×3、无视距离、金标本零改动 ---")
+	# ① 金标本零改动：elite_waves_enabled=false → W5 全程无任何 sapper 怪（推进整波验证）
+	var p0 = _mk_player_with_tower(0, "Arrow", 1)
+	var wd0 = _mk_director_sapper(p0, true, false)
+	wd0.start_wave(5)
+	wd0.run_to_end()
+	_check_bool("金标本零改动：elite_waves_enabled=false → W5 全程无 sapper 怪",
+		_snap_any_sapper(wd0.snapshot()), false)
+	# ② 默认参数（不传 elite_waves_enabled）== 无 sapper（金标本零改动）
+	var p0b = _mk_player_with_tower(0, "Arrow", 1)
+	var wd0b = _mk_director(p0b, true)   # 未开 elite_waves_enabled
+	wd0b.start_wave(5)
+	wd0b.run_to_end()
+	_check_bool("金标本零改动：默认 elite_waves_enabled=false → W5 全程无 sapper 怪",
+		_snap_any_sapper(wd0b.snapshot()), false)
+	# ③ Sapper 出生：elite_waves_enabled=true → W5（Elite 波）推进后至少出现一只 sapper 怪。
+	#    无塔 → 怪不被塔击杀、sapper 标志可被观测（march 到核心漏掉）。
+	var p1 = _mk_player_with_tower(0, "Arrow", 1)
+	var wd1 = _mk_director_sapper(p1, true, true)
+	wd1.start_wave(5)
+	# 无塔配置：移除塔，让 sapper 怪存活以便观测（塔会击杀 sapper）
+	wd1.player.towers = []
+	_check_bool("Elite 波 W5：推进后至少出现一只 sapper 怪",
+		_advance_until_sapper(wd1), true)
+	# ④ Sapper 无视距离锁塔：唯一塔放在**安全位 S4**（d_path > AGGRO_R=9.0，普通怪够不到），
+	#    sapper 怪仍应锁定它（直奔最近的塔，无视距离门槛）。塔用 h=100 高血扛住，避免被打死
+	#    导致目标失效切换。
+	var p2 = _mk_player_with_tower(4, "Arrow", 100)
+	var wd2 = _mk_director_sapper(p2, true, true)
+	wd2.start_wave(5)
+	var found_lock := false
+	for _i in range(400):
+		wd2.advance(_WaveSim.DT)
+		if _snap_monster_is_sapper(wd2.snapshot(), 4):
+			found_lock = true
+			break
+	_check_bool("Sapper 无视距离：安全位 S4 的塔被 sapper 锁定（普通怪够不到）",
+		found_lock, true)
+	# ⑤ ×3 增伤效果：单座暴露位 h=1 塔，有 sapper 时塔死更快（towers_disabled 更多）。
+	#    对照：同 W5 无 sapper（elite off）vs 有 sapper。
+	var p3 = _mk_player_with_tower(0, "Arrow", 1)
+	var wd3 = _mk_director_sapper(p3, true, true)
+	wd3.start_wave(5)
+	wd3.run_to_end()
+	var td_sapper := int(wd3.last_result.get("towers_disabled", 0))
+	var p4 = _mk_player_with_tower(0, "Arrow", 1)
+	var wd4 = _mk_director_sapper(p4, true, false)
+	wd4.start_wave(5)
+	wd4.run_to_end()
+	var td_plain := int(wd4.last_result.get("towers_disabled", 0))
+	_check_bool("×3 增伤：有 sapper 时暴露位塔死数 ≥ 无 sapper（×3 加速打死）",
+		td_sapper >= td_plain, true)
+	# ⑥ 🔴 金标本逐位等价（最强守护）：Elite 波 W5 sapper=true 的**实时版 towers_disabled
+	#    == 批处理镜像**。实时版与批处理镜像走同一 elite_indices 算法标记 sapper → 塔死数逐位相同。
+	var p5 = _mk_player_with_tower(0, "Arrow", 1)
+	var wd5 = _mk_director_sapper(p5, true, true)
+	wd5.warmup_waves = 2    # 用定稿起手保护（W5 > WARMUP=2 仇恨生效），贴近真实运行
+	wd5.start_wave(5)
+	wd5.run_to_end()
+	var td_rt := int(wd5.last_result.get("towers_disabled", 0))
+	var p6 = _mk_player_with_tower(0, "Arrow", 1)
+	var b5 := _WaveSimAggro.simulate_wave_aggro(p6, 5, _Cfg.cfg_of("B"), _Geo6.build(),
+		true, 0.6, -1.0, 2, false, false, true)
+	_check("金标本逐位等价：Elite 波 W5 sapper=true 塔死数 实时==批处理",
+		float(td_rt), float(b5["towers_disabled"]))
+
+
+# ===========================================================================
+#  AC-T1-18 · ⑤ Sapper 精英（批处理镜像）：逐位对齐 + 金标本零改动
+#  ---------------------------------------------------------------------------
+#  镜像实时版：simulate_wave_aggro 的 sapper 参数贯穿，仅 Elite 波生效。
+#  默认 false 退化为金标本口径（无 sapper、塔死不因 ×3 放大）。
+# ===========================================================================
+func _test_sapper_batch() -> void:
+	_log("")
+	_log("--- [AC-T1-18] ⑤ Sapper 精英（批处理镜像）：Elite 波锁塔×3 + 金标本零改动 ---")
+	var geo = _Geo6.build()
+	var cfg = _Cfg.cfg_of("B")
+	# ① 金标本零改动：默认参数（不传 sapper）→ W5 塔死与显式 sapper=false 一致
+	var pn1 = _mk_player_with_tower(0, "Arrow", 1)
+	var bn_default := _WaveSimAggro.simulate_wave_aggro(pn1, 5, cfg, geo, true)
+	var pn2 = _mk_player_with_tower(0, "Arrow", 1)
+	var bn_false := _WaveSimAggro.simulate_wave_aggro(pn2, 5, cfg, geo, true, 0.6, -1.0, 0, false, false, false)
+	_check("金标本零改动：默认 == sapper=false（W5 塔死数一致）",
+		float(bn_default["towers_disabled"]), float(bn_false["towers_disabled"]))
+	# ② 非 Elite 波（W4）：sapper=true 也不产生 sapper 怪 → 塔死与 false 一致
+	var pn3 = _mk_player_with_tower(0, "Arrow", 1)
+	var bn_w4 := _WaveSimAggro.simulate_wave_aggro(pn3, 4, cfg, geo, true, 0.6, -1.0, 0, false, false, true)
+	var pn4 = _mk_player_with_tower(0, "Arrow", 1)
+	var bn_w4_false := _WaveSimAggro.simulate_wave_aggro(pn4, 4, cfg, geo, true, 0.6, -1.0, 0, false, false, false)
+	_check("金标本零改动：非 Elite 波 W4 sapper=true 不生效（塔死数 == false）",
+		float(bn_w4["towers_disabled"]), float(bn_w4_false["towers_disabled"]))
+	# ③ Elite 波 W5 · Sapper 无视距离：塔放**安全位 S4**（普通怪够不到），
+	#    sapper=false → 塔不死（0）；sapper=true → sapper 锁安全位塔 ×3 打死（≥1）。
+	var ps1 = _mk_player_with_tower(4, "Arrow", 1)
+	var bs_false := _WaveSimAggro.simulate_wave_aggro(ps1, 5, cfg, geo, true, 0.6, -1.0, 0, false, false, false)
+	var ps2 = _mk_player_with_tower(4, "Arrow", 1)
+	var bs_true := _WaveSimAggro.simulate_wave_aggro(ps2, 5, cfg, geo, true, 0.6, -1.0, 0, false, false, true)
+	_check("Elite 波 W5 安全位 S4：sapper=false 塔不死（普通怪够不到）",
+		float(bs_false["towers_disabled"]), 0.0)
+	_check_bool("Elite 波 W5 安全位 S4：sapper=true 锁塔打死（无视距离 ×3）",
+		int(bs_true["towers_disabled"]) > 0, true)
+
+
 func run_all() -> bool:
 	_test_tower_hp_derivation()
 	_test_aggro_constants()
@@ -594,6 +742,8 @@ func run_all() -> bool:
 	_test_v1_finalized_attrition_and_warmup()
 	_test_v2_diagnose_protect_core()
 	_test_bulwark_relocate()
+	_test_sapper_realtime()
+	_test_sapper_batch()
 	_log("")
 	_log("T1 仇恨 汇总：通过 %d 项 / 失败 %d 项" % [_pass, _fail])
 	return _fail == 0

@@ -55,7 +55,8 @@ const DT := 0.1
 # ---------------------------------------------------------------------------
 static func simulate_wave_aggro(player, w: int, cfg: Dictionary, geo,
 		aggro_enabled: bool = true, exp: float = 0.6, attrition: float = -1.0,
-		warmup_waves: int = 0, protect_core: bool = false, bulwark: bool = false) -> Dictionary:
+		warmup_waves: int = 0, protect_core: bool = false, bulwark: bool = false,
+		sapper: bool = false) -> Dictionary:
 	# 🔒 T1 肉盾塔诊断（bulwark）：模拟"玩家把主力塔放安全位"（理想肉盾策略）。
 	#   必须在塔 HP 初始化 / 战斗结算**之前**重定位 → dps_only 重算读到新 slot 的 E。
 	if bulwark and player != null and w > warmup_waves:
@@ -77,9 +78,13 @@ static func simulate_wave_aggro(player, w: int, cfg: Dictionary, geo,
 	var slot_positions: Array = _slot_positions(geo)
 
 	# ---- 出生表（单一基准怪 = 金标本口径；仇恨版不含三原型分化）----
+	# 🔒 T1 ⑤ Sapper 诊断：Elite 波里沿波次均匀铺开的精英怪 = Sapper（锁塔 ×3 增伤）。
+	#   与实时版 WaveDirector._spawn_one 逐位对齐（同一 elite_indices 确定性算法）。
+	#   🔴 金标本零改动：sapper=false → _sapper_flags 全 false → 行为完全不变。
+	var _sapper_flags: Array = _build_sapper_flags(n, w, sapper)
 	var time := 0.0
 	var spawned := 0
-	var monsters: Array = []      # 每项 = [hp, t_remain, state, target_slot, m_dps]
+	var monsters: Array = []      # 每项 = [hp, t_remain, state, target_slot, m_dps, sapper]
 	var kills := 0
 	var leaked := 0
 	var scrap := 0.0
@@ -96,8 +101,11 @@ static func simulate_wave_aggro(player, w: int, cfg: Dictionary, geo,
 		# ---- ① 刷新 ----
 		while spawned < n and time >= float(spawned) * interval - 1e-9:
 			var tr := t_reach / 1.0    # 单一基准怪 m_spd = 1.00
-			# [hp, t_remain, state(Marching=0), target_slot(-1), m_dps(Swarm=0.60)]
-			monsters.append([hp_unit, tr, 0, -1, float(_MonsterData.M_DPS["Swarm"])])
+			# [hp, t_remain, state(Marching=0), target_slot(-1), m_dps(Swarm=0.60), sapper]
+			# 🔴 用 == true 取值（headless 下 bool() 构造器对 Array 元素 Variant 报错，
+			#    == true 走比较运算不触发构造器，逐位安全）。
+			monsters.append([hp_unit, tr, 0, -1, float(_MonsterData.M_DPS["Swarm"]),
+				_sapper_flags[spawned] == true])
 			spawned += 1
 
 		# ---- ② 集火（按 t_remain 升序 = 距核心最近优先；金标本口径恒正序）----
@@ -138,7 +146,7 @@ static func simulate_wave_aggro(player, w: int, cfg: Dictionary, geo,
 		#   贴合 GDD「苟活期可感知、成型期才致命」的意图。🔴 仅扫参显式启用（可回退）。
 		if aggro_enabled and w > warmup_waves:
 			_apply_aggro(monsters, v0_, slot_positions, cfg, player, geo, dps_box,
-				_MonsterData.resolve_attrition(attrition), dis_new_box, protect_core)
+				_MonsterData.resolve_attrition(attrition), dis_new_box, protect_core, sapper)
 
 		time += DT
 
@@ -262,14 +270,21 @@ static func _count_disabled(player) -> int:
 # ---------------------------------------------------------------------------
 static func _apply_aggro(monsters: Array, v0_: float, slot_positions: Array,
 		cfg: Dictionary, player, geo, dps_box: Array, attrition: float = 0.5,
-		dis_new_box: Array = [0], protect_core: bool = false) -> void:
+		dis_new_box: Array = [0], protect_core: bool = false,
+		sapper: bool = false) -> void:
 	for m in monsters:
 		if float(m[0]) <= 0.0:
 			continue
 		var st: int = int(m[2])
-		if st == 0:   # Marching → 找最近未 Disabled 塔（≤ AGGRO_R）
+		if st == 0:   # Marching → 找最近未 Disabled 塔
 			var mpos: Vector2 = _monster_pos(m, v0_)
-			var slot := _nearest_exposed_tower(mpos, player, slot_positions, protect_core)
+			# 🔒 T1 ⑤ Sapper：出生即锁最近塔，无视 AGGRO_R 距离门槛（直奔最近的塔）。
+			#   protect_core 仍生效（跳过主力塔）。普通怪走 ≤ AGGRO_R 机会型门槛。
+			var slot := -1
+			if sapper and bool(m[5]):
+				slot = _nearest_tower_any(mpos, player, slot_positions, protect_core)
+			else:
+				slot = _nearest_exposed_tower(mpos, player, slot_positions, protect_core)
 			if slot >= 0:
 				m[2] = 1
 				m[3] = slot
@@ -284,6 +299,57 @@ static func _apply_aggro(monsters: Array, v0_: float, slot_positions: Array,
 static func _monster_pos(m: Array, v0_: float) -> Vector2:
 	var s := _PathGeometry.arc_of_t(float(m[1]), 1.0, v0_, _PathGeometry.TOTAL_LEN)
 	return _PathGeometry.sample(s)
+
+
+## 🔒 T1 ⑤ Sapper：找全局最近的**未 Disabled** 塔（**无视 AGGRO_R** 距离门槛）。
+##   Sapper「直奔最近的塔」→ 不论远近都锁。protect_core 仍生效（跳过主力塔）。
+##   与实时版 WaveDirector._nearest_tower_any 逐位对齐。
+static func _nearest_tower_any(mpos: Vector2, player, slot_positions: Array,
+		protect_core: bool = false) -> int:
+	if player == null:
+		return -1
+	var core_slot := -1
+	var core_h := -1
+	if protect_core:
+		for t in player.towers:
+			if bool(t.disabled):
+				continue
+			if int(t.h) > core_h:
+				core_h = int(t.h)
+				core_slot = int(t.slot)
+	var best := -1
+	var best_d2 := INF
+	for t in player.towers:
+		if bool(t.disabled):
+			continue
+		var slot: int = int(t.slot)
+		if slot < 0 or slot >= slot_positions.size():
+			continue
+		if protect_core and slot == core_slot:
+			continue
+		var spos: Vector2 = slot_positions[slot]
+		var d2 := mpos.distance_squared_to(spos)
+		if d2 <= best_d2:
+			best_d2 = d2
+			best = slot
+	return best
+
+
+## 🔒 T1 ⑤ Sapper 出生表（镜像 WaveDirector._spawn_one 的 Sapper 判定）：
+##   sapper=false → 全 false（金标本零改动）；sapper=true → 仅 Elite 波
+##   （is_elite_wave）沿波次均匀铺开 elite_count 个 Sapper（与 elite_indices 同算法）。
+static func _build_sapper_flags(n: int, w: int, sapper: bool) -> Array:
+	var out: Array = []
+	out.resize(n)
+	if not sapper:
+		return out
+	if not _MonsterData.is_elite_wave(w):
+		return out
+	var n_e := _MonsterData.elite_count(w, n)
+	var eidx: Array = _MonsterData.elite_indices(n, n_e)
+	for idx in eidx:
+		out[int(idx)] = true
+	return out
 
 
 ## 找最近的**未 Disabled** 塔（距离 ≤ AGGRO_R）。返回塔位 slot，无则 -1。
@@ -334,6 +400,9 @@ static func _aggro_target_valid(m: Array, v0_: float, player, slot_positions: Ar
 		return false
 	if slot >= slot_positions.size():
 		return false
+	# 🔒 T1 ⑤ Sapper：锁定后**不因距离退出**（直奔最近的塔，committed 攻击）。
+	if bool(m[5]):
+		return true
 	var mpos: Vector2 = _monster_pos(m, v0_)
 	var spos: Vector2 = slot_positions[slot]
 	# 🔴 用 AGGRO_EXIT（10.8 = 9.0×1.2）作退出阈值（迟滞带，防边界抖动）
@@ -349,7 +418,9 @@ static func _damage_tower(m: Array, player, cfg: Dictionary, geo, dps_box: Array
 	if t == null or bool(t.disabled):
 		return
 	# 对塔 DPS = ATTRITION × HP0 × m_dps(proto)（V-1 复合比口径；attrition 经扫参覆盖解析）
-	var dmg := attrition * _MonsterData.HP0 * float(m[4]) * DT
+	# 🔒 T1 ⑤ Sapper：对塔伤害 ×3（m[5]=sapper 标志）。
+	var mdps: float = float(m[4]) * (float(_MonsterData.SAPPER_DMG_MULT) if bool(m[5]) else 1.0)
+	var dmg := attrition * _MonsterData.HP0 * mdps * DT
 	t.hp = float(t.hp) - dmg
 	if float(t.hp) <= 0.0:
 		t.hp = 0.0
