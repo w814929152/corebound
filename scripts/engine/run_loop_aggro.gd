@@ -37,12 +37,16 @@ const _MonsterData := preload("res://scripts/data/monster_data.gd")
 static func run(path: String, cfg: Dictionary, max_wave: int = 20, geo = null, rng = null,
 		aggro_enabled: bool = true, exp: float = 0.6, attrition: float = -1.0,
 		warmup_waves: int = 0, protect_core: bool = false, bulwark: bool = false,
-		sapper: bool = false) -> Dictionary:
+		sapper: bool = false, rite_bonus: float = 0.0) -> Dictionary:
 	var c: Dictionary = cfg.duplicate(true)
 	if geo == null:
 		geo = _Geo6.build() if int(c["n_slots"]) >= 6 else _Geo6.build4()
 
 	var player = _SimPlayer.new_player(path, c, geo)
+	# 🔒 T1 玩法③ 献祭诊断：注入 player.stackcap_bonus（模拟玩家已献祭累积的 StackCap+）。
+	#   必须在波次循环**之前**设定 → 每波 dps_only 读到 bonus → 逐位反映增益。
+	#   🔴 金标本零改动：默认 0.0 → stackcap_bonus 恒 0 → DPS 逐位不变。
+	player.stackcap_bonus = rite_bonus
 	var core_hp := float(c["core_hp"])
 	var rows: Array = []
 	var cum := 0.0

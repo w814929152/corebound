@@ -36,6 +36,7 @@ const _PS := preload("res://scripts/engine/player_state.gd")
 const _Monster := preload("res://scripts/gameplay/monster.gd")
 const _PathGeometry := preload("res://scripts/geo/path_geometry.gd")
 const _ShopRuntime := preload("res://scripts/gameplay/shop_runtime.gd")
+const _DE := preload("res://scripts/engine/damage_engine.gd")
 
 var _pass = 0
 var _fail = 0
@@ -725,6 +726,79 @@ func _test_sapper_batch() -> void:
 		int(bs_true["towers_disabled"]) > 0, true)
 
 
+# ===========================================================================
+#  AC-T1-19 · ③ 献祭 Salvage Rite（玩法③ · StackCap+ 增益 · 收益∝投入 · 金标本零改动）
+#  ---------------------------------------------------------------------------
+#  献祭 = 安全窗拆塔第二出口：返还 0% + 卡全销毁 + 塔位释放，换 stackcap_bonus += floor(投入/10)。
+#  收益 ∝ 投入（earned）→ 刷塔要真花钱、天然防刷。StackCap+ 让层数最集中的主塔受益最多。
+#  🔴 金标本零改动：AI 不献祭 → stackcap_bonus 恒 0 → DPS 逐位不变。
+# ===========================================================================
+func _mk_rt_with_tower(slot: int, h: int, invested: float, scrap: float):
+	var rt = _ShopRuntime.new()
+	rt.setup("B", 20261002)
+	rt.player.towers = []
+	rt.player.cards = {}
+	var t := _PS.make_tower(slot, "Cannon", h, {})
+	t.invested = invested
+	rt.player.towers.append(t)
+	rt.scrap = scrap
+	return rt
+
+
+func _test_rite() -> void:
+	_log("")
+	_log("--- [AC-T1-19] ③ 献祭 Salvage Rite：返还0%+卡销毁+StackCap+（收益∝投入，金标本零改动）---")
+	# ① preview_rite 只读：投入 100 → gain = floor(100/10)=10，返还 0%
+	var rt = _mk_rt_with_tower(0, 1, 100.0, 500.0)
+	var pv := rt.preview_rite(0)
+	_check_bool("preview_rite ok", bool(pv["ok"]), true)
+	_check("preview 收益 ∝ 投入：floor(100/10)=10 StackCap+", float(pv["stackcap_gain"]), 10.0)
+	_check("preview 返还 0%（献祭不拿回积分）", float(pv.get("refund", 0.0)), 0.0)
+	# ② salvage_rite 执行：返还 0% → scrap 不变；卡销毁；塔释放；stackcap_bonus += 10
+	var before_towers: int = rt.player.towers.size()
+	var r := rt.salvage_rite(0)
+	_check_bool("献祭 ok", bool(r["ok"]), true)
+	_check("献祭 gain = floor(100/10)=10", float(r["stackcap_gain"]), 10.0)
+	_check("献祭返还 0% → scrap 仍 500", rt.scrap, 500.0)
+	_check("献祭 stackcap_bonus 累加 = 10", float(rt.player.stackcap_bonus), 10.0)
+	_check_int("献祭塔位释放（塔数 -1）", rt.player.towers.size(), before_towers - 1)
+	# ③ 收益 ∝ 投入（earned）：投入 250 → gain 25；投入 5 → gain 0（不足 10 不计）
+	var rt2 = _mk_rt_with_tower(0, 1, 250.0, 500.0)
+	var r2 := rt2.salvage_rite(0)
+	_check("收益∝投入：floor(250/10)=25", float(r2["stackcap_gain"]), 25.0)
+	var rt3 = _mk_rt_with_tower(0, 1, 5.0, 500.0)
+	var r3 := rt3.salvage_rite(0)
+	_check("收益∝投入：floor(5/10)=0（投入不足 10 无增益）", float(r3["stackcap_gain"]), 0.0)
+	# ④ StackCap+ 提升 DPS（damage_engine 读 stackcap_bonus 加到 caps）。
+	#    🔴 关键：StackCap+ 是**"突破软顶"型增益**——reinf_cap=100 极高，只有单塔同 Tag
+	#       层数 **> 100（进 softcap 衰减段）** 时 cap 才咬合（探针 probe_rite.gd 实测：
+	#       lv≤100 时 +0.00%，lv=120 时 bonus=10 → +93% DPS）。故造一座 h=120 + FireUp
+	#       120 层的 Cannon（fire tag，进衰减段）验证 cap 咬合后 bonus 生效。
+	var geo = _Geo6.build()
+	var cfg = _Cfg.cfg_of("A")
+	var p1 = _SimPlayer.new_player("A", cfg, geo)
+	p1.towers = []
+	var th := _PS.make_tower(0, "Cannon", 120, {})   # h=120 > reinf_cap=100 → 进衰减段
+	th.invested = 100.0
+	th.attach["FireUp"] = 120                          # 同 fire tag 强化卡 → 进 Stack 乘区
+	p1.towers.append(th)
+	var dps0 := _DE.dps_only(p1, cfg, geo)
+	p1.stackcap_bonus = 10.0
+	var dps10 := _DE.dps_only(p1, cfg, geo)
+	_check_bool("StackCap+ 提升 DPS（h=120 进衰减段，bonus=10 → DPS 上升）",
+		dps10 > dps0, true)
+	# ⑤ 🔴 金标本零改动：stackcap_bonus=0（默认）→ DPS 与显式不设一致（逐位相同）
+	var p2 = _SimPlayer.new_player("A", cfg, geo)
+	p2.towers = []
+	var th2 := _PS.make_tower(0, "Cannon", 120, {})
+	th2.invested = 100.0
+	th2.attach["FireUp"] = 120
+	p2.towers.append(th2)
+	var dps_default := _DE.dps_only(p2, cfg, geo)
+	_check("金标本零改动：stackcap_bonus 默认 0 → DPS 逐位不变",
+		float(dps_default), float(dps0))
+
+
 func run_all() -> bool:
 	_test_tower_hp_derivation()
 	_test_aggro_constants()
@@ -744,6 +818,7 @@ func run_all() -> bool:
 	_test_bulwark_relocate()
 	_test_sapper_realtime()
 	_test_sapper_batch()
+	_test_rite()
 	_log("")
 	_log("T1 仇恨 汇总：通过 %d 项 / 失败 %d 项" % [_pass, _fail])
 	return _fail == 0

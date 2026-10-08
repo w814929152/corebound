@@ -39,6 +39,14 @@ var path: String = "B"
 var towers: Array = []        # Array[TowerState]
 var n_hist_max: int = 0       # 兜底①：本局历史最大塔数（只增不减）
 var income_mult: float = 0.0
+## 🔒 T1 玩法③ 献祭 `Salvage Rite`：本局累积的 **StackCap 增益**（献祭燃料变现）。
+##   每次献祭 `stackcap_bonus += floor(被献祭塔累计投入 / 10)`（收益 ∝ 投入 = earned，
+##   兑现 P2；刷塔要真花钱 → 天然防刷）。`damage_engine.dps_only` 把它加到每塔 `caps`
+##   → 全局 StackCap 提升，层数最集中的主塔受益最多（pow_sc 在 lv>cap 才衰减）→
+##   天然耦合单核流（卖副塔喂主塔上限）。
+##   🔴 金标本零改动：金标本 AI 不献祭 → 本字段恒 0.0 → `caps` 逐位不变 → DPS 零影响。
+##   🔴 只在玩家手动路线（shop_runtime.gd）侧写入；shop_ai.gd 不读不写。
+var stackcap_bonus: float = 0.0
 var reroll_disc: float = 0.0
 var cards: Dictionary = {}
 ## 🔴 切片8续3（可玩 MVP）：核心 HP 单一数据源。

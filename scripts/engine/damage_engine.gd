@@ -138,6 +138,15 @@ static func compute_dps(player, cfg: Dictionary, geo = null) -> Dictionary:
 		else:
 			kappa.append(1.0 + (float(cfg["reinf_compound"][path]) - 1.0))
 			caps.append(float(cfg["reinf_cap"]))
+	# 🔒 T1 玩法③ 献祭：全局 StackCap+ 增益（player.stackcap_bonus）加到每塔 cap。
+	#   🔴 金标本零改动：AI 不献祭 → bonus=0.0 → caps 逐位不变 → DPS 零影响（判据链不受影响）。
+	#   逐位对齐：bonus>0 时走同一 dps_only 路径，实时版与批处理镜像都读同一 player 字段 → 一致。
+	var _rite_bonus := 0.0
+	if player != null and "stackcap_bonus" in player:
+		_rite_bonus = float(player.stackcap_bonus)
+	if _rite_bonus != 0.0:
+		for ci in range(caps.size()):
+			caps[ci] = float(caps[ci]) + _rite_bonus
 
 	# ---- κ_r 判定（GDD §5.4 + §5.4.1 中性塔恒取基准档）----
 	var krmode: String = String(cfg.get("kr_mode", "flat"))

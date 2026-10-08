@@ -879,6 +879,84 @@ func salvage_tower(slot: int) -> Dictionary:
 ## 修复费用系数（Q-T8 = ceil(0.30 × 累计投入)）。
 const REPAIR_RATE := 0.30
 
+## 🔒 T1 玩法③ 献祭 `Salvage Rite`：献祭收益系数 = floor(累计投入 / 该除数) 的 StackCap+。
+##   GDD §3 玩法③「收益 ∝ 被献祭塔的累计投入」（例 floor(投入/10)）→ 先投入才能献祭（earned），
+##   刷塔要真花钱 → 投入产出守恒、天然防刷（收益∝投入即设限，无需额外计数闸）。
+const RITE_STACKCAP_DIVISOR := 10.0
+
+
+## 🔴 只读预览：给献祭二次确认弹窗组装文案用（**不改动任何状态**）。
+##   返回 {ok, reason, invested, stackcap_gain, cards_destroyed, layers_destroyed}。
+##   与 `salvage_rite()` 同判据，但纯读 → UI 可先预览再让玩家确认。
+func preview_rite(slot: int) -> Dictionary:
+	var result := {"ok": false, "reason": "", "invested": 0.0, "stackcap_gain": 0.0,
+		"cards_destroyed": 0, "layers_destroyed": 0}
+	if not _in_safe_window():
+		result["reason"] = "仅波次间安全窗可献祭（T-C1 / E16）"
+		return result
+	var idx := _tower_index(slot)
+	if idx < 0:
+		result["reason"] = "塔位 %d 不存在" % slot
+		return result
+	var t = player.towers[idx]
+	var invested := floorf(float(t.invested))
+	var n_cards := 0
+	var n_layers := 0
+	for cname in _keys(t.attach):
+		n_cards += 1
+		n_layers += int(t.attach[cname])
+	result["ok"] = true
+	result["invested"] = invested
+	result["stackcap_gain"] = floorf(float(invested) / RITE_STACKCAP_DIVISOR)
+	result["cards_destroyed"] = n_cards
+	result["layers_destroyed"] = n_layers
+	return result
+
+
+## 献祭 `Salvage Rite(tower)` —— 🔒 T1 玩法③ 定稿（主动移除的**第二出口**，与回收二选一）：
+##   · 返还 **0%**（区别回收的 50% → 献祭是"沉没成本变现为 StackCap"，不是拿回积分）；
+##   · 该塔装配的**全部单塔效果卡及层数销毁**（同回收：attach 清空，卡从 player.cards 移除）；
+##   · **塔位释放**（从 player.towers 删除）；
+##   · 🔴 **换取一次性增益**：`player.stackcap_bonus += floor(累计投入 / 10)`（收益 ∝ 投入 = earned，
+##     兑现 P2；刷塔要真花钱 → 天然防刷）。StackCap+ 让层数最集中的主塔受益最多 → 耦合单核流。
+##   · 🔴 **κ 不回升**（兜底①：本方法不动 n_hist_max）；
+##   · 返回结算字典供 UI 二次确认弹窗披露「献祭得 StackCap +N / 销毁 N 张（M 层）」。
+## 🔴 仅 SafeWindow 可操作（T-C1 / E16）；非安全窗直接拒绝。
+## 🔴 金标本零改动：金标本 AI 不献祭（shop_ai 不读不写 stackcap_bonus）→ 判据链不受影响。
+func salvage_rite(slot: int) -> Dictionary:
+	var result := {"ok": false, "reason": "", "invested": 0.0, "stackcap_gain": 0.0,
+		"cards_destroyed": 0, "layers_destroyed": 0}
+	if not _in_safe_window():
+		result["reason"] = "仅波次间安全窗可献祭（T-C1 / E16）"
+		return result
+	var idx := _tower_index(slot)
+	if idx < 0:
+		result["reason"] = "塔位 %d 不存在" % slot
+		return result
+	var t = player.towers[idx]
+	var invested := floorf(float(t.invested))
+	# ① 装配卡全销毁（同回收）
+	var n_cards := 0
+	var n_layers := 0
+	for cname in _keys(t.attach):
+		var layers := int(t.attach[cname])
+		n_cards += 1
+		n_layers += layers
+		player.cards.erase(cname)
+	t.attach = {}
+	# ② 塔位释放
+	player.towers.remove_at(idx)
+	# ③ 献祭换 StackCap+（收益 ∝ 投入；返还 0% 积分）
+	var gain := floorf(float(invested) / RITE_STACKCAP_DIVISOR)
+	player.stackcap_bonus = float(player.stackcap_bonus) + gain
+	result["ok"] = true
+	result["invested"] = invested
+	result["stackcap_gain"] = gain
+	result["cards_destroyed"] = n_cards
+	result["layers_destroyed"] = n_layers
+	last_error = ""
+	return result
+
 
 ## 🔴 只读预览：给处置弹窗组装「修复」文案用（**不改动任何状态**）。
 ##   返回 {ok, reason, cost, invested, hp_max}。仅对 **Disabled 塔**有意义。
