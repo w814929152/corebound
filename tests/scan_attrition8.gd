@@ -80,24 +80,28 @@ func _initialize() -> void:
 		v += step
 
 	# 🔒 V-1′ 分列口径表头：A 成型期（T-A′/T-B′ 基准）· B 全程（T-D′ 免疫）· B 雪崩（T-C′ 退场）
-	print("  %-7s | %-9s %-9s %-9s | %-8s %-8s %-8s | %s" % [
-		"ATTRITION", "A成型T-A′", "B全程T-D′", "B雪崩T-C′", "起飞B", "起飞A", "存活B", "判定"])
-	print("  " + "-".join(["---------", "---------", "---------", "---------", "--------", "--------", "--------", "------"]))
-	print("  （判据：A成型 1~4 · B全程 0 · B雪崩 ≈0 · 起飞B ≥0.80）")
+	# 🟡 R-2（§4.2 末段）：新增 **命中A** 列 —— A 路径单局 X_form≥1 的**无条件命中率**。
+	#    均值对 ATTRITION 已被证伪「无鉴别力」（1.0→6.0 只在 1.000~1.483 非单调浮动），
+	#    命中率是否更有鉴别力值得一测（若单调且跨度大 → §3.3-② 可被部分翻案）。
+	#    🔴 本列纯诊断，**不进 `_passes()` 判据**（阈值待 R-2 per-run 实测回填后定档）。
+	print("  %-7s | %-9s %-8s %-9s %-9s | %-8s %-8s %-8s | %s" % [
+		"ATTRITION", "A成型T-A′", "命中A", "B全程T-D′", "B雪崩T-C′", "起飞B", "起飞A", "存活B", "判定"])
+	print("  " + "-".join(["---------", "---------", "--------", "---------", "---------", "--------", "--------", "--------", "------"]))
+	print("  （判据：A成型 1~4 · B全程 0 · B雪崩 ≈0 · 起飞B ≥0.80；命中A 为 R-2 诊断列，不入判据）")
 
 	var best: Dictionary = {}
 	for at in grid:
 		var r := _scan_point(float(at), runs)
 		var verdict := _verdict(r)
-		print("  %7.2f | %9s %9s %9s | %8s %8s %8s | %s" % [
+		print("  %7.2f | %9s %8s %9s %9s | %8s %8s %8s | %s" % [
 			float(at),
-			_fmt(r["a_form"]), _fmt(r["b_total"]), _fmt(r["b_tc"]),
+			_fmt(r["a_form"]), _fmt(r["hit"], 3), _fmt(r["b_total"]), _fmt(r["b_tc"]),
 			_fmt(r["rate"], 3), _fmt(r["rate_a"], 3), _fmt(r["surv"], 3),
 			verdict])
 		# 🔴 逐点进度走 stderr（push_error 不缓冲）：即使中途被杀，stderr 日志也能保住
 		#    已算出的点（headless stdout 全缓冲，退出才 flush）。
-		push_error("[scan8] ATTRITION=%.2f Aform=%s Btotal=%s Btc=%s rateB=%s rateA=%s %s" % [
-			float(at), _fmt(r["a_form"]), _fmt(r["b_total"]), _fmt(r["b_tc"]),
+		push_error("[scan8] ATTRITION=%.2f Aform=%s hit=%s Btotal=%s Btc=%s rateB=%s rateA=%s %s" % [
+			float(at), _fmt(r["a_form"]), _fmt(r["hit"], 3), _fmt(r["b_total"]), _fmt(r["b_tc"]),
 			_fmt(r["rate"]), _fmt(r["rate_a"]), verdict])
 		# 记录满足 V-1′ 全判据的候选（供定稿推荐）
 		if r["ok"] and (best.is_empty() or (not best.has("at"))):
@@ -106,8 +110,9 @@ func _initialize() -> void:
 	print("")
 	if best.has("at"):
 		print("  ▶ 推荐定稿 ATTRITION（八槽径向 V-1′）= %.2f（首个全判据通过点）" % float(best["at"]))
-		print("     A成型=%.3f  B全程=%.3f  B雪崩=%.3f  起飞B=%.3f  起飞A=%.3f  存活B=%.3f" % [
-			float(best["r"]["a_form"]), float(best["r"]["b_total"]), float(best["r"]["b_tc"]),
+		print("     A成型=%.3f  命中A=%.3f  B全程=%.3f  B雪崩=%.3f  起飞B=%.3f  起飞A=%.3f  存活B=%.3f" % [
+			float(best["r"]["a_form"]), float(best["r"]["hit"]), float(best["r"]["b_total"]),
+			float(best["r"]["b_tc"]),
 			float(best["r"]["rate"]), float(best["r"]["rate_a"]), float(best["r"]["surv"])])
 	else:
 		print("  ▶ 无点全通过 V-1′ 判据 —— 需回看判据阈值或八槽暴露度/AGGRO_R（R-R3 缓解方向）")
@@ -142,6 +147,9 @@ func _scan_point(attrition: float, runs: int) -> Dictionary:
 	var a_dis_s1 := 0          # A 苟活期 W1–5
 	var a_dis_s2 := 0          # A 成型期 W6–12（T-A′/T-B′ 判据量）
 	var a_dis_s3 := 0          # A 雪崩期 W13–20
+	# 🟡 R-2（§4.2）：A 路径 per-run **无条件命中率** hit = #{i : X_form[i] >= 1} / runs
+	#    （判据量从「300 局均值」升级为「单局命中率」的候选统计量；本列仅诊断，不入判据）
+	var a_hit := 0
 
 	for _i in range(runs):
 		var cx: Dictionary = cfgB.duplicate(true)
@@ -176,6 +184,7 @@ func _scan_point(attrition: float, runs: int) -> Dictionary:
 		var rowsa: Array = outa["rows"]
 		var alivea := (not rowsa.is_empty()) and float(rowsa[-1]["core_hp"]) > 0.0
 		var twa := -1
+		var xa_form := 0       # 本局 A 成型期 X_form（R-2 per-run 命中率分子）
 		for r in rowsa:
 			if float(r["ratio"]) >= 1.0 and twa < 0:
 				twa = int(r["w"])
@@ -186,8 +195,11 @@ func _scan_point(attrition: float, runs: int) -> Dictionary:
 				a_dis_s1 += dn
 			elif wn <= W_FORM_END:
 				a_dis_s2 += dn
+				xa_form += dn
 			else:
 				a_dis_s3 += dn
+		if xa_form >= 1:
+			a_hit += 1
 		if alivea and twa >= 0:
 			takeoffs_a += 1
 
@@ -200,6 +212,7 @@ func _scan_point(attrition: float, runs: int) -> Dictionary:
 	var b_tc := float(dis_s3) / float(runs)
 	return {
 		"a_form": a_form,
+		"hit": float(a_hit) / float(runs),          # 🟡 R-2：A 单局命中率（诊断列，不入判据）
 		"a_surv": float(a_dis_s1) / float(runs),   # A 苟活期（参考，不入判据）
 		"a_snow": a_dis_s3 / float(runs),          # A 雪崩期（参考）
 		"b_total": b_total,

@@ -20,7 +20,7 @@ extends SceneTree
 ##
 ## 径向聚合入口（R-1，质量门 P1 放行前置项）：
 ##   <godot> ... --script res://tests/run_tests.gd -- radial8      # 一键跑完径向全部验证脚本
-##   <godot> ... --script res://tests/run_tests.gd -- radial8diag  # 同上 + 两个重型诊断件
+##   <godot> ... --script res://tests/run_tests.gd -- radial8diag  # 同上 + 三个重型诊断件
 ##
 ##   ⚠️ 两个入口**都不在默认无参回归里**：默认仍只跑 slice1~8 + t1aggro（PATH 口径金标本，
 ##      3280 断言，快）。radial8 含 300 局 MC，全跑数分钟，故独立成一键入口而非默认项。
@@ -84,17 +84,21 @@ const RADIAL8_GATES: Array = [
 # ② 轻量诊断件：脚本内部恒 quit(0)，无 PASS/FAIL 闸门语义（结果供人工判读）。
 #    仍纳入 radial8 以便一键复现；退出码同样纳入聚合（非零 = 脚本崩了，也是真信号），
 #    但在汇总表里标 INFO，提醒读者"它不会主动报错"。
+#
+#    🟡 **当前为空（R-2 · QG-RADIAL-01）**：原唯一的轻量诊断件 `geo8_mc` 已下放至
+#    RADIAL8_DIAG_HEAVY —— 它恒 quit(0)（零闸门价值），却占 172 s ≈ 一键回归 61% 耗时。
+#    保留本空表是为了不动聚合骨架：将来若有新的轻量诊断件，直接往这里加即可。
 const RADIAL8_DIAG: Array = [
-	{"name": "geo8_mc", "script": "res://tests/run_slice_geo8_mc.gd"},
 ]
 
-# ③ 重型诊断件：多点扫描器 / 探针，恒 quit(0)。
-#    **不进 radial8**（零闸门价值 + 全量扫描 ~1 小时），只在 `radial8diag` 下额外拉起，
+# ③ 重型诊断件：多点扫描器 / 探针 / 大样本 MC，恒 quit(0)。
+#    **不进 radial8**（零闸门价值 + 耗时数十秒~数分钟），只在 `radial8diag` 下额外拉起，
 #    保证它们仍然"一行命令可复现"，不游离在入口之外。
 #    "args" 会作为**用户参数**传给子脚本（Godot 需要 `--` 分隔）—— 这里给 scan_attrition8
 #    配粗扫档（60 局 × 步长 1.0 ≈ 6 个点），把 radial8diag 压到十分钟量级；
 #    需要 300 局 × 0.5 步长的定稿级扫描时，仍请直接跑该脚本（默认档）。
 const RADIAL8_DIAG_HEAVY: Array = [
+	{"name": "geo8_mc", "script": "res://tests/run_slice_geo8_mc.gd"},
 	{"name": "scan_attrition8", "script": "res://tests/scan_attrition8.gd", "args": ["60", "1.0"]},
 	{"name": "probe_radial_aggro", "script": "res://tests/probe_radial_aggro.gd"},
 ]
