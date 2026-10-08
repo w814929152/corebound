@@ -39,10 +39,14 @@ static func run(path: String, cfg: Dictionary, max_wave: int = 20, geo = null, r
 		warmup_waves: int = 0, protect_core: bool = false, bulwark: bool = false,
 		sapper: bool = false, rite_bonus: float = 0.0, diag_out: Array = []) -> Dictionary:
 	var c: Dictionary = cfg.duplicate(true)
-	# 🔒 V-7 诊断容器注入（仅 PRICED 臂）：diag_out 由调用方传入的可变 Array（引用），
-	#   shop_phase / enumerate_actions 往里累加计数器。🔴 只在 repair_on_disable==2 时注入
-	#   → OFF/FREE 臂 c 里无 diag 键 → shop_ai 读到 null → 逐位不变（零扰动）。
-	if int(c.get("repair_on_disable", 0)) == 2 and diag_out != null:
+	# 🔒 V-7 诊断容器注入（OFF 之外的两个臂）：diag_out 由调用方传入的可变 Array（引用），
+	#   shop_phase / enumerate_actions 往里累加计数器。🔴 只在 repair_on_disable != 0 时注入
+	#   → OFF 臂 c 里无 diag 键 → shop_ai 读到 null → 逐位不变（零扰动）。
+	#   🟢 2026-10-09 加跑：放宽到 FREE 臂（原只 PRICED 有），以便把「修复成交次数」这个
+	#      §3.7 计数器也打到 FREE 臂上（区分「修了也白修」vs「压根没修」）。
+	#      🔴 零扰动仍然成立：OFF(0) 不注入；diag 是**只写**容器，不参与任何决策 →
+	#      FREE/PRICED 的决策序列与 RNG 消费序列逐位不变（shop_ai 只在 ==2 分支读 diag）。
+	if int(c.get("repair_on_disable", 0)) != 0 and diag_out != null:
 		c["diag"] = diag_out
 	if geo == null:
 		geo = _Geo6.build_by_slots(int(c["n_slots"]))
@@ -90,7 +94,16 @@ static func run(path: String, cfg: Dictionary, max_wave: int = 20, geo = null, r
 		#   对 FREE 臂零改动（B-8）。
 		#   🔴 金标本零改动：默认 repair_on_disable=0（OFF）→ 本段永不触及 → 逐位不变。
 		if int(c.get("repair_on_disable", 0)) == 1:
-			_WaveSimAggro._clear_all_disabled(player)
+			# 🔒 [1]=n_repair_fired 在 FREE 臂的语义 = **实际修复成交次数**（每次清掉一座
+			#   Disabled 塔 +1；与 PRICED 臂同义）。🔴 只写计数器，不改任何决策 → 逐位不变。
+			var n_cleared: int = _WaveSimAggro._clear_all_disabled(player)
+			if diag != null:
+				diag[1] = int(diag[1]) + n_cleared
+				# 🔒 记录 FREE 臂修复成交波次（供 [5]=then_redied：修完下一波又被打停）。
+				#    🔴 FREE 的成交发生在 shop_phase **之后**，上面 fired_before 快照抓不到，
+				#       故在这里直接置位。只写计数器，不改决策 → 逐位不变。
+				if n_cleared > 0:
+					last_repair_wave = w
 
 		var dps := _DE.dps_only(player, c, geo)
 		var total_hp := float(res["hp_each"]) * float(res["n"])
