@@ -85,7 +85,10 @@ static func simulate_wave_aggro(player, w: int, cfg: Dictionary, geo,
 	var _sapper_flags: Array = _build_sapper_flags(n, w, sapper)
 	var time := 0.0
 	var spawned := 0
-	var monsters: Array = []      # 每项 = [hp, t_remain, state, target_slot, m_dps, sapper]
+	# 🔴 每项 = [hp, t_remain, state, target_slot, m_dps, sapper, theta]
+	#   theta = 径向出生角（RADIAL 模式由黄金角序列派生；PATH 模式恒 0.0、不使用）。
+	#   🔴 只影响"位置派生"，不碰 t_remain 递减 / 判漏 / 排序（金标本零扰动）。
+	var monsters: Array = []
 	var kills := 0
 	var leaked := 0
 	var scrap := 0.0
@@ -102,11 +105,16 @@ static func simulate_wave_aggro(player, w: int, cfg: Dictionary, geo,
 		# ---- ① 刷新 ----
 		while spawned < n and time >= float(spawned) * interval - 1e-9:
 			var tr := t_reach / 1.0    # 单一基准怪 m_spd = 1.00
-			# [hp, t_remain, state(Marching=0), target_slot(-1), m_dps(Swarm=0.60), sapper]
+			# [hp, t_remain, state(Marching=0), target_slot(-1), m_dps(Swarm=0.60), sapper, theta]
 			# 🔴 用 == true 取值（headless 下 bool() 构造器对 Array 元素 Variant 报错，
 			#    == true 走比较运算不触发构造器，逐位安全）。
+			# 🔴 theta：RADIAL 模式由黄金角序列派生（对齐实时版 wave_director._spawn_one），
+			#    PATH 模式 spawn_theta 不被使用（位置走折线），恒 0.0。
+			var th := 0.0
+			if _SpaceModel.is_radial():
+				th = _SpaceModel.spawn_theta(spawned, w)
 			monsters.append([hp_unit, tr, 0, -1, float(_MonsterData.M_DPS["Swarm"]),
-				_sapper_flags[spawned] == true])
+				_sapper_flags[spawned] == true, th])
 			spawned += 1
 
 		# ---- ② 集火（按 t_remain 升序 = 距核心最近优先；金标本口径恒正序）----
@@ -305,8 +313,14 @@ static func _apply_aggro(monsters: Array, v0_: float, slot_positions: Array,
 
 
 static func _monster_pos(m: Array, v0_: float) -> Vector2:
-	var s := _PathGeometry.arc_of_t(float(m[1]), 1.0, v0_, _PathGeometry.TOTAL_LEN)
-	return _PathGeometry.sample(s)
+	# 🔴 按模式分派位置派生（对齐实时版 monster.pos）：
+	#   PATH   → 弧长 s = arc_of_t(t_remain)，再二分查折线 sample(s)（逐位等价基准，一行不改）。
+	#   RADIAL → 极坐标一步乘加 radial_pos_of_t(t_remain, m_spd, theta)（ρ 由 t_remain 派生）。
+	#   🔴 基础怪 m_spd = 1.00（tr = t_reach / 1.0）；theta = m[6]（PATH 恒 0.0 不使用）。
+	if not _SpaceModel.is_radial():
+		var s := _PathGeometry.arc_of_t(float(m[1]), 1.0, v0_, _PathGeometry.TOTAL_LEN)
+		return _PathGeometry.sample(s)
+	return _SpaceModel.radial_pos_of_t(float(m[1]), 1.0, float(m[6]))
 
 
 ## 🔒 T1 ⑤ Sapper：找全局最近的**未 Disabled** 塔（**无视 AGGRO_R** 距离门槛）。
