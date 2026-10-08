@@ -18,6 +18,24 @@ extends SceneTree
 ##   <godot> ... --script res://tests/run_tests.gd -- slice1       # 只跑切片1（快）
 ##   <godot> ... --script res://tests/run_tests.gd -- slice2       # 只跑切片2（含 MC 300）
 ##
+## 径向聚合入口（R-1，质量门 P1 放行前置项）：
+##   <godot> ... --script res://tests/run_tests.gd -- radial8      # 一键跑完径向全部验证脚本
+##   <godot> ... --script res://tests/run_tests.gd -- radial8diag  # 同上 + 两个重型诊断件
+##
+##   ⚠️ 两个入口**都不在默认无参回归里**：默认仍只跑 slice1~8 + t1aggro（PATH 口径金标本，
+##      3280 断言，快）。radial8 含 300 局 MC，全跑数分钟，故独立成一键入口而非默认项。
+##
+##   被聚合的脚本见下方 RADIAL8_GATES / RADIAL8_DIAG / RADIAL8_DIAG_HEAVY。
+##   统一 exit code：任一子脚本非零退出 → radial8 整体非零退出。
+##
+##   子进程用哪个 Godot：优先环境变量 GODOT_BIN，否则 OS.get_executable_path()。
+##
+##   ⚠️ 已知限制（Windows）：Godot 4.7.2 的 OS.execute 用**系统 ANSI 代码页（GBK）**解码
+##      子进程 stdout，而不是 UTF-8，且属有损转换 → 被聚合进来的子脚本输出里**中文会乱码**
+##      （父进程自己 print 的部分正常）。`[PASS]` / `[FAIL]` / 数值 / 末尾汇总表都是 ASCII，
+##      不受影响；故 CI 判定与失败定位仍然可用。需要读中文原文时，单独直接跑那个脚本即可。
+##      为便于定位，聚合器会额外统计每段子脚本输出里的 `[FAIL]` 出现次数（纯 ASCII）。
+##
 
 const TestSuite := preload("res://tests/test_suite.gd")
 const TestSuiteSlice2 := preload("res://tests/test_suite_slice2.gd")
@@ -43,14 +61,60 @@ const R2_SLOTS: Array = [
 	Vector2(37.364641401712, 53.728611961036),
 ]
 
+# ---------------------------------------------------------------------------
+# radial8 聚合入口（R-1）
+# ---------------------------------------------------------------------------
+# 径向验证脚本按「能否在进程内当函数调用」分成两类，分别沿用两套机制：
+#   A. 套件（extends RefCounted + run_all() -> bool）→ 进程内 preload 直调，
+#      与既有 geo8 / radial 分支完全同款。
+#   B. 独立脚本（extends SceneTree，在 _initialize() 内自行 quit(code)）→ 无法当函数调
+#      （quit() 打在非主循环的 SceneTree 实例上不会传播退出码），故用 OS.execute 串行
+#      拉起子进程，收集各自 exit code。
+#
+# ① 闸门件：脚本内部有真实 PASS/FAIL 语义（quit(0/1)），参与成败判定。
+const RADIAL8_GATES: Array = [
+	{"name": "geo8_smoke", "script": "res://tests/run_slice_geo8_smoke.gd"},
+	{"name": "geo8_golden", "script": "res://tests/run_slice_geo8_golden.gd"},
+	{"name": "expo", "script": "res://tests/run_slice_expo.gd"},
+	{"name": "bulwark8", "script": "res://tests/run_slice_bulwark8.gd"},
+	{"name": "panorama8", "script": "res://tests/run_slice_panorama8.gd"},
+	{"name": "attrition8", "script": "res://tests/run_slice_attrition8.gd"},
+]
+
+# ② 轻量诊断件：脚本内部恒 quit(0)，无 PASS/FAIL 闸门语义（结果供人工判读）。
+#    仍纳入 radial8 以便一键复现；退出码同样纳入聚合（非零 = 脚本崩了，也是真信号），
+#    但在汇总表里标 INFO，提醒读者"它不会主动报错"。
+const RADIAL8_DIAG: Array = [
+	{"name": "geo8_mc", "script": "res://tests/run_slice_geo8_mc.gd"},
+]
+
+# ③ 重型诊断件：多点扫描器 / 探针，恒 quit(0)。
+#    **不进 radial8**（零闸门价值 + 全量扫描 ~1 小时），只在 `radial8diag` 下额外拉起，
+#    保证它们仍然"一行命令可复现"，不游离在入口之外。
+#    "args" 会作为**用户参数**传给子脚本（Godot 需要 `--` 分隔）—— 这里给 scan_attrition8
+#    配粗扫档（60 局 × 步长 1.0 ≈ 6 个点），把 radial8diag 压到十分钟量级；
+#    需要 300 局 × 0.5 步长的定稿级扫描时，仍请直接跑该脚本（默认档）。
+const RADIAL8_DIAG_HEAVY: Array = [
+	{"name": "scan_attrition8", "script": "res://tests/scan_attrition8.gd", "args": ["60", "1.0"]},
+	{"name": "probe_radial_aggro", "script": "res://tests/probe_radial_aggro.gd"},
+]
+
 
 func _initialize() -> void:
 	var only := ""
 	for a in OS.get_cmdline_user_args():
-		if a.begins_with("slice") or a.begins_with("t1") or a == "v0radial" or a == "radial" or a == "geo8":
+		if (a.begins_with("slice") or a.begins_with("t1") or a == "v0radial"
+				or a == "radial" or a == "geo8" or a == "radial8" or a == "radial8diag"):
 			only = a
 
 	var ok := true
+
+	# 🔴 径向一键全跑（R-1）：独立入口，不进默认无参回归。
+	if only == "radial8":
+		ok = _run_radial8(false) and ok
+	if only == "radial8diag":
+		ok = _run_radial8(true) and ok
+
 	# 🔴 径向冒烟（阶段0 运动学）：默认 PATH 口径不变；仅 `radial` 入口切 RADIAL，
 	#   跑完立即设回 PATH（SpaceModel 是全局开关，防止污染后续默认回归）。
 	if only == "radial":
@@ -83,3 +147,150 @@ func _initialize() -> void:
 		ok = TestSuiteSlice2.new().run_v0_radial(candidate) and ok
 
 	quit(0 if ok else 1)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# radial8 聚合入口实现
+# ─────────────────────────────────────────────────────────────────────────────
+
+## 子进程用哪个 Godot：优先环境变量 GODOT_BIN（CI 或本机与 IDE 版本不一致时可钉死），
+## 否则 OS.get_executable_path()。注意 headless --script 下它返回的是 GUI 版 exe
+## （非 _console.exe），但 --headless 下 stdout 仍可被 OS.execute 捕获（已实测）。
+func _godot_bin() -> String:
+	var env := OS.get_environment("GODOT_BIN")
+	if env != "" and FileAccess.file_exists(env):
+		return env
+	return OS.get_executable_path()
+
+
+## 串行拉起一个独立 SceneTree 验证脚本，收集 exit code / 耗时 / 输出。
+## 返回值：{"name": String, "code": int, "ms": int, "marks": int}
+##   marks = 该子脚本输出中 "[FAIL]" 标记出现次数（进程内套件没有这一项，记 -1）。
+func _radial8_subproc(item: Dictionary) -> Dictionary:
+	var name := String(item["name"])
+	var script := String(item["script"])
+	var exe := _godot_bin()
+	var argv: Array = [
+		"--headless",
+		"--path", ProjectSettings.globalize_path("res://"),
+		"--script", script,
+	]
+	# 可选用户参数（Godot 需要 `--` 分隔符才会把它们交给脚本的 get_cmdline_user_args()）。
+	if item.has("args") and (item["args"] as Array).size() > 0:
+		argv.append("--")
+		argv.append_array(item["args"])
+
+	# 路径写错要响亮地失败，而不是让 Godot 静默退出 0 —— 否则聚合网会假绿。
+	if not FileAccess.file_exists(exe):
+		print("[radial8] 失败：%s · Godot 可执行文件不存在：%s" % [name, exe])
+		return {"name": name, "code": 1, "ms": 0}
+	if not FileAccess.file_exists(script):
+		print("[radial8] 失败：%s · 验证脚本不存在：%s" % [name, script])
+		return {"name": name, "code": 1, "ms": 0}
+
+	print("")
+	print("[radial8] ────────── %s ──────────" % name)
+	var out: Array = []
+	var t0 := Time.get_ticks_msec()
+	var code := OS.execute(exe, argv, out, true)
+	var dt := Time.get_ticks_msec() - t0
+
+	# 统计子脚本输出里的 [FAIL] 标记数（ASCII，不受中文乱码影响，便于快速定位失败段）。
+	var fail_marks := 0
+	var blob := ""
+	for chunk in out:
+		blob += String(chunk)
+	fail_marks = blob.count("[FAIL]")
+
+	for chunk in out:
+		print(String(chunk))
+	# 注意：本行**故意不写 "[FAIL]"** —— 让 `[FAIL]` 在聚合日志里只可能来自子脚本真实断言失败，
+	# 便于 CI 直接 grep `[FAIL]` 而不被聚合器自身标签误报。
+	print("[radial8] ────────── %s 结束 · exit=%d · %d ms · 失败标记 %d 处 ──────────"
+		% [name, code, dt, fail_marks])
+	return {"name": name, "code": code, "ms": dt, "marks": fail_marks}
+
+
+## radial8 / radial8diag 主体。
+## include_heavy=true 时额外拉起 RADIAL8_DIAG_HEAVY（重型扫描器/探针）。
+func _run_radial8(include_heavy: bool) -> bool:
+	var results: Array = []
+	var ok := true
+	var t_all := Time.get_ticks_msec()
+
+	print("===================================================================")
+	print("radial8 聚合入口 · 径向验证脚本一键全跑")
+	print("  include_heavy_diag = %s" % str(include_heavy))
+	print("===================================================================")
+
+	# ---- ① 进程内套件（沿用 geo8 / radial 既有 preload 机制）----
+	print("\n[radial8] ────────── geo8（八槽几何 E8-A，进程内套件）──────────")
+	var t1 := Time.get_ticks_msec()
+	var ok_geo8 := TestSuiteGeo8.new().run_all()
+	results.append({
+		"name": "geo8(套件)", "code": 0 if ok_geo8 else 1,
+		"ms": Time.get_ticks_msec() - t1,
+	})
+	ok = ok_geo8 and ok
+
+	print("\n[radial8] ────────── radial（阶段0 运动学，进程内套件）──────────")
+	var t2 := Time.get_ticks_msec()
+	# SpaceModel 是全局开关：跑完立即设回 PATH，防止污染同进程内后续默认回归。
+	_SpaceModel.mode = _SpaceModel.Mode.RADIAL
+	var ok_radial := TestSuiteRadial.new().run_all()
+	_SpaceModel.mode = _SpaceModel.Mode.PATH
+	results.append({
+		"name": "radial(套件)", "code": 0 if ok_radial else 1,
+		"ms": Time.get_ticks_msec() - t2,
+	})
+	ok = ok_radial and ok
+
+	# ---- ② 闸门件（子进程）----
+	for item in RADIAL8_GATES:
+		var r: Dictionary = _radial8_subproc(item)
+		results.append(r)
+		if int(r["code"]) != 0:
+			ok = false
+
+	# ---- ③ 轻量诊断件（子进程，恒 exit 0）----
+	for item in RADIAL8_DIAG:
+		var rd: Dictionary = _radial8_subproc(item)
+		rd["diag"] = true
+		results.append(rd)
+		if int(rd["code"]) != 0:
+			ok = false
+
+	# ---- ④ 重型诊断件（仅 radial8diag）----
+	if include_heavy:
+		for item in RADIAL8_DIAG_HEAVY:
+			var rh: Dictionary = _radial8_subproc(item)
+			rh["diag"] = true
+			results.append(rh)
+			if int(rh["code"]) != 0:
+				ok = false
+
+	# ---- 汇总 ----
+	var total_ms: int = Time.get_ticks_msec() - t_all
+	print("")
+	print("===================================================================")
+	print("radial8 汇总（%d 项 · 总耗时 %.1f s）" % [results.size(), total_ms / 1000.0])
+	print("===================================================================")
+	for r in results:
+		var name := String(r.get("name", "?"))
+		var code := int(r.get("code", 0))
+		var ms := int(r.get("ms", 0))
+		var status := "PASS"
+		if code != 0:
+			status = "FAIL"
+		elif bool(r.get("diag", false)):
+			status = "INFO"
+		var marks := int(r.get("marks", -1))
+		var marks_s := "   -" if marks < 0 else str(marks).lpad(4)
+		# 同上：汇总表也不用 "[FAIL]" 字面量，避免污染 grep。
+		print("  [%s] %s exit=%d %s ms  失败标记x%s" % [
+			status, name.rpad(22), code, str(ms).lpad(7), marks_s,
+		])
+	print("===================================================================")
+	print("radial8 结论：%s（exit %d）" % ["PASS" if ok else "FAIL", 0 if ok else 1])
+	print("===================================================================")
+	return ok
