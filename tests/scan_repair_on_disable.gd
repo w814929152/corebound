@@ -21,6 +21,21 @@ extends SceneTree
 ##      (same seed as baseline -> pairing premise) | max_wave=20 | restore mode after run.
 ##   5. Keep the 3.7 diagnostic counters + n_identical pairing check.
 ##
+## ---------------------------------------------------------------------------
+## DIAG ADDENDUM (2026-10-09b, post 4056a3c): the ADD-RUN left one open question --
+## under X_any (whole-run口径) PRICED produced 17 climb-back games while X_form
+## produced 0.  Since X_form only counts W6..W12, those 17 necessarily lost their
+## tower OUTSIDE the formation window, but "outside" is still two very different
+## stories: W1-5 (scrape-by period, tower dies before the build exists) vs W13-20
+## (avalanche, tower dies while the run is already collapsing).  Blocks (A)-(E) at
+## the end of the log are READ-ONLY diagnostics answering that:
+##   (A) X_any x survived joint table  -> is a "0 climb-back" arm real or口径?
+##   (B) first-death wave bucket over ALL X_any>=1 games (denominator view + rate)
+##   (C) per-game detail of the climb-back games (first/last death wave, restore waves)
+##   (D) bucket summary: W1-5 / W6-12 / W13-20 for first death, last death, first restore
+##   (E) explicit check of the "FREE = 0 climb-back" claim
+## 🔴 Nothing here feeds a criterion, a gate or a golden value.
+##
 ## Tower-death definitions (BOTH are printed; the FORM one is the baseline口径 and is PRIMARY):
 ##   X_form  = sum(dis_new) over waves W6..W12   <- run_slice_attrition8._collect() "xf"
 ##             (this is the quantity behind baseline hit=0.1900 / hit_fail=0.4711 / hit_surv=0/179)
@@ -62,6 +77,8 @@ const BASE_N := 300
 const BASE_SURV := 179
 const BASE_FAIL := 121
 const BASE_TD_FORM := 57
+# DIAG-ONLY: max per-game rows listed per arm in block (C) (keeps the log readable)
+const DIAG_LIST_CAP := 24
 
 # cmdline-overridable
 var RUNS := RUNS_DEFAULT
@@ -193,6 +210,14 @@ func _run_arm(mode_val: int) -> Dictionary:
 		if ndrop > 0:
 			n_restored += 1
 			n_restored_events += ndrop
+		# ---- DIAG-ONLY: wave geometry of this game (read-only, feeds §DIAG block) ----
+		var w_first_death: int = _first_death_wave(rows)
+		var w_last_death: int = _last_death_wave(rows)
+		var rw: Array = _restore_waves(rows)
+		var w_first_restore: int = int(rw[0]) if rw.size() > 0 else 0
+		var w_last_restore: int = int(rw[rw.size() - 1]) if rw.size() > 0 else 0
+		var w_end: int = int(rows[-1]["w"]) if (not rows.is_empty()) else 0
+		var dis_end: int = int(rows[-1].get("towers_disabled", 0)) if (not rows.is_empty()) else 0
 		recs.append({
 			"fail": not survived,
 			"td": xf,
@@ -201,6 +226,15 @@ func _run_arm(mode_val: int) -> Dictionary:
 			"rescued_any": (xa > 0 and survived),
 			"restored": (ndrop > 0),
 			"sig": _rows_sig(rows),
+			# DIAG-ONLY fields (no criterion reads these)
+			"w_first_death": w_first_death,
+			"w_last_death": w_last_death,
+			"w_first_restore": w_first_restore,
+			"w_last_restore": w_last_restore,
+			"n_restore_waves": rw.size(),
+			"restore_waves": rw,
+			"w_end": w_end,
+			"dis_end": dis_end,
 		})
 		if _i < BASE_N:
 			if survived:
@@ -267,6 +301,206 @@ func _run_dis_drop_events(rows: Array) -> int:
 		if int(rows[i + 1].get("towers_disabled", 0)) < int(rows[i].get("towers_disabled", 0)):
 			n += 1
 	return n
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# DIAG-ONLY helpers (added 2026-10-09, post 4056a3c).
+# Read-only wave geometry: WHEN did a game lose its first tower, and WHEN did it
+# climb back?  Feeds the "are the PRICED 17 climb-backs W1-5 (scrape-by) or
+# W13-20 (avalanche)?" question, i.e. whether they are GDD 2.3 "recoverable
+# setback" evidence or late-game noise.
+# 🔴 These add fields to `recs` ONLY.  No criterion reads them, no golden value
+#    moves, no default regression changes.
+# ─────────────────────────────────────────────────────────────────────────────
+
+## first wave (1-based) with a tower knocked out (dis_new>0) over W1..20; 0 = never.
+func _first_death_wave(rows: Array) -> int:
+	for r in rows:
+		if int(r.get("dis_new", 0)) > 0:
+			return int(r["w"])
+	return 0
+
+
+## last wave with a tower knocked out; 0 = never.
+func _last_death_wave(rows: Array) -> int:
+	var lw := 0
+	for r in rows:
+		if int(r.get("dis_new", 0)) > 0:
+			lw = int(r["w"])
+	return lw
+
+
+## waves at which the Disabled count DROPPED vs the previous wave -- i.e. a repair
+## that lived through a whole wave.  Numbered by the LATER wave's index (a repair
+## observed entering wave w happened in the safe window after wave w-1).
+## Conservative: same blind spot as _run_dis_drop_events (repaired and re-killed
+## inside the next wave leaves no trace here).
+func _restore_waves(rows: Array) -> Array:
+	var ws: Array = []
+	for i in range(rows.size() - 1):
+		if int(rows[i + 1].get("towers_disabled", 0)) < int(rows[i].get("towers_disabled", 0)):
+			ws.append(int(rows[i + 1]["w"]))
+	return ws
+
+
+## wave bucket: 0 = W1..W_SURV_END (scrape-by / 苟活期)
+##              1 = W_SURV_END+1..W_FORM_END (formation / 成型期, the X_form window)
+##              2 = W_FORM_END+1.. (avalanche / 雪崩期)
+##             -1 = no such event in the game
+func _bucket(w: int) -> int:
+	if w <= 0:
+		return -1
+	if w <= W_SURV_END:
+		return 0
+	if w <= W_FORM_END:
+		return 1
+	return 2
+
+
+func _bucket_tag(b: int) -> String:
+	if b == 0:
+		return "W1-%d" % W_SURV_END
+	if b == 1:
+		return "W%d-%d" % [W_SURV_END + 1, W_FORM_END]
+	if b == 2:
+		return "W%d-%d" % [W_FORM_END + 1, MAX_WAVE]
+	return "none"
+
+
+## DIAG-ONLY print block (added 2026-10-09, post 4056a3c).
+## Answers: (1) which wave-bucket did the X_any climb-back games lose their first
+## tower in; (2) when in the run did the climb-back happen; (3) is a "0 climb-back"
+## arm a real zero or a口径 artifact?  Read-only: no criterion, no golden, no gate.
+func _print_wave_diag(arms: Array) -> void:
+	print("")
+	print("---- DIAG (read-only): wave geometry of the X_any climb-back games ----")
+	print("  [note] X_form counts W%d..W%d ONLY.  A game counted by X_any but NOT by X_form" % [W_SURV_END + 1, W_FORM_END])
+	print("         lost its tower(s) strictly OUTSIDE the formation window, so every")
+	print("         X_any-only climb-back sits in W1-%d or W%d-%d by construction." % [W_SURV_END, W_FORM_END + 1, MAX_WAVE])
+
+	# ---- (A) joint table: real zero vs口径 artifact ----
+	print("")
+	print("  (A) joint table  X_any>=1 x survived   (is a '0 climb-back' arm real, or口径?)")
+	print("      arm       X>=1&surv  X>=1&fail  X=0&surv  X=0&fail | n_td_any  n_surv | X_form>=1&surv")
+	for pair in arms:
+		var a: Dictionary = pair[1]
+		var recs: Array = a["recs"]
+		var c11 := 0
+		var c10 := 0
+		var c01 := 0
+		var c00 := 0
+		for r in recs:
+			var x: bool = int(r["td_any"]) > 0
+			var s: bool = not bool(r["fail"])
+			if x and s:
+				c11 += 1
+			elif x and (not s):
+				c10 += 1
+			elif (not x) and s:
+				c01 += 1
+			else:
+				c00 += 1
+		print("      %s %10d %10d %9d %9d | %8d %6d | %13d"
+			% [String(pair[0]), c11, c10, c01, c00, int(a["n_td_any"]), int(a["n_surv"]), int(a["n_rescue"])])
+
+	# ---- (B) first-death wave bucket over all X_any>=1 games ----
+	print("")
+	print("  (B) wave of the FIRST tower death, over all X_any>=1 games (denominator view)")
+	print("      arm       n_td_any |        first-death bucket        |       survived, by bucket      | rescue rate by bucket")
+	print("                         |   W1-%d    W%d-%d   W%d-%d  |   W1-%d    W%d-%d   W%d-%d  | b1     b2     b3"
+		% [W_SURV_END, W_SURV_END + 1, W_FORM_END, W_FORM_END + 1, MAX_WAVE,
+			W_SURV_END, W_SURV_END + 1, W_FORM_END, W_FORM_END + 1, MAX_WAVE])
+	for pair in arms:
+		var a2: Dictionary = pair[1]
+		var recs2: Array = a2["recs"]
+		var tot := [0, 0, 0]
+		var svv := [0, 0, 0]
+		for r in recs2:
+			if int(r["td_any"]) > 0:
+				var b: int = _bucket(int(r["w_first_death"]))
+				if b >= 0:
+					tot[b] += 1
+					if not bool(r["fail"]):
+						svv[b] += 1
+		var rs: Array = []
+		for k in range(3):
+			rs.append(("%.4f" % (float(svv[k]) / float(tot[k]))) if tot[k] > 0 else "  n/a")
+		print("      %s %8d | %8d %8d %8d  | %8d %8d %8d  | %s %s %s"
+			% [String(pair[0]), int(a2["n_td_any"]), tot[0], tot[1], tot[2], svv[0], svv[1], svv[2],
+				String(rs[0]), String(rs[1]), String(rs[2])])
+
+	# ---- (C)+(D) the climb-back games themselves ----
+	for pair in arms:
+		var nm := String(pair[0])
+		var a3: Dictionary = pair[1]
+		var recs3: Array = a3["recs"]
+		var idxs: Array = []
+		for i in range(recs3.size()):
+			if bool(recs3[i]["rescued_any"]):
+				idxs.append(i)
+		print("")
+		print("  (C) [%s] per-game detail: rescued_any games (X_any>=1 AND survived) = %d%s"
+			% [nm, idxs.size(), ("  [listing first %d]" % DIAG_LIST_CAP) if idxs.size() > DIAG_LIST_CAP else ""])
+		if idxs.is_empty():
+			print("         (none -- 0 games, see block (E) for the口径 check)")
+			continue
+		print("         game  W_first_death  W_last_death  W_first_restore  W_last_restore  #restore  W_end  dis_end  restore_waves")
+		var shown := 0
+		for i in idxs:
+			if shown >= DIAG_LIST_CAP:
+				break
+			shown += 1
+			var r: Dictionary = recs3[i]
+			print("         %4d  %12d  %12d  %14d  %14d  %8d  %5d  %7d  %s"
+				% [int(i), int(r["w_first_death"]), int(r["w_last_death"]), int(r["w_first_restore"]),
+					int(r["w_last_restore"]), int(r["n_restore_waves"]), int(r["w_end"]),
+					int(r["dis_end"]), str(r["restore_waves"])])
+		# (D) bucket summary for these games
+		var b_fd := [0, 0, 0]
+		var b_ld := [0, 0, 0]
+		var b_fr := [0, 0, 0]
+		var n_no_restore := 0
+		for i in idxs:
+			var r2: Dictionary = recs3[i]
+			var k1: int = _bucket(int(r2["w_first_death"]))
+			if k1 >= 0:
+				b_fd[k1] += 1
+			var k2: int = _bucket(int(r2["w_last_death"]))
+			if k2 >= 0:
+				b_ld[k2] += 1
+			var k3: int = _bucket(int(r2["w_first_restore"]))
+			if k3 >= 0:
+				b_fr[k3] += 1
+			else:
+				n_no_restore += 1
+		print("  (D) [%s] bucket summary over those %d games  (b1=W1-%d / b2=W%d-%d / b3=W%d-%d)"
+			% [nm, idxs.size(), W_SURV_END, W_SURV_END + 1, W_FORM_END, W_FORM_END + 1, MAX_WAVE])
+		print("         first tower death  : b1=%d  b2=%d  b3=%d" % [b_fd[0], b_fd[1], b_fd[2]])
+		print("         last  tower death  : b1=%d  b2=%d  b3=%d" % [b_ld[0], b_ld[1], b_ld[2]])
+		print("         first restore wave : b1=%d  b2=%d  b3=%d   (no restore event observed: %d)"
+			% [b_fr[0], b_fr[1], b_fr[2], n_no_restore])
+
+	# ---- (E) verdict on the "0 climb-back" claim ----
+	print("")
+	print("  (E) '0 climb-back' claim check (X_any口径):")
+	for pair in arms:
+		var nm2 := String(pair[0])
+		var a4: Dictionary = pair[1]
+		var nr: int = int(a4["n_rescue_any"])
+		var nt: int = int(a4["n_td_any"])
+		var ns: int = int(a4["n_surv"])
+		var why := ""
+		if nr > 0:
+			why = "REAL climb-backs exist: %d/%d tower-death games survived (rate %.4f)" % [nr, nt, float(nr) / float(maxi(1, nt))]
+		elif nt <= 0:
+			why = "口径 ARTIFACT: n_td_any=0, no game ever lost a tower under this口径"
+		elif ns <= 0:
+			why = "口径 ARTIFACT: n_surv=0, nobody survived at all"
+		else:
+			why = "REAL ZERO: %d games lost a tower and every one of them died (95%% upper < %.5f)" % [nt, 3.0 / float(maxi(1, nt))]
+		print("      [%s] n_rescue_any=%d  n_td_any=%d  n_surv=%d  -> %s" % [nm2, nr, nt, ns, why])
+	print("  [note] blocks (A)-(E) are DIAGNOSTIC ONLY: no criterion, gate or golden")
+	print("         value in this script reads any of the fields printed here.")
 
 
 ## per-wave bit-exact signature (three-arm pairing check)
@@ -433,6 +667,9 @@ func _initialize() -> void:
 	print("  [INFO] FREE then_redied / eligible = %.4f  (share of tower-death runs where a"
 		% [(float(arm_free["diag"][5]) / float(maxi(1, int(arm_free["diag"][4]))))])
 	print("         repaired tower was knocked out again in a LATER wave -- E-V3 'repaired for nothing')")
+
+	# ---- DIAG-ONLY: wave geometry of the X_any climb-back games (added 2026-10-09) ----
+	_print_wave_diag([["OFF   ", arm_off], ["FREE  ", arm_free], ["PRICED", arm_priced]])
 
 	# ---- verdict (two-sided reading; final adjudication stays with design-strategist) ----
 	print("")
