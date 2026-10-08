@@ -108,10 +108,18 @@ func _initialize() -> void:
 	var only := ""
 	for a in OS.get_cmdline_user_args():
 		if (a.begins_with("slice") or a.begins_with("t1") or a == "v0radial"
-				or a == "radial" or a == "geo8" or a == "radial8" or a == "radial8diag"):
+				or a == "radial" or a == "geo8" or a == "radial8" or a == "radial8diag"
+				or a == "repair8"):
 			only = a
 
 	var ok := true
+
+	# 🔒 V-7 repair_on_disable 三臂诊断入口（QG-RADIAL-01 · B-3）：独立入口，
+	#   🔴 **不进默认无参回归**（默认仍只跑 slice1~8 + t1aggro）。repair8 跑 3 臂 × 300 局
+	#   A 路径 MC（数分钟），故单独成一键入口。子进程用 OS.execute 拉起 scan 脚本，
+	#   该脚本恒 quit(0)（诊断件，判读留文策渊）；非零退出 = 脚本崩溃（真信号）。
+	if only == "repair8":
+		ok = _run_repair8() and ok
 
 	# 🔴 径向一键全跑（R-1）：独立入口，不进默认无参回归。
 	if only == "radial8":
@@ -213,6 +221,17 @@ func _radial8_subproc(item: Dictionary) -> Dictionary:
 	print("[radial8] ────────── %s 结束 · exit=%d · %d ms · 失败标记 %d 处 ──────────"
 		% [name, code, dt, fail_marks])
 	return {"name": name, "code": code, "ms": dt, "marks": fail_marks}
+
+
+## 🔒 V-7 repair8 入口（QG-RADIAL-01 · B-3）：单跑三臂诊断扫描（子进程，恒 exit 0 语义）。
+func _run_repair8() -> bool:
+	print("===================================================================")
+	print("repair8 入口 · V-7 repair_on_disable 三臂诊断扫描")
+	print("===================================================================")
+	var item := {"name": "scan_repair_on_disable", "script": "res://tests/scan_repair_on_disable.gd"}
+	var r: Dictionary = _radial8_subproc(item)
+	# scan 脚本是诊断件（恒 quit 0）；非零退出 = 脚本崩溃（真信号 → 计失败）。
+	return int(r["code"]) == 0
 
 
 ## radial8 / radial8diag 主体。

@@ -37,8 +37,13 @@ const _MonsterData := preload("res://scripts/data/monster_data.gd")
 static func run(path: String, cfg: Dictionary, max_wave: int = 20, geo = null, rng = null,
 		aggro_enabled: bool = true, exp: float = 0.6, attrition: float = -1.0,
 		warmup_waves: int = 0, protect_core: bool = false, bulwark: bool = false,
-		sapper: bool = false, rite_bonus: float = 0.0) -> Dictionary:
+		sapper: bool = false, rite_bonus: float = 0.0, diag_out: Array = []) -> Dictionary:
 	var c: Dictionary = cfg.duplicate(true)
+	# 🔒 V-7 诊断容器注入（仅 PRICED 臂）：diag_out 由调用方传入的可变 Array（引用），
+	#   shop_phase / enumerate_actions 往里累加计数器。🔴 只在 repair_on_disable==2 时注入
+	#   → OFF/FREE 臂 c 里无 diag 键 → shop_ai 读到 null → 逐位不变（零扰动）。
+	if int(c.get("repair_on_disable", 0)) == 2 and diag_out != null:
+		c["diag"] = diag_out
 	if geo == null:
 		geo = _Geo6.build_by_slots(int(c["n_slots"]))
 
@@ -51,15 +56,41 @@ static func run(path: String, cfg: Dictionary, max_wave: int = 20, geo = null, r
 	var rows: Array = []
 	var cum := 0.0
 	var cum_rerolls := 0
+	# 🔒 V-7 诊断追踪（仅 PRICED 臂 diag 非 null）：last_repair_wave 供 then_redied 判定。
+	#   🔴 不加类型标注：OFF/FREE 臂 c.get 返回 null，标注 Array 会报 Nil→Array 错。
+	var diag = c.get("diag", null)
+	var last_repair_wave := 0
 
 	for w in range(1, max_wave + 1):
 		var res := _WaveSimAggro.simulate_wave_aggro(player, w, c, geo, aggro_enabled, exp, attrition, warmup_waves, protect_core, bulwark, sapper)
 		core_hp -= float(res["core_damage"])
+		# 🔒 V-7 计数 [4]=n_repair_eligible（幂等）：本波有塔被打停 → 本局出现过 Disabled 塔。
+		if diag != null and int(res["dis_new"]) > 0:
+			diag[4] = 1
+		# 🔒 V-7 计数 [5]=n_repair_then_redied（每局幂等）：本局**修复成交过**且**后续波
+		#   又有塔被打停**（E-V3「修了也白修」证据）。🔴 每局最多 +1（用 diag[5] 标记位
+		#   语义：只要本局满足过一次就置 1）——A 路径 2 塔，dis_new 不区分哪座塔，逐波累加
+		#   会虚高（几乎每波 dis_new>0），故收敛为"每局是否发生过"的幂等标记。
+		if diag != null and last_repair_wave > 0 and int(res["dis_new"]) > 0 and w > last_repair_wave:
+			diag[5] = 1
 		var income := float(res["scrap_earned"]) * (1.0 + float(player.income_mult))
 		cum += income
+		var fired_before := int(diag[1]) if diag != null else 0
 		var shop := _ShopAI.shop_phase(player, cum, w, c, geo, rng)
 		cum = float(shop[0])
 		cum_rerolls += int(shop[1])
+		# 🔒 V-7：记录本波修复成交的波次（供 then_redied：修复后又在后续波被打停）。
+		if diag != null and int(diag[1]) > fired_before:
+			last_repair_wave = w
+
+		# 🔒 V-7 repair_on_disable · FREE 臂（QG-RADIAL-01 · §5-5 / E-V7）：
+		#   波次间安全窗**无条件**把所有 Disabled 塔清标记 + 回满 HP，🔴 **不扣预算、
+		#   不计 actions**（FREE = 结构探针，不参与预算竞争，否则"免费"会挤占 max_actions
+		#   → 变成有代价的，E-V7）。挂在 shop_phase **之外**（镜像循环里）→ shop_ai.gd
+		#   对 FREE 臂零改动（B-8）。
+		#   🔴 金标本零改动：默认 repair_on_disable=0（OFF）→ 本段永不触及 → 逐位不变。
+		if int(c.get("repair_on_disable", 0)) == 1:
+			_WaveSimAggro._clear_all_disabled(player)
 
 		var dps := _DE.dps_only(player, c, geo)
 		var total_hp := float(res["hp_each"]) * float(res["n"])

@@ -167,6 +167,15 @@ static func cfg_of(
 		"max_towers": null,
 		"pity": true,
 		"skill": 1.0,
+		# 🔒 V-7 repair_on_disable（QG-RADIAL-01 · 诊断开关 · §5-8）：塔死亡后可否在波次间
+		#   安全窗修复 Disabled 塔。🔴 **三档枚举，非 bool**（FREE/PRICED 是两个不同的实验臂）：
+		#     0 = OFF（默认）—— 金标本等价口径，任何默认/回归/golden_reference 下恒为 0。
+		#     1 = FREE —— 结构探针：波次间无条件全修、不占预算（挂 run_loop_aggro，shop_ai 零改动）。
+		#     2 = PRICED —— 经济探针：修复作为 shop_ai 候选动作，按 ceil(0.30·invested_est) 定价、
+		#                    与 build/up/reinf 竞争同一预算（挂 shop_ai，开关守卫内）。
+		#   🔴 与 SpaceModel.mode / elite_waves_enabled 同款哲学：默认 off = 逐位不变；仅显式扫参启用。
+		#   🔴 这是诊断工具不是 T1 功能；只在 V-7 三臂扫描（scan_repair_on_disable.gd）里被设非 0。
+		"repair_on_disable": 0,
 		# ---- v0.6 新增 ----
 		"synergy_on": false,          # 🔴 Syn 已摘除（Q-C6）
 		"kappa_mode": "tier",

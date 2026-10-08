@@ -48,7 +48,16 @@ static func new_player(path: String, cfg: Dictionary, geo = null):
 static func snap(p) -> Dictionary:
 	var ts: Array = []
 	for t in p.towers:
-		ts.append([int(t.slot), String(t.ctype), int(t.h), t.attach.duplicate()])
+		# 🔒 V-7（QG-RADIAL-01 · §2.4 前置陷阱修复）：必须捕获 disabled/hp/hp_max。
+		#   原实现只存 [slot, ctype, h, attach] → rest() 用 make_tower 重建塔
+		#   （disabled 默认 false、hp 默认 0）→ action_value() 每评估一个探针动作就
+		#   rest() 一次 → **意外清掉所有 disabled 标记 + 把 hp 归零**。这在 aggro 版
+		#   （塔会 disabled）下是致命的：shop_phase 会免费"复活"死塔 → V-7 的
+		#   FREE/PRICED 修复臂完全失去意义（rest 已做了修复该做的事）。
+		#   🔴 金标本零改动：金标本用 simulate_wave（非 aggro）→ 塔永不 disabled、
+		#      hp 恒满 → 多存的这三个字段恒为默认值 → rest 恢复后逐位不变。
+		ts.append([int(t.slot), String(t.ctype), int(t.h), t.attach.duplicate(),
+			bool(t.disabled), float(t.hp), float(t.hp_max)])
 	return {
 		"towers": ts,
 		"cards": p.cards.duplicate(),
@@ -60,7 +69,14 @@ static func snap(p) -> Dictionary:
 static func rest(p, s: Dictionary) -> void:
 	var ts: Array = []
 	for row in s["towers"]:
-		ts.append(_PS.make_tower(int(row[0]), String(row[1]), int(row[2]), row[3]))
+		var t := _PS.make_tower(int(row[0]), String(row[1]), int(row[2]), row[3])
+		# 🔒 V-7：从快照恢复 disabled/hp/hp_max（与 snap 的扩展字段对应）。
+		#   旧快照（无这三字段，row.size()==4）按默认值处理 → 向后兼容。
+		if row.size() >= 7:
+			t.disabled = bool(row[4])
+			t.hp = float(row[5])
+			t.hp_max = float(row[6])
+		ts.append(t)
 	p.towers = ts
 	p.cards = s["cards"].duplicate()
 	p.income_mult = float(s["income_mult"])

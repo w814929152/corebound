@@ -280,6 +280,49 @@ static func _count_disabled(player) -> int:
 
 
 # ---------------------------------------------------------------------------
+# 🔒 V-7 repair_on_disable（QG-RADIAL-01 · 诊断开关）：清 Disabled 标记 + 回满 HP
+# ---------------------------------------------------------------------------
+## 把指定塔位（slot）上处于 Disabled 的塔**恢复为可用**：清 `disabled` 标记 +
+##   `hp = hp_max`。🔴 **不动 `h`、不动 `attach`、不动 `n_hist_max`**（E-T6 / §2.3
+##   口径：修复只恢复 HP 与输出，不改任何层数/装配/历史最大塔数）。
+##
+## 🔴 与实时版 `shop_runtime.repair_tower()`（:989）同式：清 disabled + hp = hp_max。
+##   批处镜像里 `hp_max` 由 `_init_tower_hp` 在波首按 `HP0 × h^0.6` 设定，修复时
+##   直接回满到该 hp_max 即可（下一波波首也会自动回满，修复的真正意义是**清
+##   disabled 标记恢复 DPS**，不是补 HP 数值 —— §2.4）。
+##
+## 🔴 金标本零改动：本 helper 只在 `repair_on_disable != 0` 的臂里被调用（FREE 臂
+##   在 run_loop_aggro、PRICED 臂在 shop_ai apply_action），OFF 臂永不触及 → 逐位不变。
+##
+## 返回 true = 确实清了一座 Disabled 塔；false = 该槽位无塔或本就未 Disabled。
+static func _clear_disabled(player, slot: int) -> bool:
+	if player == null:
+		return false
+	for t in player.towers:
+		if int(t.slot) == slot:
+			if not bool(t.disabled):
+				return false
+			t.disabled = false
+			t.hp = t.hp_max
+			return true
+	return false
+
+
+## 清 player 上**所有** Disabled 塔（FREE 臂专用：波次间无条件全修，不占预算）。
+## 返回被清掉的塔数。🔴 同样不动 h / attach / n_hist_max。
+static func _clear_all_disabled(player) -> int:
+	if player == null:
+		return 0
+	var n := 0
+	for t in player.towers:
+		if bool(t.disabled):
+			t.disabled = false
+			t.hp = t.hp_max
+			n += 1
+	return n
+
+
+# ---------------------------------------------------------------------------
 # 仇恨行为（逐行镜像 WaveDirector._apply_aggro）
 #   dps_box : 单元素 Array 可变容器 [dps]（塔死亡时重算写回 → 引用捕获，与实时版
 #             dps 成员变量重算逐位一致）

@@ -45,6 +45,15 @@ const WEIGHTS := {
 }
 const CARD_NAMES: Array = ["Arrow", "Cannon", "Frost", "FireUp", "FrostUp", "ScrapUp", "RerollD"]
 
+# 🔒 V-7 repair_on_disable · PRICED 臂修复定价（QG-RADIAL-01 · §2.5 记账陷阱处置）
+#   🔴 AI 侧 `t.invested` 恒 0（player_state.gd:32-34：只在玩家手动路线记录）→ 直接套
+#      `repair_cost = ceil(0.30 × t.invested)` 会算出 **0 分免费修**的假阳性。故 PRICED 臂
+#      改用 AI 侧累计投入估算 `invested_est = 12·h + 9·L`（与实时版 shop_runtime 记账同式），
+#      `repair_cost = ceil(0.30 · invested_est)`。🟡 这是**偏低**近似（不含涨价/reroll/卸塔
+#      历史投入）→ PRICED 臂结论偏乐观（§2.5 方向性偏差，判读时须带着）。
+#   🔴 金标本零改动：REPAIR_RATE 与定价只在 `repair_on_disable == 2` 臂生效，OFF/FREE 臂不触及。
+const REPAIR_RATE := 0.30    # 对齐实时版 shop_runtime.gd:880（`REPAIR_RATE = 0.30`）
+
 
 static func _card_w() -> Array:
 	var out: Array = []
@@ -170,6 +179,27 @@ static func enumerate_actions(player, cfg: Dictionary, fire_bought: int, offers,
 			if String(t.ctype) == tn:
 				acts.append(["up", tn, int(t.slot), null])
 
+	# ---- 🔒 V-7 PRICED 臂：修复 Disabled 塔候选（§2.6 / E-V8）----
+	#   🔴 E-V8 零扰动铁律：必须"开关 ==2 时才产出候选"，不能"产出了再过滤"——否则
+	#      OFF 臂会多产出候选 → 改变 scored 数组长度 → 改变 rng 消费序列 → 金标本逐位污染。
+	#   · 仅当 `repair_on_disable == 2`（PRICED）且该塔 `disabled == true` 时枚举；
+	#   · 修复参与预算竞争（与 build/up/reinf 同源），按 gain/cost 贪心排序 → 只有"性价比
+	#     高于同预算的 build/up"时才会被选中（这正是"废按钮"命题的正确检验）。
+	#   · FREE 臂（==1）不走这里（在 run_loop_aggro 的 shop_phase 之外无条件全修）。
+	if int(cfg.get("repair_on_disable", 0)) == 2:
+		var dz = cfg.get("diag", null)   # 🔒 V-7 诊断容器（run 内 duplicate 后注入）
+		var has_dis := false
+		for t in player.towers:
+			if bool(t.disabled):
+				acts.append(["repair", String(t.ctype), int(t.slot), null])
+				has_dis = true
+		# 🔒 V-7 计数 [0]=n_repair_enumerated（幂等标记）：本局曾枚举 ≥1 修复候选
+		#   （区分"塔死了但动作没枚举"的实现 bug）。仅 PRICED 臂；diag 为 null（OFF 臂）
+		#   时跳过 → 零扰动。🔴 用 =1 幂等而非 +=1：enumerate_actions 在 shop_phase 的
+		#   while 循环内被反复调用（每次刷新后重枚举），累加会重复计数 → 只标记"曾出现"。
+		if has_dis and dz != null:
+			dz[0] = 1
+
 	# ---- 强化卡（只对该 Tag 的塔生效）----
 	for rname in _TD.REINF:
 		var rn := String(rname)
@@ -244,6 +274,19 @@ static func apply_action(player, act: Array, cfg: Dictionary):
 		player.income_mult = float(player.income_mult) + 0.20
 		return float(_TD.PRICE["econ"])
 
+	# 🔒 V-7 PRICED 臂：修复 Disabled 塔（清标记 + 回满 HP，不动 h/attach）。
+	#   🔴 只在 apply_action 被执行时（即 shop_phase 已确认 budget ≥ cost）落地；
+	#      返回花费供 shop_phase 扣预算。E-V2 买不起由 shop_phase 的 `budget < cost`
+	#      跳过（永不透支），E-V4 塔已消失则返回 null（不再枚举 → 视为已重建）。
+	if kind == "repair":
+		for t in player.towers:
+			if int(t.slot) == int(slot) and bool(t.disabled):
+				var cost := repair_cost(t)
+				t.disabled = false
+				t.hp = t.hp_max
+				return cost
+		return null
+
 	if kind == "build":
 		var s = slot
 		if s == null:
@@ -313,6 +356,23 @@ static func action_cost(act: Array, cfg: Dictionary, counts: Dictionary) -> floa
 
 
 # ---------------------------------------------------------------------------
+# 🔒 V-7 PRICED 臂：修复定价（§2.5 记账陷阱处置）
+# ---------------------------------------------------------------------------
+## AI 侧累计投入估算：`invested_est = 12·h + 9·L`（与实时版 shop_runtime 记账同式）。
+##   🔴 不用 `t.invested`（AI 路线恒 0 → 会算出 0 分免费修的假阳性）。
+##   L = Σ attach 层数（`PlayerState.total_layers`）。
+static func invested_est(t) -> float:
+	return float(_TD.PRICE["tower"]) * float(t.h) \
+		+ float(_TD.PRICE["reinforce"]) * _PS.total_layers(t)
+
+
+## 修复定价：`ceil(0.30 · invested_est)`。与 GDD §2.3 算例对齐（h=1 裸塔 → ceil(0.30×12)=4）。
+static func repair_cost(t) -> float:
+	return ceilf(REPAIR_RATE * invested_est(t))
+
+
+
+# ---------------------------------------------------------------------------
 # v03 `shop_phase()` (L639-690)：返回 [剩余预算, 本波刷新次数]
 # ---------------------------------------------------------------------------
 static func shop_phase(player, budget: float, w: int, cfg: Dictionary, geo = null, rng = null) -> Array:
@@ -330,6 +390,7 @@ static func shop_phase(player, budget: float, w: int, cfg: Dictionary, geo = nul
 		if max_act != null and actions >= int(max_act):
 			break
 		var cands := enumerate_actions(player, cfg, fire_bought, offers, geo)
+		var dz = cfg.get("diag", null)   # 🔒 V-7 诊断容器（仅 PRICED 臂非 null）
 		var scored: Array = []
 		for act in cands:
 			var v = action_value(player, act, cfg, geo)
@@ -337,6 +398,9 @@ static func shop_phase(player, budget: float, w: int, cfg: Dictionary, geo = nul
 				continue
 			var gain := float(v[0])
 			var cost := action_cost(act, cfg, counts)
+			# 🔒 V-7 计数 [2]=n_no_money：修复候选 gain>0 但预算不足被跳过（定价过高直接证据）。
+			if dz != null and String(act[0]) == "repair" and gain > 0.0 and budget < cost:
+				dz[2] = int(dz[2]) + 1
 			if gain <= 0.0 or budget < cost:
 				continue
 			scored.append([gain / cost, act, cost])
@@ -352,6 +416,10 @@ static func shop_phase(player, budget: float, w: int, cfg: Dictionary, geo = nul
 			var act2: Array = pick[1]
 			var cost2 := float(pick[2])
 			apply_action(player, act2, cfg)
+			# 🔒 V-7 计数 [1]=n_repair_fired / [3]=spend_repair_total：修复实际成交（核心计数器）。
+			if dz != null and String(act2[0]) == "repair":
+				dz[1] = int(dz[1]) + 1
+				dz[3] = float(dz[3]) + cost2
 			if card_tag(String(act2[1])) == "fire":
 				fire_bought += 1
 			counts[String(act2[1])] = int(counts.get(String(act2[1]), 0)) + 1
