@@ -12,6 +12,7 @@ extends Node2D
 ##
 
 const _ShopLayout := preload("res://scripts/ui/shop_layout.gd")
+const _SpaceModel := preload("res://scripts/geo/space_model.gd")
 
 const ENEMY_COUNT := 5
 const SPEED := 90.0                      # px/s（游戏时间）
@@ -82,14 +83,16 @@ func _draw() -> void:
 	draw_rect(Rect2(0.0, 0.0, w, h), C_FIELD_DIM if dim else C_FIELD)
 
 	# 怪物路径（一条横带，占位）
-	draw_rect(Rect2(0.0, h * 0.45, w, 56.0), C_PATH)
+	# 径向模式下路径概念消失，横带是旧「路径走廊」残留 → 跳过（PATH 逐位不变）
+	if not _SpaceModel.is_radial():
+		draw_rect(Rect2(0.0, h * 0.45, w, 56.0), C_PATH)
 
-	# 怪点
-	for e in _enemies:
-		var x := float(e["x"])
-		if x < -40.0 or x > w + 40.0:
-			continue
-		draw_circle(Vector2(x, h * 0.45 + 28.0), 9.0, C_ENEMY)
+		# 怪点
+		for e in _enemies:
+			var x := float(e["x"])
+			if x < -40.0 or x > w + 40.0:
+				continue
+			draw_circle(Vector2(x, h * 0.45 + 28.0), 9.0, C_ENEMY)
 
 	# 抽屉收起时补上右侧战场（放置模式要全屏看高亮）
 	if w < float(_viewport_size.x) - 0.5:

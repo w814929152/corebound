@@ -692,6 +692,124 @@ func _has_econ(acts: Array) -> bool:
 # ===========================================================================
 # 9. 汇总
 # ===========================================================================
+## V-0′：六槽径向候选只注入 geo，默认金标本入口仍使用 Geo6。
+## 注意：此处仅验证无仇恨的 MVP 数值层；T1 仇恨 / ATTRITION 必须等径向运动学落地后另跑。
+func run_v0_radial(geo) -> bool:
+	_geo = geo
+	_log("[V-0′] 六槽 R2：75链接阈值、含空槽4096组合、逐波金标本、300局 MC")
+	_test_radial_links()
+	_test_decisive()
+	_test_mc_trace()
+	_test_radial_criteria()
+	_test_radial_mc()
+	_log("[V-0′ 数值] 通过 %d 项 / 失败 %d 项" % [_pass, _fail])
+	return _fail == 0
+
+
+func _test_radial_links() -> void:
+	var old_geo = _Geo6.build()
+	var mismatch := 0
+	var min_margin := INF
+	for i in range(6):
+		for j in range(i + 1, 6):
+			for threshold in [23.4, 24.7, 26.0, 27.3, 28.6]:
+				var old_hit: bool = float(old_geo.dist[i][j]) <= float(threshold)
+				var new_hit: bool = float(_geo.dist[i][j]) <= float(threshold)
+				if old_hit != new_hit:
+					mismatch += 1
+				min_margin = minf(min_margin, absf(float(_geo.dist[i][j]) - float(threshold)))
+	_check_int("V-0′ 15对×5阈值逐对失配", mismatch, 0)
+	_check_bool("V-0′ 链接阈值最小余量 ≥0.5", min_margin >= 0.5, true)
+	var full_match := 0
+	var with_empty_match := 0
+	var choices: Array = ["", "Cannon", "Frost", "Arrow"]
+	for number in range(4096):
+		var code := number
+		var types: Array = []
+		for _slot in range(6):
+			types.append(choices[code % 4])
+			code = code / 4
+		var same: bool = old_geo.links(types, "substantial") == _geo.links(types, "substantial")
+		if same:
+			with_empty_match += 1
+			if not types.has(""):
+				full_match += 1
+	_check_int("V-0′ 满槽729种塔型组合全等", full_match, 729)
+	_check_int("V-0′ 含空槽4096种构筑全等", with_empty_match, 4096)
+	_log("[V-0′ 链接] 75阈值失配=%d，729/729、4096/4096，最小安全余量=%.6f"
+		% [mismatch, min_margin])
+
+
+func _test_radial_criteria() -> void:
+	var a: Dictionary = _RunLoop.run("A", _cfg("A", "tier"), 20, _geo, null)
+	var b: Dictionary = _RunLoop.run("B", _cfg("B", "tier"), 20, _geo, null)
+	var sa: Dictionary = _Stats.summarize(a["rows"])
+	var sb: Dictionary = _Stats.summarize(b["rows"])
+	var cl: Array = _Stats.cross_lead(a["rows"], b["rows"])
+	var ha: Dictionary = _Stats.stage_health(a["rows"])
+	var hb: Dictionary = _Stats.stage_health(b["rows"])
+	var wa := float(sa["w20"])
+	var wb := float(sb["w20"])
+	_check_int("V-0′ A 起飞波", int(sa["takeoff"]), int(G.STATS_TIER["toA"]))
+	_check_int("V-0′ B 起飞波", int(sb["takeoff"]), int(G.STATS_TIER["toB"]))
+	_check("V-0′ W20 A ratio (金标本保留2位)", _Stats.pround(wa, 2), float(G.STATS_TIER["w20A"]))
+	_check("V-0′ W20 B ratio (金标本保留2位)", _Stats.pround(wb, 2), float(G.STATS_TIER["w20B"]))
+	_check("V-0′ B/A", _Stats.pround(wb / wa, 3), float(G.STATS_TIER["ba"]))
+	_check_int("V-0′ A 领先波数", int(cl[1]["A"]), int(G.STATS_TIER["leadA"]))
+	_check_int("V-0′ B 领先波数", int(cl[1]["B"]), int(G.STATS_TIER["leadB"]))
+	_check_int("V-0′ 领先翻转", int(cl[2]), int(G.STATS_TIER["flips"]))
+	_check_int("V-0′ A 首领先", int(cl[3]), int(G.STATS_TIER["firstA"]))
+	_check_int("V-0′ B 首领先", int(cl[4]), int(G.STATS_TIER["firstB"]))
+	_check("V-0′ A 雪崩期增速", float(ha["grow"]), float(G.STATS_TIER["growA"]))
+	_check("V-0′ B 雪崩期增速", float(hb["grow"]), float(G.STATS_TIER["growB"]))
+	_check_bool("V-0′ A W13–20 上升", bool(ha["rise"]), true)
+	_check_bool("V-0′ B W13–20 上升", bool(hb["rise"]), true)
+	_check_bool("V-0′ A 苟活期", bool(ha["survive"]), true)
+	_check_bool("V-0′ B 苟活期", bool(hb["survive"]), true)
+	_log("[V-0′ 判据] 起飞 A=W%d B=W%d；B/A=%.3f；领先=%s；翻转=%d"
+		% [int(sa["takeoff"]), int(sb["takeoff"]), wb / wa, str(cl[1]), int(cl[2])])
+
+
+func _test_radial_mc() -> void:
+	for path in ["A", "B"]:
+		var rng := _PyRandom.new(20260930)
+		var cfg := _cfg(String(path), "tier")
+		var trace: Array = []
+		var takeoffs := 0
+		var survives := 0
+		var hits: Array = []
+		for i in range(300):
+			var cx: Dictionary = cfg.duplicate(true)
+			cx["max_actions"] = 12
+			var result: Dictionary = _RunLoop.run(String(path), cx, 20, _geo, rng)
+			var rows: Array = result["rows"]
+			var alive: bool = not rows.is_empty() and float(rows[-1]["core_hp"]) > 0.0
+			var wave: int = _Stats.takeoff_wave(rows)
+			if alive:
+				survives += 1
+			if alive and wave >= 0:
+				takeoffs += 1
+				hits.append(wave)
+			if i < 25:
+				trace.append(wave if alive and wave >= 0 else -1)
+		var want: Dictionary = G.MC_TIER[String(path)]
+		var golden_trace: Array = G.MC_TRACE_A if path == "A" else G.MC_TRACE_B
+		_check_int("V-0′ %s 300局起飞" % path, takeoffs, int(want["n_takeoff"]))
+		_check_int("V-0′ %s 300局存活" % path, survives, int(want["n_surv"]))
+		_check("V-0′ %s 中位起飞波" % path, _Stats._median(hits), 8.0 if path == "A" else 13.0)
+		_check_int("V-0′ %s 前25局逐局分歧" % path, _trace_diff(trace, golden_trace), 0)
+		_log("[V-0′ MC] %s：%d/300 起飞，%d/300 存活，前25局分歧 %d"
+			% [path, takeoffs, survives, _trace_diff(trace, golden_trace)])
+
+
+static func _trace_diff(got: Array, want: Array) -> int:
+	var diff := absi(got.size() - want.size())
+	for i in range(mini(got.size(), want.size())):
+		if int(got[i]) != int(want[i]):
+			diff += 1
+	return diff
+
+
 func run_all() -> bool:
 	_log("=".repeat(78))
 	_log("《守核 Corebound》MVP 切片2 · 战斗循环 + 商店/贪心AI headless 逐位对齐自测")

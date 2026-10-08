@@ -367,6 +367,19 @@ func _test_traps() -> void:
 # ===========================================================================
 # 7. 汇总
 # ===========================================================================
+## V-0′ 六槽候选：沿用原 Python 金标本构筑，只替换注入的几何。
+## 不调用 _test_geo()：新布局的距离 / 逐塔 CoverageScore 本来就与旧路径布局不同；
+## MVP 走聚合 Coverage 常量，真正必须保住的是 E、七区 DPS 与总输出。
+func run_radial_golden(geo) -> bool:
+	_geo = geo
+	_log("[V-0′] 六槽候选金标本 A/B：相同塔位编号、塔型、等级，验证 E 和全部 DPS 乘区")
+	_test_path_a()
+	_test_path_b_tier()
+	_test_path_b_flat()
+	_log("[V-0′ DPS] 通过 %d 项 / 失败 %d 项" % [_pass, _fail])
+	return _fail == 0
+
+
 func run_all() -> bool:
 	_log("=".repeat(78))
 	_log("《守核 Corebound》MVP 切片1 · 伤害引擎 headless 逐位对齐自测")

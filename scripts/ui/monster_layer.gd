@@ -24,6 +24,7 @@ const _PathGeometry := preload("res://scripts/geo/path_geometry.gd")
 const _Geo6 := preload("res://scripts/geo/geo6.gd")
 const _ShopLayout := preload("res://scripts/ui/shop_layout.gd")
 const _TSM := preload("res://scripts/engine/time_state_machine.gd")
+const _SpaceModel := preload("res://scripts/geo/space_model.gd")
 const _WD := preload("res://scripts/gameplay/wave_director.gd")   # 仅取 MState 枚举（AGGRO_TOWER）
 
 const MARGIN := 48.0
@@ -122,11 +123,25 @@ func _field_width() -> float:
 func _xform() -> Dictionary:
 	var vw := _field_width()
 	var vh := float(get_viewport().get_visible_rect().size.y)
-	# 世界包围盒（路径 + 塔位 + 余量）
-	var x0 := -3.0
-	var x1 := 58.0
-	var z0 := 13.0
-	var z1 := 51.0
+	var x0: float
+	var x1: float
+	var z0: float
+	var z1: float
+	if _SpaceModel.mode == _SpaceModel.Mode.RADIAL:
+		# 🔴 径向模式：包围盒以居中核心 (28,28) 为中心、容纳整圈出生环 R_s + 余量。
+		#   环超出逻辑地图 [0,55] 是"怪物从场外涌入"的表现（草案 §2.3）。
+		var core := _SpaceModel.RADIAL_CORE
+		var span := float(_SpaceModel.SPAWN_RADIUS) + 3.0
+		x0 = core.x - span
+		x1 = core.x + span
+		z0 = core.y - span
+		z1 = core.y + span
+	else:
+		# PATH 模式：既有包围盒（路径 + 塔位 + 余量），逐位等价基准，一行不改。
+		x0 = -3.0
+		x1 = 58.0
+		z0 = 13.0
+		z1 = 51.0
 	var ww := x1 - x0
 	var wh := z1 - z0
 	var sc := minf((vw - 2.0 * MARGIN) / ww, (vh - 2.0 * MARGIN) / wh)
@@ -363,16 +378,26 @@ func _draw() -> void:
 	var t := _xform()
 	var sc := float(t["sc"])
 
-	# ---- 路径 ----
-	for i in range(_PathGeometry.N_SEG):
-		var a := _to_screen(_PathGeometry.PATH[i])
-		var b := _to_screen(_PathGeometry.PATH[i + 1])
-		draw_line(a, b, C_PATH, maxf(3.0, sc * 0.55), true)
-	for i in range(_PathGeometry.PATH.size()):
-		draw_circle(_to_screen(_PathGeometry.PATH[i]), maxf(2.0, sc * 0.22), C_PATH_DOT)
+	# ---- 路径 / 出生环 ----
+	if _SpaceModel.mode == _SpaceModel.Mode.RADIAL:
+		# 🔴 径向模式：路径消失（草案核心特征）。改画出生环（半径 R_s 的围攻圈），
+		#   传达"怪物从这一圈涌入"。核心居中 → 环以核心为圆心。
+		var ring_c := _to_screen(_SpaceModel.RADIAL_CORE)
+		var ring_r := float(_SpaceModel.SPAWN_RADIUS) * sc
+		draw_arc(ring_c, ring_r, 0.0, TAU, 96, C_PATH, maxf(2.0, sc * 0.35), true)
+	else:
+		# PATH 模式：既有 5 段折线 + 6 路径点（逐位等价基准，一行不改）。
+		for i in range(_PathGeometry.N_SEG):
+			var a := _to_screen(_PathGeometry.PATH[i])
+			var b := _to_screen(_PathGeometry.PATH[i + 1])
+			draw_line(a, b, C_PATH, maxf(3.0, sc * 0.55), true)
+		for i in range(_PathGeometry.PATH.size()):
+			draw_circle(_to_screen(_PathGeometry.PATH[i]), maxf(2.0, sc * 0.22), C_PATH_DOT)
 
-	# ---- 核心（路径终点）----
-	var cp := _to_screen(_PathGeometry.CORE_POS)
+	# ---- 核心 ----
+	# PATH 模式：路径终点 (55,25)（逐位等价基准）；RADIAL 模式：居中核心 (28,28)。
+	#   🔴 跟随 SpaceModel.core_pos() → 径向下核心居中，"塔全堆核心左侧"的视觉取舍消失。
+	var cp := _to_screen(_SpaceModel.core_pos())
 	var cs := maxf(8.0, sc * 1.6)
 	draw_rect(Rect2(cp.x - cs * 0.5, cp.y - cs * 0.5, cs, cs), C_CORE)
 

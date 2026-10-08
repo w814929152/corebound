@@ -1,0 +1,76 @@
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>守核 · 径向迁移阶段0 运动学 · 已实施</title><style>:root{color-scheme:dark;background:#0e1620;color:#e8eef4;font-family:Inter,"Microsoft YaHei",system-ui,sans-serif}*{box-sizing:border-box}body{margin:0;padding:32px}main{max-width:1120px;margin:auto}.eyebrow{color:#6fa8c8;font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase}.hero{border-radius:24px;padding:32px 36px;background:linear-gradient(125deg,#0f2b3f,#123a52);color:#eaf4f8;box-shadow:0 14px 34px #0a1a2633}h1{font-size:30px;line-height:1.25;margin:10px 0}p{line-height:1.7}.hero p{max-width:780px;color:#c4dced;margin:0}.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:18px 0}.metric,.panel{background:#14202c;border:1px solid #24384a;border-radius:16px;box-shadow:0 7px 20px #0a15202a}.metric{padding:19px}.metric strong{display:block;font-size:26px;color:#5fc7d8}.metric span{display:block;color:#9db4c6;font-size:13px;margin-top:4px}.cols{display:grid;grid-template-columns:1.1fr .9fr;gap:18px}.panel{padding:22px}.panel h2{font-size:19px;margin:0 0 10px;color:#eaf4f8}.subtle{color:#9db4c6;font-size:13px}.badge{display:inline-block;border-radius:999px;padding:5px 10px;background:#12354a;color:#5fc7d8;font-size:12px;font-weight:700}.done{background:#123a2a;color:#63d19a}.panel ul{padding-left:20px;line-height:1.85;color:#c9d8e6}.panel li+li{margin-top:4px}.foot{margin-top:16px;color:#7f94a8;font-size:12px}.mono{font-variant-numeric:tabular-nums;font-family:ui-monospace,SFMono-Regular,Consolas,monospace}svg{width:100%;height:auto;display:block;background:#0b131c;border-radius:12px}.tag{color:#5fc7d8;font-weight:700}.warn{background:#2a2410;border:1px solid #4a3f1e;border-radius:14px;padding:14px 16px;color:#e0c98a;font-size:13px;line-height:1.7}</style></head><body><main>
+<div class="eyebrow">守核 Corebound · 径向核心围攻 · 阶段0 运动学</div>
+<div class="hero">
+<h1>怪物从四面八方涌向核心 —— 已接入运行时</h1>
+<p>径向迁移第一期（草案 §11.2 阶段0）落地：<span class="tag">只改怪物运动学 + 渲染，塔位坐标暂不动</span>。怪物不再沿折线排队进场，而是从场外一圈按黄金角直插居中核心。金标本结算循环一行未改，<span class="tag">t_remain 仍是唯一权威状态量</span>。</p>
+</div>
+
+<div class="grid">
+<div class="metric"><strong>42/0</strong><span>径向逻辑冒烟（含 65 档 DPS 扫描）</span></div>
+<div class="metric"><strong>9/0</strong><span>径向场景冒烟（真实帧渲染）</span></div>
+<div class="metric"><strong>2228/0</strong><span>默认 slice2 回归 · PATH 零扰动</span></div>
+<div class="metric"><strong>v₀ 5.50</strong><span>R_s=55 / t_reach=10（恒定）</span></div>
+</div>
+
+<div class="cols">
+<div class="panel">
+<h2>俯视示意：核心居中 · 出生环 · 怪物径向涌入</h2>
+<svg viewBox="0 0 500 500">
+<defs><radialGradient id="core" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="#5fc7d8"/><stop offset="100%" stop-color="#1a4a5a"/></radialGradient></defs>
+<circle cx="250" cy="250" r="220" fill="none" stroke="#1e3a52" stroke-width="1.5" stroke-dasharray="4 6"/>
+<circle cx="250" cy="250" r="220" fill="#0d1822" opacity="0.4"/>
+<circle cx="250" cy="250" r="18" fill="url(#core)"/>
+<text x="250" y="255" text-anchor="middle" fill="#06222c" font-size="11" font-weight="700">核心</text>
+<g stroke="#2f5a78" stroke-width="0.6" opacity="0.5">
+<line x1="250" y1="30" x2="250" y2="470"/><line x1="30" y1="250" x2="470" y2="250"/>
+<line x1="90" y1="90" x2="410" y2="410"/><line x1="410" y1="90" x2="90" y2="410"/></g>
+<g>
+<circle cx="250" cy="70" r="4.5" fill="#f2803c"/><circle cx="392" cy="108" r="4.5" fill="#f2803c"/>
+<circle cx="430" cy="250" r="4.5" fill="#f2803c"/><circle cx="392" cy="392" r="4.5" fill="#f2803c"/>
+<circle cx="250" cy="430" r="4.5" fill="#f2803c"/><circle cx="108" cy="392" r="4.5" fill="#f2803c"/>
+<circle cx="70" cy="250" r="4.5" fill="#f2803c"/><circle cx="108" cy="108" r="4.5" fill="#f2803c"/>
+</g>
+<g stroke="#f2803c" stroke-width="1.2" opacity="0.55" marker-end="url(#a)">
+<defs><marker id="a" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#f2803c"/></marker></defs>
+<line x1="250" y1="70" x2="250" y2="238"/><line x1="392" y1="108" x2="262" y2="238"/>
+<line x1="430" y1="250" x2="268" y2="250"/><line x1="392" y1="392" x2="262" y2="262"/>
+<line x1="250" y1="430" x2="250" y2="262"/><line x1="108" y1="392" x2="238" y2="262"/>
+<line x1="70" y1="250" x2="232" y2="250"/><line x1="108" y1="108" x2="238" y2="238"/></g>
+<text x="250" y="490" text-anchor="middle" fill="#6fa8c8" font-size="11">出生环 R_s=55 · 黄金角 8 向涌入 · 核心 (28,28) 居中</text>
+</svg>
+</div>
+
+<div class="panel">
+<h2>这一期做了什么 <span class="badge done">已实施</span></h2>
+<ul>
+<li><span class="tag">SpaceModel 双模</span>：新增 <span class="mono">scripts/geo/space_model.gd</span>，全局诊断开关 <span class="mono">PATH/RADIAL</span>（默认 PATH = 金标本等价口径，可一键回退）。</li>
+<li><span class="tag">运动学分派</span>：<span class="mono">monster.gd</span> 位置派生按模式分流——PATH 逐位不变，RADIAL 极坐标一步乘加；新增 <span class="mono">theta</span> 出生角字段。</li>
+<li><span class="tag">v₀ 与出生角</span>：<span class="mono">wave_director.gd</span> 的 v₀ 改走 SpaceModel（10.10→5.50），出生注入黄金角序列（<b>零 RNG 消费</b>，不碰商店发牌流）。</li>
+<li><span class="tag">渲染自洽</span>：<span class="mono">monster_layer.gd</span> 核心居中、径向画出生环、包围盒容纳整圈（PATH 逐位不变）。</li>
+</ul>
+<h2 style="margin-top:16px">关键不变量</h2>
+<ul>
+<li>t_remain 递减 / 判漏 / 稳定排序 <b>一行未动</b></li>
+<li>金标本 <span class="mono">[hp, t_remain]</span> 里本就没有"位置"</li>
+<li>W-A2「距核心最近优先」排序语义完全保住</li>
+</ul>
+</div>
+</div>
+
+<div class="panel" style="margin-top:18px">
+<h2>验证证据（headless · Godot 4.7.2）</h2>
+<ul>
+<li><span class="tag">等价性（最硬）</span>：RADIAL 下 W1–W20 逐波 + 65 档 DPS 扫描（14 档落在 0&lt;kills&lt;N 的非平凡区间），kills / leaked / scrap / dps 与金标本 <b>逐位相同</b> —— 证明径向只改位置派生、未泄漏进结算链。</li>
+<li><span class="tag">运动学</span>：v₀=5.50；单怪出生 ρ=55、抵达 ρ=0、耗时 t_reach=10.0s；极径单调减小；pos 到核心距离 == 派生 ρ（同一状态量）。</li>
+<li><span class="tag">出生角</span>：黄金角序列确定性、同波内 θ 互异、单波 40 只怪覆盖 ≥300°（AC-R1）。</li>
+<li><span class="tag">真实场景</span>：实例化 battle_shop 场景跑真实帧——v₀=5.50、怪物朝核心移动、波次能自己打完进安全窗。</li>
+<li><span class="tag">零扰动</span>：默认 slice2 回归 2228/0、场景冒烟 22/0；全局开关跑后正确回退 PATH。</li>
+</ul>
+</div>
+
+<div class="warn" style="margin-top:18px">
+<b>边界（尚未做）：</b>阶段0 只接了"怪物怎么走"。<b>塔位坐标仍是旧方案 A（未环化）</b>，共鸣拓扑 / E_i / κ_r 全部未变；八槽 E8-A 与塔位环化属阶段1，须独立立项与扫参。默认全量回归逻辑断言全过，但退出仍有已隔离的 UI RID 资源泄漏（与本改动无关），不表述为"0 ERROR 干净通过"。
+</div>
+
+<div class="foot">守核 Corebound · 径向核心围攻 阶段0 运动学 · 依据 radial-core-siege-draft §2.3/§2.5/§11.2 · 2026-10-08</div>
+</main></body></html>

@@ -22,6 +22,7 @@ extends RefCounted
 
 const _MonsterData := preload("res://scripts/data/monster_data.gd")
 const _PathGeometry := preload("res://scripts/geo/path_geometry.gd")
+const _SpaceModel := preload("res://scripts/geo/space_model.gd")
 
 
 enum State {
@@ -42,6 +43,12 @@ var m_dps: float = 1.0      # 🔒 T1 对塔伤害系数；MVP 塔不死 → 不
 
 var t_remain: float = 10.0  # ★ 剩余在场时间（W-A2 分配排序键；仅 MARCHING 时递减）
 var t_remain_max: float = 10.0
+
+## 🆕 径向模式（SpaceModel.RADIAL）下的出生角 θ（弧度）。
+##   · 由 `SpaceModel.spawn_theta(index, w)` 黄金角序列派生（确定性 · 零 RNG）。
+##   · PATH 模式下**不使用**（路径模型无"出生角"概念），恒 0.0。
+##   · 🔴 只影响"位置派生"，不碰 `t_remain` 的递减 / 判漏 / 排序（金标本零扰动）。
+var theta: float = 0.0
 
 var state: int = State.MARCHING
 var target_slot: int = -1   # 当前攻击的塔位（-1 = 无）
@@ -64,16 +71,32 @@ func setup(p_index: int, p_proto: String, p_elite: bool, p_hp: float, p_m_spd: f
 	state = State.MARCHING
 	target_slot = -1
 	sapper = false
+	theta = 0.0
+
+
+## 🆕 径向模式：设置出生角（由 WaveDirector 在 `_spawn_one` 时按黄金角序列注入）。
+##   PATH 模式调用无意义（恒忽略），保留以便统一接线。
+func set_theta(p_theta: float) -> void:
+	theta = float(p_theta)
 
 
 ## 当前弧长 s（派生量，供渲染 / 仇恨判定用）
 func arc_s(v0_: float, total_len: float = _PathGeometry.TOTAL_LEN) -> float:
-	return _PathGeometry.arc_of_t(t_remain, m_spd, v0_, total_len)
+	# 🔴 PATH 模式：逐位等价基准（`s = L − v₀·m_spd·t_remain`），一行不改。
+	if _SpaceModel.mode != _SpaceModel.Mode.RADIAL:
+		return _PathGeometry.arc_of_t(t_remain, m_spd, v0_, total_len)
+	# RADIAL：极径 ρ 与弧长 s 是同一状态量的两种读法（ρ = R_s·m_spd·t_remain/t_reach）。
+	#   返回 ρ（到核心距离），供渲染 / 仇恨用；不影响 t_remain 结算。
+	return _SpaceModel.rho_of_t(t_remain, m_spd)
 
 
 ## 当前世界坐标（XZ 平面）
 func pos(v0_: float, total_len: float = _PathGeometry.TOTAL_LEN) -> Vector2:
-	return _PathGeometry.sample(arc_s(v0_, total_len))
+	# 🔴 PATH 模式：逐位等价基准（二分查折线），一行不改。
+	if _SpaceModel.mode != _SpaceModel.Mode.RADIAL:
+		return _PathGeometry.sample(arc_s(v0_, total_len))
+	# RADIAL：极坐标一步乘加（ρ 由 t_remain 派生，θ 为出生角）。
+	return _SpaceModel.radial_pos_of_t(t_remain, m_spd, theta)
 
 
 ## 🔴 是否已抵达核心（E-W5：`s == 101` 判为**已抵达**，`>=` 含等号，与 core-defense E6 同口径）

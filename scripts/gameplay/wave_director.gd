@@ -53,6 +53,7 @@ const _Cfg := preload("res://scripts/engine/mvp_config.gd")
 const _DE := preload("res://scripts/engine/damage_engine.gd")
 const _WaveSim := preload("res://scripts/engine/wave_sim.gd")
 const _PathGeometry := preload("res://scripts/geo/path_geometry.gd")
+const _SpaceModel := preload("res://scripts/geo/space_model.gd")
 const _MonsterData := preload("res://scripts/data/monster_data.gd")
 const _Monster := preload("res://scripts/gameplay/monster.gd")
 
@@ -221,7 +222,9 @@ func start_wave(p_w: int) -> void:
 	var spawn_span := D * _Cfg.spawn_window(w)
 	interval = spawn_span / float(maxi(1, n))
 	limit = D + t_reach + 1e-9
-	v0_ = _MonsterData.v0(_PathGeometry.TOTAL_LEN, t_reach)
+	# 🔴 v₀ 派生：PATH → L/t_reach = 10.10（逐位等价基准）；RADIAL → R_s/t_reach = 5.50。
+	#   统一走 SpaceModel.v0（t_reach 恒 10.0，R-CS3）→ 两模各自正确，PATH 逐位不变。
+	v0_ = _SpaceModel.v0(t_reach)
 
 	t_wave = 0.0
 	acc = 0.0
@@ -527,6 +530,10 @@ func _spawn_one(idx: int) -> void:
 	var tr := t_reach / mspd
 	var m = _Monster.new()
 	m.setup(idx, proto, elite, hp, mspd, tr)
+	# 🆕 径向模式：注入黄金角出生角（确定性 · 零 RNG · 不碰商店发牌流，E-4/Q-R6）。
+	#   PATH 模式下 set_theta 被忽略（恒 0），位置仍走折线 → 逐位等价。
+	if _SpaceModel.mode == _SpaceModel.Mode.RADIAL:
+		m.set_theta(_SpaceModel.spawn_theta(idx, w))
 	# 🔒 T1 ⑤ Sapper：Elite 波（每5波）里沿波次均匀铺开的精英怪 = Sapper（锁塔 ×3 增伤）。
 	#   与批处理镜像 WaveSimAggro._build_sapper_flags 逐位对齐（同一 elite_indices 算法）。
 	#   🔴 金标本零改动：elite_waves_enabled=false → 不标记任何 sapper。
