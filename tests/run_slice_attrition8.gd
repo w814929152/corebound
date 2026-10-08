@@ -38,12 +38,15 @@ extends SceneTree
 ## 聚合输出（§4.2）：hist[0..8]/[9+] · mean/median/p90/max · hit/hit_w10/hit_fail/hit_surv
 ##                   · tail5 · n_fail · n_reach10 · 各判据裕度 (实测−阈值)/SE
 ##
-## 🔄 **阈值状态（务必读）**：判据**定义**已由文策渊定稿并用户拍板（方案 A · 条件风险惩罚），
-##   但**阈值数值**是 `*️⃣` 暂定值，须按 §6「阈值标定纪律」等本脚本实测回填后定档。
-##   → 故 T-A′-1 / T-A′-2 / T-B′ 三条在本脚本里**只做 INFO 输出，不计入 `_fail`**
-##     （🔴 禁止用未标定阈值当闸门；也禁止把阈值下调到刚好通过）。
-##     定档后由文策渊回写为闸门（r2-criteria-revision.md §8-#3）。
-##     唯一**已是真闸门**的新判据是 **T-D″ 阳性对照**（阈值 ≥1 已定档，实测 3）。
+## ✅ **阈值状态（定档 · 真闸门）**：判据**定义**由文策渊定稿并用户拍板（方案 A · 条件风险惩罚），
+##   **阈值数值**已按 §6「阈值标定纪律」走完「per-run 实测回填 → 文策渊定档（commit 14673fa）
+##   → GDD `mechanics-tower-life-death.md` v1.0.2 回写」三步，**不再是暂定值**。
+##   → 故 T-A′-1 / T-A′-2 / T-B′ 三条在本脚本里**已是真闸门，计入 `_fail`**：
+##     T-A′-1 存活性下限 hit ≥ 0.15 ／ T-A′-2 失败伴随率护栏 n_fail ≥ 30 下 hit_fail ≥ 0.60
+##     ／ T-B′ 尾部控制 tail5 ≤ 0.07。
+##   🔴 T-A′-2 的 n_fail < 30 是**护栏**（样本不足 → INCONCLUSIVE，不计失败），不是闸门。
+##   🔴 阈值已定档，**禁止再下调到刚好通过**；判 FAIL 就如实报错，交文策渊复核。
+##     另一条真闸门是 **T-D″ 阳性对照**（阈值 ≥1 已定档，实测 3）。
 ##
 ## ⚠️ 输出纪律：本脚本会被 `run_tests.gd -- radial8` 用 OS.execute 拉起，Windows 下
 ##    GBK 有损解码 → **per-run 段的输出一律 ASCII**（中文会在聚合日志里乱码）。
@@ -71,13 +74,15 @@ const ATTRITION_FINAL := 1.5   # ✅ V-1′ 定稿（六槽值沿用，径向 A 
 # R-2 per-run 直方图分箱：0..8 各一格，>=9 合并为 "9+"
 const HIST_MAX := 8
 
-# 🔄 R-2 暂定阈值（*️⃣ · r2-criteria-revision.md §5）：
-#    **定义已定稿，数值待 per-run 实测回填后按 §6 标定纪律定档**。
-#    本脚本只把它们当作「对照打印」的参照线，不参与 _fail（见文件头说明）。
+# ✅ R-2 定档阈值（r2-criteria-revision.md §5 定档行 · commit 14673fa ·
+#    GDD mechanics-tower-life-death.md v1.0.2 已回写）：
+#    **定义与数值均已定档，全部参与 _fail**（见文件头说明）。
+#    实测裕度（A 路径 · 300 局）：hit +5.45 SE ／ hit_fail +4.18 SE(n_fail=115) ／ tail5 +3.54 SE。
+#    🔴 数值已由文策渊定档，工程侧不得改动；判 FAIL 如实上报。
 const TH_HIT := 0.15          # T-A′-1 存活性下限
 const TH_HIT_FAIL := 0.60     # T-A′-2 失败伴随率
-const TH_TAIL5 := 0.05        # T-B′ 尾部控制 P(X_form >= 5)
-const GUARD_N_FAIL := 30      # T-A′-2 护栏：n_fail < 30 → INCONCLUSIVE
+const TH_TAIL5 := 0.07        # T-B′ 尾部控制 P(X_form >= 5)  ← 定档值 0.07（原暂定 0.05）
+const GUARD_N_FAIL := 30      # T-A′-2 护栏：n_fail < 30 → INCONCLUSIVE（不计失败）
 
 # T-D″ 阳性对照（🔴 真闸门 · 阈值已定档，非暂定）：PATH 几何八槽 B 单局 Σ dis_new >= 1
 const TH_TDD := 1
@@ -183,8 +188,8 @@ func _initialize() -> void:
 	_check_invariant("A", recs_a)
 	_check_invariant("B", recs_b)
 
-	# ---- 判据（暂定阈值 · INFO · 不计入 _fail）----
-	print("\n---- [R-2 criteria · PROVISIONAL thresholds · INFO only] ----")
+	# ---- 判据（定档阈值 · 真闸门 · 计入 _fail）----
+	print("\n---- [R-2 criteria · FINAL thresholds · gated] ----")
 	_print_criteria(sa)
 
 	# ---- 机器可读单行摘要（ASCII · 便于 CI / 人工 grep）----
@@ -429,34 +434,34 @@ func _check_invariant(tag: String, recs: Array) -> void:
 		+ "total drift (flow-stock)=%d" % drift_total)
 
 
-## 判据打印（🔄 暂定阈值 · INFO · 不计入 _fail）
+## 🔴 判据闸门（✅ 定档阈值 · **真闸门** · 计入 _fail）
 ## 裕度按 §6-④：打印 (实测 − 阈值)/SE，让脆弱性可见。
+## 判定方向：T-A′-1 / T-A′-2 为下界（实测越大越满足）；T-B′ 为上界（实测越小越安全）。
 func _print_criteria(s: Dictionary) -> void:
 	var hit: float = float(s["hit"])
 	var se_hit := _se(hit, int(s["n"]))
 	var m_hit := (hit - TH_HIT) / se_hit if se_hit > 0.0 else 0.0
-	print("  [INFO] T-A1  hit      %.4f  vs TH %.2f  -> margin %+.2f SE  (n=%d)"
-		% [hit, TH_HIT, m_hit, int(s["n"])])
+	_ok("T-A1  hit      %.4f  vs TH %.2f  -> margin %+.2f SE  (n=%d)"
+		% [hit, TH_HIT, m_hit, int(s["n"])], hit >= TH_HIT)
 
 	var n_fail: int = int(s["n_fail"])
 	if n_fail < GUARD_N_FAIL:
-		print("  [SKIP] T-A2  INCONCLUSIVE: n_fail=%d < guard %d (no PASS/FAIL)"
+		# 🔴 护栏不是闸门：样本不足 → INCONCLUSIVE，**不计失败**
+		print("   [SKIP] T-A2  INCONCLUSIVE: n_fail=%d < guard %d (no PASS/FAIL)"
 			% [n_fail, GUARD_N_FAIL])
 	else:
 		var hf: float = float(s["hit_fail"])
 		var se_hf := _se(hf, n_fail)
 		var m_hf := (hf - TH_HIT_FAIL) / se_hf if se_hf > 0.0 else 0.0
-		print("  [INFO] T-A2  hit_fail %.4f  vs TH %.2f  -> margin %+.2f SE  (n_fail=%d)"
-			% [hf, TH_HIT_FAIL, m_hf, n_fail])
+		_ok("T-A2  hit_fail %.4f  vs TH %.2f  -> margin %+.2f SE  (n_fail=%d)"
+			% [hf, TH_HIT_FAIL, m_hf, n_fail], hf >= TH_HIT_FAIL)
 
 	var t5: float = float(s["tail5"])
 	var se_t5 := _se(t5, int(s["n"]))
 	# T-B′ 是上界判据：裕度 = (阈值 − 实测)/SE（实测越小越安全）
 	var m_t5 := (TH_TAIL5 - t5) / se_t5 if se_t5 > 0.0 else 0.0
-	print("  [INFO] T-B   tail5    %.4f  vs TH %.2f  -> margin %+.2f SE  (n=%d)"
-		% [t5, TH_TAIL5, m_t5, int(s["n"])])
-	print("  [INFO] ^ provisional thresholds (r2-criteria-revision.md §5 *️⃣) -- "
-		+ "NOT gated, pending calibration by design-strategist")
+	_ok("T-B   tail5    %.4f  vs TH %.2f  -> margin %+.2f SE  (n=%d)"
+		% [t5, TH_TAIL5, m_t5, int(s["n"])], t5 <= TH_TAIL5)
 
 
 ## 🔴 T-D″ 阳性对照：同数值（ATTRITION=1.50 / HP0=120 / h^0.6 / AGGRO_R=9.0 / WARMUP=2
