@@ -40,7 +40,7 @@ static func run(path: String, cfg: Dictionary, max_wave: int = 20, geo = null, r
 		sapper: bool = false, rite_bonus: float = 0.0) -> Dictionary:
 	var c: Dictionary = cfg.duplicate(true)
 	if geo == null:
-		geo = _Geo6.build() if int(c["n_slots"]) >= 6 else _Geo6.build4()
+		geo = _Geo6.build_by_slots(int(c["n_slots"]))
 
 	var player = _SimPlayer.new_player(path, c, geo)
 	# 🔒 T1 玩法③ 献祭诊断：注入 player.stackcap_bonus（模拟玩家已献祭累积的 StackCap+）。

@@ -138,7 +138,7 @@ func setup(p_path: String, seed_value: int, overrides: Dictionary = {}) -> void:
 	cfg = _Cfg.cfg_of(p_path)
 	for k in overrides:
 		cfg[k] = overrides[k]
-	geo = _Geo6.build() if int(cfg["n_slots"]) >= 6 else _Geo6.build4()
+	geo = _Geo6.build_by_slots(int(cfg["n_slots"]))
 	player = _SimPlayer.new_player(p_path, cfg, geo)
 	rng = _PyRandom.new(seed_value)
 	wave = 0

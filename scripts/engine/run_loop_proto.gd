@@ -32,7 +32,7 @@ static func run(path: String, cfg: Dictionary, max_wave: int = 20, geo = null, r
 		proto_enabled: bool = true, elite_enabled: bool = true) -> Dictionary:
 	var c: Dictionary = cfg.duplicate(true)
 	if geo == null:
-		geo = _Geo6.build() if int(c["n_slots"]) >= 6 else _Geo6.build4()
+		geo = _Geo6.build_by_slots(int(c["n_slots"]))
 
 	var player = _SimPlayer.new_player(path, c, geo)
 	var core_hp := float(c["core_hp"])

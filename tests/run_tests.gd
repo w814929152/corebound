@@ -29,6 +29,7 @@ const TestSuiteSlice7 := preload("res://tests/test_suite_slice7.gd")
 const TestSuiteSlice8 := preload("res://tests/test_suite_slice8.gd")
 const TestSuiteT1Aggro := preload("res://tests/test_suite_t1_aggro.gd")
 const TestSuiteRadial := preload("res://tests/test_suite_radial.gd")
+const TestSuiteGeo8 := preload("res://tests/test_suite_geo8.gd")
 const _Geo := preload("res://scripts/geo/geo.gd")
 const _SpaceModel := preload("res://scripts/geo/space_model.gd")
 
@@ -46,7 +47,7 @@ const R2_SLOTS: Array = [
 func _initialize() -> void:
 	var only := ""
 	for a in OS.get_cmdline_user_args():
-		if a.begins_with("slice") or a.begins_with("t1") or a == "v0radial" or a == "radial":
+		if a.begins_with("slice") or a.begins_with("t1") or a == "v0radial" or a == "radial" or a == "geo8":
 			only = a
 
 	var ok := true
@@ -56,6 +57,8 @@ func _initialize() -> void:
 		_SpaceModel.mode = _SpaceModel.Mode.RADIAL
 		ok = TestSuiteRadial.new().run_all() and ok
 		_SpaceModel.mode = _SpaceModel.Mode.PATH
+	if only == "geo8":
+		ok = TestSuiteGeo8.new().run_all() and ok
 	if only == "" or only == "slice1":
 		ok = TestSuite.new().run_all() and ok
 	if only == "" or only == "slice2":

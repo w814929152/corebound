@@ -63,7 +63,7 @@ func _ready() -> void:
 	# 🔴 I-7：点选是商店期交互（安全窗 paused=true 下也要收点击）→ ALWAYS。
 	#    本节点仍只读玩法状态、只发意图信号，process_mode 只影响"能否收输入"。
 	process_mode = Node.PROCESS_MODE_ALWAYS
-	_slot_rows = _PathGeometry.slot_exposure(_Geo6.SLOTS6, 9.0)
+	_slot_rows = _PathGeometry.slot_exposure(_slots_arr(), 9.0)
 
 
 func bind_director(d: Node) -> void:
@@ -99,7 +99,19 @@ func _on_state_changed(_from: int, _to: int) -> void:
 
 ## shop_changed / run_changed（ShopController）为 0 参信号，用无参回调避免参数不匹配报错。
 func _on_shop_run_changed() -> void:
+	# 🔴 阶段1 八槽：runtime 绑定后按实际 geo 重算暴露度（6/8 槽动态）。
+	if controller != null and controller.runtime != null and controller.runtime.geo != null:
+		_slot_rows = _PathGeometry.slot_exposure(_slots_arr(), 9.0)
 	queue_redraw()
+
+
+## 🔴 阶段1 八槽接入：动态取当前槽位几何（6/8 槽）。
+##   优先从 runtime.geo.slots 取（八槽时 = Geo8 坐标）；未绑定 runtime 时回退
+##   `_Geo6.SLOTS6`（六槽方案 A，逐位不变）。
+func _slots_arr() -> Array:
+	if controller != null and controller.runtime != null and controller.runtime.geo != null:
+		return controller.runtime.geo.slots
+	return _Geo6.SLOTS6
 
 
 func _process(_delta: float) -> void:
@@ -201,9 +213,9 @@ func _hit_tower_slot(screen_p: Vector2) -> int:
 		return -1
 	for tw in controller.runtime.player.towers:
 		var s := int(tw.slot)
-		if s < 0 or s >= _Geo6.SLOTS6.size():
+		if s < 0 or s >= _slots_arr().size():
 			continue
-		var d := wp.distance_to(_Geo6.SLOTS6[s])
+		var d := wp.distance_to(_slots_arr()[s])
 		if d < hit_radius_world and d < best_d:
 			best = s
 			best_d = d
@@ -247,9 +259,9 @@ func _draw_towers(sc: float) -> void:
 		if bool(tw.get("empty", true)):
 			continue
 		var slot: int = int(tw.get("slot", -1))
-		if slot < 0 or slot >= _Geo6.SLOTS6.size():
+		if slot < 0 or slot >= _slots_arr().size():
 			continue
-		var sp := _to_screen(_Geo6.SLOTS6[slot])
+		var sp := _to_screen(_slots_arr()[slot])
 		var h: int = int(tw.get("h", 1))
 		var rad := maxf(7.0, sc * 1.1)
 
@@ -364,9 +376,9 @@ func _draw_under_attack(sc: float) -> void:
 		return
 	var ring_r := maxf(8.0, sc * 1.15)
 	for slot in attacked:
-		if slot < 0 or slot >= _Geo6.SLOTS6.size():
+		if slot < 0 or slot >= _slots_arr().size():
 			continue
-		var sp := _to_screen(_Geo6.SLOTS6[slot])
+		var sp := _to_screen(_slots_arr()[slot])
 		# 橙色攻击环（在塔身之上，醒目但不遮挡塔体损伤演出）
 		draw_arc(sp, ring_r, 0.0, TAU, 32, C_UNDER_ATTACK, maxf(2.0, sc * 0.24), true)
 

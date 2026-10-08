@@ -13,6 +13,7 @@ extends RefCounted
 ##
 
 const _Geo := preload("res://scripts/geo/geo.gd")
+const _Geo8 := preload("res://scripts/geo/geo8.gd")
 
 const SLOTS6: Array = [
 	Vector2(6.0, 33.0), Vector2(22.0, 40.0), Vector2(30.0, 33.0),
@@ -31,3 +32,16 @@ static func build():
 
 static func build4():
 	return _Geo.new(SLOTS4)
+
+
+## 🔴 槽数 → 几何工厂（阶段1 八槽接入 · 零扰动）。
+##   n_slots >= 8 → 八槽 E8-A（Geo8.build8）
+##   n_slots >= 6 → 六槽方案 A（build，默认金标本口径）
+##   否则         → 四槽（build4）
+## 🔴 默认六槽逐位不变：既有消费点从内联三元改调本函数，行为完全一致。
+static func build_by_slots(n_slots: int):
+	if n_slots >= 8:
+		return _Geo8.build8()
+	if n_slots >= 6:
+		return build()
+	return build4()
