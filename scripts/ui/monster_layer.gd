@@ -25,6 +25,7 @@ const _Geo6 := preload("res://scripts/geo/geo6.gd")
 const _ShopLayout := preload("res://scripts/ui/shop_layout.gd")
 const _TSM := preload("res://scripts/engine/time_state_machine.gd")
 const _SpaceModel := preload("res://scripts/geo/space_model.gd")
+const _MonsterData := preload("res://scripts/data/monster_data.gd")
 const _WD := preload("res://scripts/gameplay/wave_director.gd")   # 仅取 MState 枚举（AGGRO_TOWER）
 
 const MARGIN := 48.0
@@ -63,7 +64,7 @@ func _ready() -> void:
 	# 🔴 I-7：点选是商店期交互（安全窗 paused=true 下也要收点击）→ ALWAYS。
 	#    本节点仍只读玩法状态、只发意图信号，process_mode 只影响"能否收输入"。
 	process_mode = Node.PROCESS_MODE_ALWAYS
-	_slot_rows = _PathGeometry.slot_exposure(_slots_arr(), 9.0)
+	_recompute_slot_rows()
 
 
 func bind_director(d: Node) -> void:
@@ -100,9 +101,22 @@ func _on_state_changed(_from: int, _to: int) -> void:
 ## shop_changed / run_changed（ShopController）为 0 参信号，用无参回调避免参数不匹配报错。
 func _on_shop_run_changed() -> void:
 	# 🔴 阶段1 八槽：runtime 绑定后按实际 geo 重算暴露度（6/8 槽动态）。
-	if controller != null and controller.runtime != null and controller.runtime.geo != null:
-		_slot_rows = _PathGeometry.slot_exposure(_slots_arr(), 9.0)
+	_recompute_slot_rows()
 	queue_redraw()
+
+
+## 🔴 阶段2 暴露度分派（D-3 定稿 EXPO_SAFE_MAX=0.15）：
+##   PATH 模式 → 既有 slot_exposure（d_path ≤ 9 二值，逐位不变，金标本零扰动）。
+##   RADIAL 模式 → 径向 slot_exposure_radial（expo_frac ≥ 0.15 二值，D-3 冻结阈值）。
+## 🔴 红线：PATH 分支必须与现状逐位相同（金标本不消费暴露度，但 H10 UI 事实层不能变）。
+func _recompute_slot_rows() -> void:
+	var slots: Array = _slots_arr()
+	if _SpaceModel.is_radial():
+		_slot_rows = _PathGeometry.slot_exposure_radial(
+			slots, _MonsterData.AGGRO_R, _SpaceModel.core_pos(),
+			_PathGeometry.EXPO_SAFE_MAX)
+	else:
+		_slot_rows = _PathGeometry.slot_exposure(slots, _MonsterData.AGGRO_R)
 
 
 ## 🔴 阶段1 八槽接入：动态取当前槽位几何（6/8 槽）。

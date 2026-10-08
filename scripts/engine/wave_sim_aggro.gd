@@ -41,6 +41,7 @@ const _MvpConfig := preload("res://scripts/engine/mvp_config.gd")
 const _WaveSim := preload("res://scripts/engine/wave_sim.gd")
 const _MonsterData := preload("res://scripts/data/monster_data.gd")
 const _PathGeometry := preload("res://scripts/geo/path_geometry.gd")
+const _SpaceModel := preload("res://scripts/geo/space_model.gd")
 
 const DT := 0.1
 
@@ -192,8 +193,15 @@ static func _relocate_carry_to_safe(player, geo) -> void:
 	if carry_idx < 0:
 		return
 	var carry_slot := int(player.towers[carry_idx].slot)
-	# 安全位 = d_path > AGGRO_R（S4/S5）；暴露位 = ≤ AGGRO_R
-	var rows: Array = _PathGeometry.slot_exposure(slots, _MonsterData.AGGRO_R)
+	# 安全位：PATH = d_path > AGGRO_R（S4/S5）；RADIAL = expo_frac < EXPO_SAFE_MAX（D-3 定稿 0.15）。
+	# 🔴 按模式分派：PATH 逐位不变（金标本默认 bulwark=false 不触发，但事实层不能变）。
+	var rows: Array
+	if _SpaceModel.is_radial():
+		rows = _PathGeometry.slot_exposure_radial(
+			slots, _MonsterData.AGGRO_R, _SpaceModel.core_pos(),
+			_PathGeometry.EXPO_SAFE_MAX)
+	else:
+		rows = _PathGeometry.slot_exposure(slots, _MonsterData.AGGRO_R)
 	var safe_slots: Array = []
 	for r in rows:
 		if not bool(r["is_exposed"]):

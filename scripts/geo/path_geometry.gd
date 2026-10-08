@@ -198,3 +198,71 @@ static func slot_exposure(slots: Array, R: float = 9.0) -> Array:
 ## 🔴 这样「t_remain 递减」与「s 递增」共用同一个状态量，不会出现两套时钟。
 static func arc_of_t(t_remain: float, m_spd: float, v0_: float, total_len: float = TOTAL_LEN) -> float:
 	return total_len - v0_ * m_spd * t_remain
+
+
+# ===========================================================================
+#  🆕 径向暴露度解析解（阶段2 · P4 暴露度地基 · tech-assessment §7.1）
+# ---------------------------------------------------------------------------
+#  🔴 纯增量：以下函数与既有 PATH 口径（dist_to_path/exposure_arc/slot_exposure）
+#     **并存**，不改动任何既有函数。PATH 模式逐位不变。
+#
+#  径向模型下「路径」消失，暴露度从「塔到路径的弧长」改为「方向覆盖率」：
+#    怪从出生环各方向直插核心，塔位 P 距核心 d，只有来向一侧（|Δ|≤π/2）的怪会
+#    经过 P 附近，且最近距离 = d·|sinΔ|。积分得方向覆盖率：
+#      d ≤ R  →  expo_frac = 1.000（所有方向的怪都进入 R）
+#      d > R  →  expo_frac = asin(R/d) / π
+#  与 PATH 的 exposure_arc（弧长）不同，这是**无量纲覆盖率** ∈ (0,1]。
+#
+#  ⚠️ 本文件只给**解析闭式**（可单测逐位）；D-3 阈值 EXPO_SAFE_MAX（连续量→二值）
+#     是设计参数，须文策渊定稿，不在本文件冻结。
+# ===========================================================================
+
+## 🔴 D-3 定稿阈值（2026-10-08 · 文策渊拍板）：连续暴露度 → 二值「会挨打/安全」。
+##   is_exposed = expo_frac >= EXPO_SAFE_MAX。
+##   八槽 E8-A 下：0.15 → 安全位 = [S3,S5,S6,S7]（4 暴露 + 4 安全）。
+##   🔴 八槽红线：0.10 会给 0 个安全位（最外 S5=0.107 也 >0.10）→ AC-S6-3 破产，
+##      故八槽下此值必须 ≥0.15。此常量即冻结口径，改动须重新过 AC-S6-3 硬约束。
+const EXPO_SAFE_MAX: float = 0.15
+
+## 塔位 P 到核心的距离（径向暴露度第一手数据，对应 PATH 的 d_path）。
+static func dist_to_core(p: Vector2, core: Vector2) -> float:
+	var dx: float = p.x - core.x
+	var dy: float = p.y - core.y
+	return sqrt(dx * dx + dy * dy)
+
+
+## 方向覆盖率 expo_frac ∈ (0,1]（对应 PATH 的 exposure_arc，但无量纲）。
+##   d ≤ R  → 1.000；d > R → asin(R/d)/π。
+## 🔴 纯闭式，可单测逐位（tech-assessment §7.1 实测表可抄）。
+static func expo_frac_of(p: Vector2, core: Vector2, R: float) -> float:
+	var d: float = dist_to_core(p, core)
+	if d <= R:
+		return 1.0
+	# asin(R/d) / π：R/d ∈ (0,1)，asin 返回 (0, π/2)，除 π 得 (0, 0.5]
+	return asin(clampf(R / d, 0.0, 1.0)) / PI
+
+
+## 径向暴露度表（对应 PATH 的 slot_exposure，径向口径）。
+##   返回 Array[Dictionary]：{ slot, pos, d_core, expo_frac, is_exposed }
+##   is_exposed = expo_frac >= EXPO_SAFE_MAX（阈值由调用方传入，本文件不冻结）。
+## 🔴 EXPO_SAFE_MAX 是设计参数（D-3）：调用方传 NaN 表示不定稿二值（is_exposed 恒 false），
+##    只登记连续量 d_core / expo_frac（事实层，SR-R2 只标事实）。
+static func slot_exposure_radial(slots: Array, R: float, core: Vector2,
+		expo_safe_max: float = NAN) -> Array:
+	var out: Array = []
+	for i in range(slots.size()):
+		var p: Vector2 = slots[i]
+		var d: float = dist_to_core(p, core)
+		var f: float = expo_frac_of(p, core, R)
+		var row: Dictionary = {
+			"slot": i,
+			"pos": p,
+			"d_core": d,
+			"expo_frac": f,
+			"is_exposed": false,
+		}
+		# 仅当阈值有效（非 NaN）时才二值化
+		if not is_nan(expo_safe_max):
+			row["is_exposed"] = (f >= expo_safe_max)
+		out.append(row)
+	return out
