@@ -56,8 +56,17 @@ static func snap(p) -> Dictionary:
 		#   FREE/PRICED 修复臂完全失去意义（rest 已做了修复该做的事）。
 		#   🔴 金标本零改动：金标本用 simulate_wave（非 aggro）→ 塔永不 disabled、
 		#      hp 恒满 → 多存的这三个字段恒为默认值 → rest 恢复后逐位不变。
+		# 🔒 V-8：再捕获 5 个肉盾循环薄记字段。🔴 原因与上面 V-7 那三个字段**完全相同** ——
+		#   `rest()` 用 `make_tower` **重建**塔对象，任何未序列化的字段都会被静默清回初值。
+		#   V-8 的死亡资格快照（`death_valid/death_exposed/death_carry`）必须**跨波**存活
+		#   （塔在 W_k 死、波次间经过 shop_phase 的 snap/rest、W_{k+1} 波首才判重启），
+		#   丢了它 → B3 波首臂的每一次重启判定都看到"无快照" → 被闸门口拒绝 →
+		#   B3 退化成空臂（这正是 60 局冒烟里 nosnap_death=161 的来源）。
+		#   🔴 金标本零改动：默认这些字段恒为初值 → rest 恢复后逐位不变。
 		ts.append([int(t.slot), String(t.ctype), int(t.h), t.attach.duplicate(),
-			bool(t.disabled), float(t.hp), float(t.hp_max)])
+			bool(t.disabled), float(t.hp), float(t.hp_max),
+			float(t.revive_t_disabled), int(t.revive_used_w), int(t.revived_ever),
+			bool(t.death_exposed), bool(t.death_carry), bool(t.death_valid)])
 	return {
 		"towers": ts,
 		"cards": p.cards.duplicate(),
@@ -76,6 +85,15 @@ static func rest(p, s: Dictionary) -> void:
 			t.disabled = bool(row[4])
 			t.hp = float(row[5])
 			t.hp_max = float(row[6])
+		# 🔒 V-8：恢复肉盾循环薄记字段（与 snap 的扩展字段对应；
+		#   旧快照 row.size()<13 按默认值处理 → 向后兼容）。
+		if row.size() >= 13:
+			t.revive_t_disabled = float(row[7])
+			t.revive_used_w = int(row[8])
+			t.revived_ever = int(row[9])
+			t.death_exposed = bool(row[10])
+			t.death_carry = bool(row[11])
+			t.death_valid = bool(row[12])
 		ts.append(t)
 	p.towers = ts
 	p.cards = s["cards"].duplicate()

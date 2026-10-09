@@ -175,7 +175,23 @@ static func cfg_of(
 		#                    与 build/up/reinf 竞争同一预算（挂 shop_ai，开关守卫内）。
 		#   🔴 与 SpaceModel.mode / elite_waves_enabled 同款哲学：默认 off = 逐位不变；仅显式扫参启用。
 		#   🔴 这是诊断工具不是 T1 功能；只在 V-7 三臂扫描（scan_repair_on_disable.gd）里被设非 0。
+		#   🔒 V-8 扩档（`corebound-bulwark-death-cycle-v3` §10-1，🔴 0/1/2 语义一字不改）：
+		#     9  = 战斗内即时重启（波内 `revive_n_seconds` 秒后自动 `_clear_disabled`，K=`revive_k_per_wave`）
+		#     11 = 波首复活（B3 对照臂 = `N → ∞` 极限档，波首清 disabled）
+		#   🟡 与 v3 §10-1 建议的 9/10/11 的偏差：10（N_long）**不单列** —— `N` 已参数化为
+		#     `revive_n_seconds`（N_short=0.5s / N_long=2.0s 由扫描器设值），再列一个 10 是同义分支，
+		#     只会增加"两个枚举做同一件事"的歧义面。🔴 功能完全等价，臂数不变。
 		"repair_on_disable": 0,
+		# 🔒 V-8 肉盾循环 · 残响 `Reverb`（v3 §4，🔴 默认全 off → 金标本逐位不变）
+		"reverb_enabled": false,   # 残响减速场总开关（B4/B5 臂显式开）
+		"reverb_radius": 9.0,      # R_reverb = 1.0 × AGGRO_R（v3 §11.2 P-2 起步值）
+		"reverb_slow": 0.30,       # s_reverb（v3 §11.2 P-3 起步值；上界 ≤0.50）
+		# 🔒 V-8 肉盾循环 · 战斗中复活参数（v3 §3.4）
+		"revive_n_seconds": 0.5,   # N = 5% × t_reach（t_reach=10.0）→ N_short=0.5s / N_long=2.0s
+		"revive_k_per_wave": 1,    # K_base = 1（每波两条命）
+		# 🔒 V-8 诊断埋点开关（bulwark_uptime / gap_leak / reverb_* 计数器）
+		#   🔴 默认 false → 埋点循环整体跳过 → 默认回归零开销、零扰动。
+		"bulwark_diag": false,
 		# ---- v0.6 新增 ----
 		"synergy_on": false,          # 🔴 Syn 已摘除（Q-C6）
 		"kappa_mode": "tier",

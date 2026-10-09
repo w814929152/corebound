@@ -62,6 +62,21 @@ static func simulate_wave_aggro(player, w: int, cfg: Dictionary, geo,
 	#   必须在塔 HP 初始化 / 战斗结算**之前**重定位 → dps_only 重算读到新 slot 的 E。
 	if bulwark and player != null and w > warmup_waves:
 		_relocate_carry_to_safe(player, geo)
+	# ---- 🔒 V-8 肉盾循环（`corebound-bulwark-death-cycle-v3`）----
+	#   🔴 默认 `repair_on_disable=0` / `reverb_enabled=false` / `bulwark_diag=false`
+	#      → 下面三件事**一个都不触发**，逐位不变（金标本零改动）。
+	var revive_mode: int = int(cfg.get("repair_on_disable", 0))
+	var v8: Array = [_new_v8_diag()]
+	var D8: Dictionary = v8[0]
+	if player != null and revive_mode >= 9:
+		# 波首复位：每波每塔 K 次配额重来（v3 §3.1「每波两条命」）
+		for t in player.towers:
+			t.revive_t_disabled = 0.0
+			t.revive_used_w = 0
+		# B3 = 波首复活（`N → ∞` 极限档）。🔴 必须落在 `_init_tower_hp` 与 dps 重算**之前**
+		#   → 复活的塔当波满血、且 `dps_only` 读到它已恢复输出。
+		if revive_mode == 11 and w > warmup_waves:
+			_wave_start_revive(player, cfg, geo, D8)
 	var ms := _WaveSim.monster_stats(w, cfg)
 	var D := float(ms["D"])
 	var n := int(ms["n"])
@@ -77,6 +92,16 @@ static func simulate_wave_aggro(player, w: int, cfg: Dictionary, geo,
 	if player != null:
 		_init_tower_hp(player, exp)
 	var slot_positions: Array = _slot_positions(geo)
+	# ---- V-8 埋点前置：残响开关 / 埋点开关 / 肉盾集合 ----
+	var reverb_on: bool = bool(cfg.get("reverb_enabled", false))
+	var diag_on: bool = bool(cfg.get("bulwark_diag", false))
+	var s_reverb: float = float(cfg.get("reverb_slow", 0.30))
+	var slow_dt: float = DT * (1.0 - s_reverb)
+	var r2_reverb: float = float(cfg.get("reverb_radius", 9.0))
+	r2_reverb = r2_reverb * r2_reverb
+	var bulw_set: Array = []
+	if diag_on:
+		bulw_set = _bulwark_set(player, geo)
 
 	# ---- 出生表（单一基准怪 = 金标本口径；仇恨版不含三原型分化）----
 	# 🔒 T1 ⑤ Sapper 诊断：Elite 波里沿波次均匀铺开的精英怪 = Sapper（锁塔 ×3 增伤）。
@@ -113,9 +138,44 @@ static func simulate_wave_aggro(player, w: int, cfg: Dictionary, geo,
 			var th := 0.0
 			if _SpaceModel.is_radial():
 				th = _SpaceModel.spawn_theta(spawned, w)
+			# 🔒 V-8：m[7] = 残响覆盖标记（是否被残响减速过）。🔴 只被残响块读写，
+			#    reverb_enabled=false 时恒 false → 不参与任何判定 → 金标本零扰动。
 			monsters.append([hp_unit, tr, 0, -1, float(_MonsterData.M_DPS["Swarm"]),
-				_sapper_flags[spawned] == true, th])
+				_sapper_flags[spawned] == true, th, false])
 			spawned += 1
+
+		# ---- 🔒 V-8 埋点：本子步塔状态扫描（bulwark_uptime / gap 窗口 / reverb_uptime）----
+		#   🔴 纯计数，不写任何塔状态、不改任何浮点 → 零扰动。diag_on=false 且
+		#      reverb_on=false 时整段跳过（默认回归零开销）。
+		var gap_on := false
+		if diag_on or reverb_on:
+			if player != null:
+				var n_dis := 0
+				for t in player.towers:
+					if bool(t.disabled):
+						n_dis += 1
+				if reverb_on and n_dis > 0:
+					D8["rev_up"] += 1.0
+				# 🆕 `*_a` 系列只统计**场上有怪**的子步：`limit = D + t_reach` 让波次
+				#    尾部有一段"场上无人"的空转，会把 uptime 系统性抬高。两个口径都打。
+				var act: bool = monsters.size() > 0
+				if diag_on and bulw_set.size() > 0:
+					var all_down := true
+					for ti in bulw_set:
+						var tt = player.towers[ti]
+						D8["bulw_total"] += 1.0
+						if not bool(tt.disabled):
+							D8["bulw_alive"] += 1.0
+							all_down = false
+						if act:
+							D8["bulw_total_a"] += 1.0
+							if not bool(tt.disabled):
+								D8["bulw_alive_a"] += 1.0
+					# 空窗期 = 肉盾线**整体**下线（全部暴露位非 carry 塔都 Disabled）
+					gap_on = all_down
+				D8["ticks"] += 1.0
+				if act:
+					D8["ticks_a"] += 1.0
 
 		# ---- ② 集火（按 t_remain 升序 = 距核心最近优先；金标本口径恒正序）----
 		_stable_sort_by_time(monsters)
@@ -140,9 +200,31 @@ static func simulate_wave_aggro(player, w: int, cfg: Dictionary, geo,
 			if int(m[2]) == 1:   # AggroTower：停下，冻结 t_remain，不漏怪
 				alive.append(m)
 				continue
-			m[1] = float(m[1]) - DT
+			# 🔒 V-8 残响（`Reverb`）：Disabled 塔半径 `R_reverb` 内的**行进中**怪物
+			#   `t_remain -= DT × (1 − s_reverb)`（怪照常前进，只是变慢）。
+			#   🔴 只作用于 state=0（Marching）：AggroTower 怪是**冻结**在塔前的，
+			#      对它施加减速 = 让它往前爬 → 那是"位移"不是"减速"，与 v3 §4.2 定性不符。
+			var step_dt := DT
+			if reverb_on:
+				var st0 := int(m[2])
+				var tg0 := int(m[3])
+				if _in_reverb(m, v0_, slot_positions, player, r2_reverb):
+					step_dt = slow_dt
+					D8["rev_slow"] += DT * s_reverb
+					if not bool(m[7]):
+						m[7] = true
+						D8["rev_cov"] += 1.0
+				# 🔴 硬断言运行时守卫：残响**只许写 m[1] / m[7]**，绝不得触碰仇恨锁定
+				#   （`reverb_aggro_disturb` 必须恒 0 —— v3 §6.2 护栏 ⑧ / §10-6）
+				if int(m[2]) != st0 or int(m[3]) != tg0:
+					D8["rev_disturb"] += 1.0
+			m[1] = float(m[1]) - step_dt
 			if float(m[1]) <= 0.0:
 				leaked += 1
+				if bool(m[7]):
+					D8["rev_cov_leak"] += 1.0
+				if gap_on:
+					D8["gap_leak"] += 1.0
 			else:
 				alive.append(m)
 		monsters = alive
@@ -155,7 +237,11 @@ static func simulate_wave_aggro(player, w: int, cfg: Dictionary, geo,
 		#   贴合 GDD「苟活期可感知、成型期才致命」的意图。🔴 仅扫参显式启用（可回退）。
 		if aggro_enabled and w > warmup_waves:
 			_apply_aggro(monsters, v0_, slot_positions, cfg, player, geo, dps_box,
-				_MonsterData.resolve_attrition(attrition), dis_new_box, protect_core, sapper)
+				_MonsterData.resolve_attrition(attrition), dis_new_box, protect_core, sapper, v8)
+		# ---- ⑤ 战斗中复活（v3 §3 · 被动/系统发起 · 波内 `N` 秒后自动重启）----
+		#   🔴 默认 repair_on_disable=0 → 不触发。
+		if revive_mode >= 9 and revive_mode != 11 and w > warmup_waves:
+			_tick_revive(player, cfg, geo, dps_box, D8, exp)
 
 		time += DT
 
@@ -167,6 +253,8 @@ static func simulate_wave_aggro(player, w: int, cfg: Dictionary, geo,
 		"n": n, "hp_each": hp_unit,
 		"towers_disabled": _count_disabled(player),
 		"dis_new": int(dis_new_box[0]),
+		# 🔒 V-8 诊断量（本波）。🔴 纯计数，不参与战斗结算 → 金标本零扰动。
+		"v8_diag": D8,
 	}
 
 
@@ -322,6 +410,202 @@ static func _clear_all_disabled(player) -> int:
 	return n
 
 
+# ===========================================================================
+# 🔒 V-8 肉盾循环（`corebound-bulwark-death-cycle-v3`）
+#    🆕 战斗中复活（M-1）+ 残响减速场（M-1b / `Reverb`）
+#    🔴 全部挂诊断开关，默认 off，off 时逐位不变（金标本零改动）
+# ===========================================================================
+
+## V-8 诊断量容器（单波）。🔴 全部用 float 计数（headless 下 Array 元素 Variant
+##   类型不稳，float 最不容易踩 Nil/int 混用坑），只在打印时按需取整。
+static func _new_v8_diag() -> Dictionary:
+	return {
+		"bulw_alive": 0.0,   # 肉盾线未 Disabled 的「塔·子步」数（bulwark_uptime 分子）
+		"bulw_total": 0.0,   # 肉盾线「塔·子步」总数（bulwark_uptime 分母）
+		"gap_leak": 0.0,     # 空窗期（肉盾线整体 Disabled）内新产生的漏怪数
+		"gap_unlocked": 0.0, # 因目标塔 Disabled 而被解锁的怪物次数
+		"rev_slow": 0.0,     # reverb_slow_seconds（残响拖住的秒数 = s×步数×DT）
+		"rev_up": 0.0,       # 残响生效子步数（reverb_uptime 分子）
+		"rev_cov": 0.0,      # reverb_covered_monsters（入过场的怪物数）
+		"rev_cov_leak": 0.0, # 入过场但最终漏掉的怪物数
+		"rev_disturb": 0.0,  # 🔴 reverb_aggro_disturb（硬断言，必须恒 0）
+		"bulw_alive_a": 0.0, # 同上，但只统计**场上有怪**的子步（战斗在线率）
+		"bulw_total_a": 0.0,
+		"ticks_a": 0.0,
+		"revive_fired": 0.0, # 战斗内/波首重启成交次数
+		"revive_elig": 0.0,  # 合格死亡事件数（暴露位 & 非 carry）
+		"revive_redied": 0.0,# 重启后又死（履职证明，不判负）
+		"revive_refused": 0.0, # 🆕 闸门口**正确拒绝**的次数（carry 死 / 非暴露位死）
+		"carry_death": 0.0,  # 🆕 死亡时刻是 carry 的死亡事件数（v2 §7.3-5 故障护栏量）
+		"nonexp_death": 0.0, # 🆕 死亡时刻在非暴露位的死亡事件数
+		"nosnap_death": 0.0, # 🆕 无死亡快照却进入重启判定的次数（应恒 0）
+		"revive_misq": 0.0,  # 🔴 revive_misqualify（硬断言：已落地的重启违反资格，必须恒 0）
+		"ticks": 0.0,        # 本波子步总数（uptime 类分母）
+	}
+
+
+## 肉盾集合 = **暴露位 & 非 carry** 的塔（在 `player.towers` 里的下标）。
+##   🔴 与 `_relocate_carry_to_safe` / `protect_core` 同一 carry 口径（h 最高的未 Disabled 塔）。
+static func _bulwark_set(player, geo) -> Array:
+	var out: Array = []
+	if player == null or geo == null:
+		return out
+	var slots: Array = _slot_positions(geo)
+	var rows: Array
+	if _SpaceModel.is_radial():
+		rows = _PathGeometry.slot_exposure_radial(
+			slots, _MonsterData.AGGRO_R, _SpaceModel.core_pos(),
+			_PathGeometry.EXPO_SAFE_MAX)
+	else:
+		rows = _PathGeometry.slot_exposure(slots, _MonsterData.AGGRO_R)
+	var expo: Dictionary = {}
+	for r in rows:
+		expo[int(r["slot"])] = bool(r["is_exposed"])
+	var carry_idx := -1
+	var carry_h := -1
+	for i in range(player.towers.size()):
+		var t = player.towers[i]
+		if bool(t.disabled):
+			continue
+		if int(t.h) > carry_h:
+			carry_h = int(t.h)
+			carry_idx = i
+	for i in range(player.towers.size()):
+		if i == carry_idx:
+			continue
+		if bool(expo.get(int(player.towers[i].slot), false)):
+			out.append(i)
+	return out
+
+
+## 死亡时刻资格快照（v3 §3.3 安全红线）：`is_exposed` + 非 carry。
+##   🔴 必须在 `t.disabled = true` **之前**取（此时本塔尚属"未 Disabled"，
+##      carry 判定与 `_relocate_carry_to_safe` 同口径）。
+static func _death_snapshot(t, player, geo, D8: Dictionary, revive_mode: int) -> void:
+	var slot: int = int(t.slot)
+	var exposed := false
+	if geo != null:
+		var slots: Array = _slot_positions(geo)
+		var rows: Array
+		if _SpaceModel.is_radial():
+			rows = _PathGeometry.slot_exposure_radial(
+				slots, _MonsterData.AGGRO_R, _SpaceModel.core_pos(),
+				_PathGeometry.EXPO_SAFE_MAX)
+		else:
+			rows = _PathGeometry.slot_exposure(slots, _MonsterData.AGGRO_R)
+		for r in rows:
+			if int(r["slot"]) == slot:
+				exposed = bool(r["is_exposed"])
+				break
+	var carry_h := -1
+	if player != null:
+		for o in player.towers:
+			if bool(o.disabled):
+				continue
+			if int(o.h) > carry_h:
+				carry_h = int(o.h)
+	var is_carry := (carry_h >= 0 and int(t.h) >= carry_h)
+	t.death_exposed = exposed
+	t.death_carry = is_carry
+	t.death_valid = true
+	# 死亡事件分类（v2 §7.3-5 `carry_exposure_time` 故障护栏的等价读数）
+	if is_carry:
+		D8["carry_death"] += 1.0
+	elif not exposed:
+		D8["nonexp_death"] += 1.0
+	# 合格死亡事件计数（v3 §6.2 护栏 ③：`n_revive_eligible >= 200`/臂）
+	if revive_mode >= 9 and exposed and (not is_carry):
+		D8["revive_elig"] += 1.0
+	# 重启后又死（v3 §7.3-8：`revive_then_redied`，语义 = 履职证明，不判负）
+	if int(t.revived_ever) > 0:
+		D8["revive_redied"] += 1.0
+
+
+## 战斗内复活资格判定 + 成交（共用于 B1/B2/B5 与 B3）。
+##   🔴 硬断言：不合格 → `revive_misqualify += 1` 且**跳过重启**（并把本波配额打满，
+##      避免同一座塔每子步重复计数把断言数刷爆）。
+static func _try_revive(t, player, cfg: Dictionary, geo, dps_box: Array,
+		D8: Dictionary, exp: float) -> bool:
+	var k_max: int = int(cfg.get("revive_k_per_wave", 1))
+	if bool(t.death_valid) and bool(t.death_exposed) and (not bool(t.death_carry)):
+		t.hp_max = _MonsterData.tower_hp(int(t.h), exp)
+		if _clear_disabled(player, int(t.slot)):
+			t.revive_used_w = int(t.revive_used_w) + 1
+			t.revived_ever = int(t.revived_ever) + 1
+			D8["revive_fired"] += 1.0
+			# 🔴 硬断言（v3 §3.3 / §6.2 护栏⑥）：**已落地**的重启必须仍然满足死亡快照资格。
+			#    这里是闸门的后置守卫 —— 只要上面的 `if` 被改动/绕过，它就会炸。
+			#    🟡 与「闸门**正确拒绝**」是两件事：拒绝数走 `revive_refused`（诊断量，不是断言）。
+			if (not bool(t.death_exposed)) or bool(t.death_carry) or (not bool(t.death_valid)):
+				D8["revive_misq"] += 1.0
+			# 🔴 塔恢复输出 → 全场 DPS 立即重算（与塔死亡时重算同一条纪律）
+			dps_box[0] = _DE.dps_only(player, cfg, geo)
+			return true
+		return false
+	# ---- 闸门口**正确拒绝**：不合格（carry 死 或 非暴露位死）→ 不重启 ----
+	if not bool(t.death_valid):
+		D8["nosnap_death"] += 1.0
+	D8["revive_refused"] += 1.0
+	# 🔴 打满本波配额 → 同一座塔不会被每子步重复判定（否则拒绝计数会被刷爆）
+	t.revive_used_w = k_max
+	return false
+
+
+## B3 · 波首复活（`N → ∞` 极限档）：波首把合格的 Disabled 塔一次性清标记 + 回满。
+##   🟢 落在 `dps_only` 重算**之前**调用 → 本波 dps 直接读到已恢复的塔。
+##   🟢 落在 `_init_tower_hp` **之前**调用 → 复活的塔当波按 `HP0 × h^0.6` 满血。
+static func _wave_start_revive(player, cfg: Dictionary, geo, D8: Dictionary) -> void:
+	if player == null:
+		return
+	var exp: float = float(cfg.get("tower_stack_exp", 0.6))
+	var k_max: int = int(cfg.get("revive_k_per_wave", 1))
+	var dps_box: Array = [0.0]
+	for t in player.towers:
+		if not bool(t.disabled):
+			continue
+		if int(t.revive_used_w) >= k_max:
+			continue
+		_try_revive(t, player, cfg, geo, dps_box, D8, exp)
+
+
+## B1/B2/B5 · 战斗内即时复活：Disabled 塔累计 `N` 秒后自动重启，每波每塔最多 `K` 次。
+##   🔴 `K` 用尽 → 保持 Disabled 到波末（v3 §2 段③）。
+static func _tick_revive(player, cfg: Dictionary, geo, dps_box: Array,
+		D8: Dictionary, exp: float) -> void:
+	if player == null:
+		return
+	var n_sec: float = float(cfg.get("revive_n_seconds", 0.5))
+	var k_max: int = int(cfg.get("revive_k_per_wave", 1))
+	for t in player.towers:
+		if not bool(t.disabled):
+			continue
+		t.revive_t_disabled = float(t.revive_t_disabled) + DT
+		if int(t.revive_used_w) >= k_max:
+			continue
+		if float(t.revive_t_disabled) + 1e-9 < n_sec:
+			continue
+		_try_revive(t, player, cfg, geo, dps_box, D8, exp)
+
+
+## 残响场内判定：怪物是否落在**任一 Disabled 塔**的 `R_reverb` 半径内。
+##   🟢 零新几何代码：复用 `_monster_pos` + `distance_squared_to`
+##      （与 `_nearest_exposed_tower` 同款距离判定，v3 §10-5）。
+static func _in_reverb(m: Array, v0_: float, slot_positions: Array, player,
+		r2: float) -> bool:
+	if player == null:
+		return false
+	var mpos: Vector2 = _monster_pos(m, v0_)
+	for t in player.towers:
+		if not bool(t.disabled):
+			continue
+		var slot: int = int(t.slot)
+		if slot < 0 or slot >= slot_positions.size():
+			continue
+		if mpos.distance_squared_to(slot_positions[slot]) <= r2:
+			return true
+	return false
+
+
 # ---------------------------------------------------------------------------
 # 仇恨行为（逐行镜像 WaveDirector._apply_aggro）
 #   dps_box : 单元素 Array 可变容器 [dps]（塔死亡时重算写回 → 引用捕获，与实时版
@@ -330,7 +614,9 @@ static func _clear_all_disabled(player) -> int:
 static func _apply_aggro(monsters: Array, v0_: float, slot_positions: Array,
 		cfg: Dictionary, player, geo, dps_box: Array, attrition: float = 0.5,
 		dis_new_box: Array = [0], protect_core: bool = false,
-		sapper: bool = false) -> void:
+		sapper: bool = false, v8_box: Array = []) -> void:
+	var d8_on: bool = v8_box.size() > 0
+	var D8: Dictionary = v8_box[0] if d8_on else {}
 	for m in monsters:
 		if float(m[0]) <= 0.0:
 			continue
@@ -351,8 +637,12 @@ static func _apply_aggro(monsters: Array, v0_: float, slot_positions: Array,
 			if not _aggro_target_valid(m, v0_, player, slot_positions):
 				m[2] = 0
 				m[3] = -1
+				# 🔒 V-8 `gap_unlocked_monsters`：肉盾倒下 → 原本被它锁住的怪解锁
+				#   → 重新前进 → 这就是空窗期的真实危害（v2 §2.1）。纯计数。
+				if d8_on:
+					D8["gap_unlocked"] += 1.0
 			else:
-				_damage_tower(m, player, cfg, geo, dps_box, attrition, dis_new_box)
+				_damage_tower(m, player, cfg, geo, dps_box, attrition, dis_new_box, v8_box)
 
 
 static func _monster_pos(m: Array, v0_: float) -> Vector2:
@@ -477,7 +767,7 @@ static func _aggro_target_valid(m: Array, v0_: float, player, slot_positions: Ar
 ## AggroTower 怪对目标塔造成伤害；塔归零 → Disabled 中间态 → 重算 dps。
 ## 🔴 直接改 player.towers 的 hp/disabled（单一数据源）→ dps_only 重算读到新 disabled。
 static func _damage_tower(m: Array, player, cfg: Dictionary, geo, dps_box: Array,
-		attrition: float, dis_new_box: Array = [0]) -> void:
+		attrition: float, dis_new_box: Array = [0], v8_box: Array = []) -> void:
 	var slot: int = int(m[3])
 	var t = _tower_by_slot(player, slot)
 	if t == null or bool(t.disabled):
@@ -489,6 +779,12 @@ static func _damage_tower(m: Array, player, cfg: Dictionary, geo, dps_box: Array
 	t.hp = float(t.hp) - dmg
 	if float(t.hp) <= 0.0:
 		t.hp = 0.0
+		# 🔒 V-8：死亡时刻资格快照（v3 §3.3）→ 必须在 `disabled = true` **之前**取。
+		#   🔴 默认 repair_on_disable=0 → 不触发，零开销零扰动。
+		var rm: int = int(cfg.get("repair_on_disable", 0))
+		if rm >= 9:
+			var D8: Dictionary = v8_box[0] if v8_box.size() > 0 else _new_v8_diag()
+			_death_snapshot(t, player, geo, D8, rm)
 		t.disabled = true          # 进入 Disabled 中间态（断输出不断链）
 		# 🔒 T1 V-1：本波毛新增 +1（塔在本子步被打停；每塔每次被打停计一次，
 		#    修复后再次被打停会再计 → 毛流量语义，不受跨波修复干扰）。

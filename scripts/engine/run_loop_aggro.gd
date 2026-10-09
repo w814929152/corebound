@@ -46,7 +46,9 @@ static func run(path: String, cfg: Dictionary, max_wave: int = 20, geo = null, r
 	#      §3.7 计数器也打到 FREE 臂上（区分「修了也白修」vs「压根没修」）。
 	#      🔴 零扰动仍然成立：OFF(0) 不注入；diag 是**只写**容器，不参与任何决策 →
 	#      FREE/PRICED 的决策序列与 RNG 消费序列逐位不变（shop_ai 只在 ==2 分支读 diag）。
-	if int(c.get("repair_on_disable", 0)) != 0 and diag_out != null:
+	# 🔒 防御：diag 容器必须是 6 槽 shape（`run()` 内会索引 diag[1]/[4]/[5]）。
+	#    默认参数 `[]` 在 repair_on_disable != 0 时会越界 → 显式要求长度 ≥ 6。
+	if int(c.get("repair_on_disable", 0)) != 0 and diag_out != null and diag_out.size() >= 6:
 		c["diag"] = diag_out
 	if geo == null:
 		geo = _Geo6.build_by_slots(int(c["n_slots"]))
@@ -64,9 +66,16 @@ static func run(path: String, cfg: Dictionary, max_wave: int = 20, geo = null, r
 	#   🔴 不加类型标注：OFF/FREE 臂 c.get 返回 null，标注 Array 会报 Nil→Array 错。
 	var diag = c.get("diag", null)
 	var last_repair_wave := 0
+	# 🔒 V-8 肉盾循环：跨波累计诊断量（bulwark_uptime / gap_leak / reverb_* / revive_*）。
+	#   🔴 纯累加，不参与任何决策 → 不进 rows、不改 row 形状 → 金标本零扰动。
+	var v8_tot: Dictionary = {}
 
 	for w in range(1, max_wave + 1):
 		var res := _WaveSimAggro.simulate_wave_aggro(player, w, c, geo, aggro_enabled, exp, attrition, warmup_waves, protect_core, bulwark, sapper)
+		var vd = res.get("v8_diag", null)
+		if vd != null:
+			for k in vd:
+				v8_tot[k] = float(v8_tot.get(k, 0.0)) + float(vd[k])
 		core_hp -= float(res["core_damage"])
 		# 🔒 V-7 计数 [4]=n_repair_eligible（幂等）：本波有塔被打停 → 本局出现过 Disabled 塔。
 		if diag != null and int(res["dis_new"]) > 0:
@@ -131,7 +140,7 @@ static func run(path: String, cfg: Dictionary, max_wave: int = 20, geo = null, r
 		if core_hp <= 0.0:
 			break
 
-	return {"rows": rows, "player": player}
+	return {"rows": rows, "player": player, "v8": v8_tot}
 
 
 # ---------------------------------------------------------------------------

@@ -33,6 +33,17 @@ class TowerState extends RefCounted:
 	##      （`shop_ai.gd apply_action`）**不读不写**此字段 → 金标本零改动、MC 判据链不受影响。
 	##   🔴 MVP 默认不触发拆除（入口置灰），本字段恒 0.0；单测里主动写入以验证结算器。
 	var invested: float = 0.0
+	## 🔒 V-8 肉盾循环（`corebound-bulwark-death-cycle-v3` · 诊断字段 · 🔴 默认恒惰性）
+	##   🔴 这五个字段**只被 `wave_sim_aggro.gd` 的 V-8 分支读写**；金标本 AI（`shop_ai`）、
+	##      伤害引擎（`damage_engine`）、实时版（`wave_director`）**不读不写** → 默认零扰动。
+	##   🔴 只有在 `repair_on_disable >= 9`（战斗内/波首重启）或 `bulwark_diag` 显式开启时
+	##      才会被写入；默认情况下全部保持初值，不参与任何计算。
+	var revive_t_disabled: float = 0.0   # 本波内已 Disabled 的秒数（波首清零）
+	var revive_used_w: int = 0           # 本波内已战斗内重启次数（波首清零）
+	var revived_ever: int = 0            # 本局累计重启次数（`revive_then_redied` 用）
+	var death_exposed: bool = false      # 死亡时刻 `is_exposed` 快照（资格判定 A）
+	var death_carry: bool = false        # 死亡时刻 是否 carry（h 最高）快照（资格判定 B）
+	var death_valid: bool = false        # 是否已取过死亡快照（防"未取快照就重启"漏判）
 
 
 var path: String = "B"
