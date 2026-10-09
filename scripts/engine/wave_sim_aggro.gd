@@ -93,6 +93,8 @@ static func simulate_wave_aggro(player, w: int, cfg: Dictionary, geo,
 		_init_tower_hp(player, exp)
 	var slot_positions: Array = _slot_positions(geo)
 	# ---- V-8 埋点前置：残响开关 / 埋点开关 / 肉盾集合 ----
+	# 🔴🔴🔴 残响（reverb_on / s_reverb / r2_reverb）属被砍机制，默认恒 false → 下方
+	#    所有残响分支跳过。见文件头 + `mvp_config.gd` reverb_* 标注 / v8b-final-adjudication §2。
 	var reverb_on: bool = bool(cfg.get("reverb_enabled", false))
 	var diag_on: bool = bool(cfg.get("bulwark_diag", false))
 	var s_reverb: float = float(cfg.get("reverb_slow", 0.30))
@@ -204,6 +206,9 @@ static func simulate_wave_aggro(player, w: int, cfg: Dictionary, geo,
 			#   `t_remain -= DT × (1 − s_reverb)`（怪照常前进，只是变慢）。
 			#   🔴 只作用于 state=0（Marching）：AggroTower 怪是**冻结**在塔前的，
 			#      对它施加减速 = 让它往前爬 → 那是"位移"不是"减速"，与 v3 §4.2 定性不符。
+			#   🔴🔴🔴 残响已被砍（不采纳勿启用）：整段被 `if reverb_on:` 守卫，
+			#      `reverb_enabled=false`（默认/回归恒值）时**逐行跳过** → 金标本零扰动。
+			#      见文件头 + `mvp_config.gd` reverb_* 标注 / v8b-final-adjudication.md §2。
 			var step_dt := DT
 			if reverb_on:
 				var st0 := int(m[2])
@@ -414,6 +419,14 @@ static func _clear_all_disabled(player) -> int:
 # 🔒 V-8 肉盾循环（`corebound-bulwark-death-cycle-v3`）
 #    🆕 战斗中复活（M-1）+ 残响减速场（M-1b / `Reverb`）
 #    🔴 全部挂诊断开关，默认 off，off 时逐位不变（金标本零改动）
+#
+# 🔴🔴🔴 残响 `Reverb`（下方 M-1b 相关代码：`_in_reverb` / ③前进段减速 / reverb_* 计数）
+#   **已被砍，不采纳，默认不得启用**。依据 `docs/phase3/qg-radial/v8b-final-adjudication.md`
+#   §2：去混淆实证全剂量域无正向胜率边际 → 裁决砍（默认）。保留代码供复现 / 未来
+#   「纯体验层重启评估」（§2.4 ① 世界观同源论证未被推翻）。🔴 只许在显式扫参臂里打开
+#   `reverb_enabled`，任何默认 / 回归 / golden_reference 路径下必须恒 false → 逐位不变。
+#   🟢 复活 M-1（下方 `_try_revive` / `_tick_revive` / `_wave_start_revive` / `_death_snapshot`）
+#   是采纳项，独立于残响，不受此标注影响。
 # ===========================================================================
 
 ## V-8 诊断量容器（单波）。🔴 全部用 float 计数（headless 下 Array 元素 Variant
@@ -590,6 +603,12 @@ static func _tick_revive(player, cfg: Dictionary, geo, dps_box: Array,
 ## 残响场内判定：怪物是否落在**任一 Disabled 塔**的 `R_reverb` 半径内。
 ##   🟢 零新几何代码：复用 `_monster_pos` + `distance_squared_to`
 ##      （与 `_nearest_exposed_tower` 同款距离判定，v3 §10-5）。
+##
+## 🔴🔴🔴 本函数属于**已被砍的残响机制**（不采纳，勿启用）。见文件头与
+##   `mvp_config.gd` 的 `reverb_*` 标注 / `docs/phase3/qg-radial/v8b-final-adjudication.md` §2。
+##   仅在显式扫参臂打开 `reverb_enabled` 时被调用（`simulate_wave_aggro` ③前进段的
+##   `if reverb_on:` 守卫内）；默认回归路径 `reverb_on=false` → 本函数**永不被调用**。
+##   保留供复现 / 未来纯体验层重启评估，不得并入任何默认口径。
 static func _in_reverb(m: Array, v0_: float, slot_positions: Array, player,
 		r2: float) -> bool:
 	if player == null:

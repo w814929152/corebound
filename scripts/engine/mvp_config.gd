@@ -183,9 +183,17 @@ static func cfg_of(
 		#     只会增加"两个枚举做同一件事"的歧义面。🔴 功能完全等价，臂数不变。
 		"repair_on_disable": 0,
 		# 🔒 V-8 肉盾循环 · 残响 `Reverb`（v3 §4，🔴 默认全 off → 金标本逐位不变）
-		"reverb_enabled": false,   # 残响减速场总开关（B4/B5 臂显式开）
-		"reverb_radius": 9.0,      # R_reverb = 1.0 × AGGRO_R（v3 §11.2 P-2 起步值）
-		"reverb_slow": 0.30,       # s_reverb（v3 §11.2 P-3 起步值；上界 ≤0.50）
+		#
+		# 🔴🔴🔴 不采纳（V-8b 去混淆实证无正向胜率边际），勿启用。
+		#   依据：`docs/phase3/qg-radial/v8b-final-adjudication.md` §2 —— 残响在从锚点到
+		#   上界的全剂量域里都没有可辨识的胜率价值（三剂量臂 vs C0 全部 CI 含 0、全部 ns；
+		#   次感知覆盖 + 加量不救 + 上界非稳健负向 + 第 7 个需读量踩 R-B19 认知过载红线）。
+		#   裁决 = 砍（默认）。保留供复现 / 未来「纯体验层重启评估」——§2.4 ① 世界观同源
+		#   论证未被推翻，若用户显式拍板保留为纯视觉体验层可另议，但默认不得启用。
+		#   🔴 这里只是被砍机制的开关残值，任何默认 / 回归 / golden_reference 下恒 false。
+		"reverb_enabled": false,   # 🔴 不采纳勿启用（见上）· 残响减速场总开关（B4/B5 臂显式开）
+		"reverb_radius": 9.0,      # 🔴 不采纳勿启用 · R_reverb = 1.0 × AGGRO_R（v3 §11.2 P-2 起步值）
+		"reverb_slow": 0.30,       # 🔴 不采纳勿启用 · s_reverb（v3 §11.2 P-3 起步值；上界 ≤0.50）
 		# 🔒 V-8 肉盾循环 · 战斗中复活参数（v3 §3.4）
 		"revive_n_seconds": 0.5,   # N = 5% × t_reach（t_reach=10.0）→ N_short=0.5s / N_long=2.0s
 		"revive_k_per_wave": 1,    # K_base = 1（每波两条命）
