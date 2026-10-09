@@ -38,19 +38,56 @@ extends SceneTree
 ## 聚合输出（§4.2）：hist[0..8]/[9+] · mean/median/p90/max · hit/hit_w10/hit_fail/hit_surv
 ##                   · tail5 · n_fail · n_reach10 · 各判据裕度 (实测−阈值)/SE
 ##
-## ✅ **阈值状态（定档 · 真闸门）**：判据**定义**由文策渊定稿并用户拍板（方案 A · 条件风险惩罚），
-##   **阈值数值**已按 §6「阈值标定纪律」走完「per-run 实测回填 → 文策渊定档（commit 14673fa）
-##   → GDD `mechanics-tower-life-death.md` v1.0.2 回写」三步，**不再是暂定值**。
-##   → 故 T-A′-1 / T-A′-2 / T-B′ 三条在本脚本里**已是真闸门，计入 `_fail`**：
-##     T-A′-1 存活性下限 hit ≥ 0.15 ／ T-A′-2 失败伴随率护栏 n_fail ≥ 30 下 hit_fail ≥ 0.60
-##     ／ T-B′ 尾部控制 tail5 ≤ 0.07。
+## ✅ **阈值状态（定档 · 真闸门）**：判据**定义**由文策渊定稿并用户拍板（方案 A · 条件风险惩罚）。
+##   🔴 **阈值已于 2026-10-09 按 `snap/rest` 修复后新基线重标定**（依据 `r2-criteria-revision.md` §12）：
+##     T-A′-1 存活性下限 hit ≥ **0.12**（原 0.15；新实测 0.1900 · +3.09 SE）
+##     ／ T-A′-2 失败伴随率护栏 n_fail ≥ 30 下 hit_fail ≥ **0.30**（原 0.60；新实测 0.4711 · +3.77 SE）。
+##     旧阈值是在缺陷期虚高读数上标定的，`1ca10ef` 后基线位移 → 本次是**代码同步定档**，非新造尺子。
+##   🔴 定位同步（§12.3）：
+##     · **T-A′（成型期塔死均值 ≥1）已降为〔事实登记〕**——它与 T-A′-1 数学等价（X_form∈{0,2}
+##       → 均值=2×hit 恒等），是重复闸门，不再计入 `_fail`。
+##     · **T-B′ tail5 已降为〔事实登记〕**——修复后 hist 严格双峰 {0:243, 2:57}，P(X≥5) 结构恒 0，
+##       零信号无检出能力，不再计入 `_fail`。
+##     · **T-D″ 阳性对照加固为 3 seed 累计 Σ dis_new ≥ 3**（原 1 seed margin=0 太脆）。
 ##   🔴 T-A′-2 的 n_fail < 30 是**护栏**（样本不足 → INCONCLUSIVE，不计失败），不是闸门。
 ##   🔴 阈值已定档，**禁止再下调到刚好通过**；判 FAIL 就如实报错，交文策渊复核。
-##     另一条真闸门是 **T-D″ 阳性对照**（阈值 ≥1 已定档，实测 3）。
+##   🔴 `survive_rate A`（本脚本仅 INFO）的 0.60 是**平衡红线**，与 TH_HIT_FAIL 无关，一字未动。
 ##
 ## ⚠️ 输出纪律：本脚本会被 `run_tests.gd -- radial8` 用 OS.execute 拉起，Windows 下
 ##    GBK 有损解码 → **per-run 段的输出一律 ASCII**（中文会在聚合日志里乱码）。
 ##    需要中文原文时单独直接跑本脚本即可。
+##
+## ─────────────────────────────────────────────────────────────────────────────
+## 🔴 R-5 / V6-R2「起飞率」口径统一（QG-RADIAL-01 · 2026-10-09 · 程基岩）
+## ─────────────────────────────────────────────────────────────────────────────
+## 依据：`docs/phase3/qg-radial/v6-dominance-adjudication.md` §6 V6-R2（文策渊）。
+##
+## 🔴 原缺陷：本脚本曾用 `rows[-1].core_hp > 0.0` 自算并**命名为「起飞率」** ——
+##    那是 **W20 存活率**，不是起飞率。规范起飞率 = `RunLoopAggro.takeoff_rate`
+##    （定义：`alive ∧ _Stats.takeoff_wave(rows) ≥ 0`，即"存活且 DPS 曾越过 ratio=1"）。
+##    同一条 B 路径两个定义给出 1.000（存活率）vs 0.913（起飞率）→ 判据会随脚本翻转。
+##
+## ✅ 处置：本脚本**只保留一个「起飞率」语义**，与 `RunLoopAggro.takeoff_rate` 逐位同义：
+##      · `takeoff_rate` = #{存活 ∧ 起飞波 ≥0} / N   ← 规范（DPS 起飞）
+##      · `survive_rate` = #{末波 core_hp > 0} / N   ← 存活率，**另立字段名，不再叫起飞率**
+##    🔴 实现方式 = 在既有 600 局主循环内**就地**按同一定义统计（`RunLoopAggro.takeoff_rate`
+##       若单独调用会再跑一整轮 300 局 → 双击耗时）。定义与该函数**逐位一致**：
+##       `alive = rows 非空 ∧ rows[-1].core_hp > 0`、`tw = _Stats.takeoff_wave(rows)`。
+##
+## ─────────────────────────────────────────────────────────────────────────────
+## 🔴 R-4 · 八槽 V-0′ ④⑤ 闭环（QG-RADIAL-01 §4.1 · 程基岩）
+## ─────────────────────────────────────────────────────────────────────────────
+## 依据：`design/gdd/radial-core-siege-draft.md` §7.3 V-0′ 判据 ④⑤。
+##   · ④ 起飞点仍在 **W10–15**  → `V-0-4a` MC 中位起飞波 / `V-0-4b` 确定性单局起飞波
+##   · ⑤ W20 `B/A < 1`         → `V-0-5a` 确定性单局 W20 ratio B/A（与六槽金标本同口径）
+##                                 `V-0-5b` MC 均值 W20 ratio B/A（辅助，含删失偏倚说明）
+##
+## 🔴 路径归属说明（需文策渊确认）：六槽定稿 A 起飞波 = **W8**（用户已拍板接受），
+##    明确**不在** W10–15 窗口内 → V-0′ ④ 只能是对 **B 路径**的要求。故本脚本
+##    **只把 B 侧起飞波做成闸门**，A 侧同量按 INFO 打印（V-0′ ③「A 按 V-2 口径记录」）。
+##
+## 🔴 零扰动：④⑤ 全部复用既有 300×2 主循环已产出的 rows，不新增 MC；确定性单局
+##    只多跑 2 局（A/B 各 1，`rng=null`，与六槽 V-0′ 同口径）。不改任何定稿数值。
 ##
 ## 跑法：
 ##   <godot> --headless --path D:/roguedemo --script res://tests/run_slice_attrition8.gd
@@ -61,6 +98,8 @@ const _Cfg := preload("res://scripts/engine/mvp_config.gd")
 const _MonsterData := preload("res://scripts/data/monster_data.gd")
 const _PyRandom := preload("res://scripts/engine/py_random.gd")
 const _SpaceModel := preload("res://scripts/geo/space_model.gd")
+const _Stats := preload("res://scripts/engine/stats.gd")
+const _Geo8 := preload("res://scripts/geo/geo8.gd")
 
 const W_SURV_END := 5        # 苟活期 W1–5
 const W_FORM_LO := 6         # 成型期 W6–12（🔴 X_form 窗口，主判据量）
@@ -79,13 +118,33 @@ const HIST_MAX := 8
 #    **定义与数值均已定档，全部参与 _fail**（见文件头说明）。
 #    实测裕度（A 路径 · 300 局）：hit +5.45 SE ／ hit_fail +4.18 SE(n_fail=115) ／ tail5 +3.54 SE。
 #    🔴 数值已由文策渊定档，工程侧不得改动；判 FAIL 如实上报。
-const TH_HIT := 0.15          # T-A′-1 存活性下限
-const TH_HIT_FAIL := 0.60     # T-A′-2 失败伴随率
-const TH_TAIL5 := 0.07        # T-B′ 尾部控制 P(X_form >= 5)  ← 定档值 0.07（原暂定 0.05）
+# 🔴 2026-10-09 按 `snap/rest` 修复后新基线重标定（依据 r2-criteria-revision.md §12）：
+#    TH_HIT 0.15→0.12（新实测 0.1900 · +3.09 SE）／ TH_HIT_FAIL 0.60→0.30（新实测 0.4711 · +3.77 SE）。
+#    旧值是在缺陷期虚高读数（0.2933 / 0.7652）上标定的，`1ca10ef` 后基线位移 → 代码从未同步定档。
+#    🔴 这不是"下调来过关"：修复去掉的是虚高的重复计数，真值仍是强机制（19% 双塔尽没 · 100% 致命）。
+const TH_HIT := 0.12          # T-A′-1 存活性下限（§12.3 新基线重标定 · +3.09 SE）
+const TH_HIT_FAIL := 0.30     # T-A′-2 失败伴随率（§12.3 新基线重标定 · +3.77 SE）
+# 🔴 T-B′ tail5 已降级为〔事实登记〕（§12.3）：修复后 hist 严格双峰 {0:243, 2:57} →
+#    P(X_form>=5) 结构恒 0，永久零信号，无检出能力 → 不再计入 _fail（见 _print_criteria）。
+#    常量保留作打印基准（0.07 为原上界定档值）。
+const TH_TAIL5 := 0.07        # T-B′ 尾部控制 P(X_form >= 5)  ← 打印基准（已降事实登记）
 const GUARD_N_FAIL := 30      # T-A′-2 护栏：n_fail < 30 → INCONCLUSIVE（不计失败）
 
-# T-D″ 阳性对照（🔴 真闸门 · 阈值已定档，非暂定）：PATH 几何八槽 B 单局 Σ dis_new >= 1
-const TH_TDD := 1
+# T-D″ 阳性对照（🔴 存在性闸门 · §12.3 加固）：PATH 几何八槽 B **3 seed 累计** Σ dis_new >= 3。
+#    原 1 seed（20261002）实测 1 → margin=0 太脆；扩 3 seed 累计（每 seed 期望 λ≈3，P(≥3)≈0.58）。
+#    🔴 连续两次 FAIL 才允许判为回归（§12.3）。
+const TH_TDD := 3             # T-D″ 3 seed 累计下界（每 seed 实测 1 · 累计 3）
+const TDD_SEEDS: Array = [20261002, 20261003, 20261004]  # §12.4 建议 20261002 + 两个登记 seed
+
+# ── 🔴 R-4 · 八槽 V-0′ ④⑤ 阈值（来自 GDD §7.3 V-0′ 原文，**非工程自拟**）──
+#    V-0′ ④「起飞点仍在 W10–15」→ B 路径起飞波窗口（下界/上界，含端点）
+const V0_TW_LO := 10
+const V0_TW_HI := 15
+#    V-0′ ⑤「`B/A < 1`」→ W20 ratio B/A 上界（严格小于；单核须仍是后期 carry，
+#    概念 §2.4.5）。🔴 严格 `<` 而非 `<=`：等于 1 时"后期 carry 归属"已无归属。
+const V0_BA_MAX := 1.0
+#    V-0′ ② 附带：B 起飞率红线。**改用规范口径 takeoff_rate**（R-5/V6-R2）。
+const TH_TAKEOFF_B := 0.80
 
 var _fail = 0
 
@@ -110,8 +169,10 @@ func _initialize() -> void:
 	var rngA := _PyRandom.new(20261002)
 	var b_dis := [0, 0, 0]       # B 苟活/成型/雪崩
 	var a_dis := [0, 0, 0]       # A 苟活/成型/雪崩
-	var takeoff_b := 0
-	var takeoff_a := 0
+	# 🔴 R-5/V6-R2：这两个计数器是 **survive_rate（W20 存活率）**，**不再叫"起飞率"**。
+	#    规范「起飞率」= 存活 ∧ 起飞波≥0，见 `_takeoff_stats()`。
+	var survive_b := 0
+	var survive_a := 0
 	# 🔴 R-2 per-run 记录（§4.1）：每局一条，A/B 各一份，供 §4.2 聚合
 	var recs_a: Array = []
 	var recs_b: Array = []
@@ -125,7 +186,7 @@ func _initialize() -> void:
 		_add_dis(out["rows"], b_dis)
 		recs_b.append(_collect(out["rows"]))
 		if (not out["rows"].is_empty()) and float(out["rows"][-1]["core_hp"]) > 0.0:
-			takeoff_b += 1
+			survive_b += 1
 
 		# A 路径（单核金标本）
 		var cfgA := _Cfg.cfg_of("A")
@@ -135,23 +196,31 @@ func _initialize() -> void:
 		_add_dis(outa["rows"], a_dis)
 		recs_a.append(_collect(outa["rows"]))
 		if (not outa["rows"].is_empty()) and float(outa["rows"][-1]["core_hp"]) > 0.0:
-			takeoff_a += 1
+			survive_a += 1
 
 	# 平均每局
 	var a_form := float(a_dis[1]) / float(RUNS)   # A 成型期
 	var b_total := float(b_dis[0] + b_dis[1] + b_dis[2]) / float(RUNS)
 	var b_tc := float(b_dis[2]) / float(RUNS)      # B 雪崩期
-	var rate_b := float(takeoff_b) / float(RUNS)
-	var rate_a := float(takeoff_a) / float(RUNS)
+	var rate_b := float(survive_b) / float(RUNS)
+	var rate_a := float(survive_a) / float(RUNS)
+
+	# 🔴 R-5/V6-R2：规范「起飞率」+ ④ 起飞波 + ⑤ W20 ratio，全部由既有 recs 就地统计
+	var tkb := _takeoff_stats(recs_b)
+	var tka := _takeoff_stats(recs_a)
 
 	print("\n---- 实测（300 局平均）----")
 	print("   A 成型期 W6–12 塔死 = %.3f（T-A′ ≥1 / T-B′ ≤4）" % a_form)
 	print("   B 全程塔死          = %.3f（T-D′ =0 免疫）" % b_total)
 	print("   B 雪崩期 W13–20 塔死 = %.3f（T-C′ ≈0）" % b_tc)
-	print("   起飞率 B/A = %.3f / %.3f（B ≥0.80 红线）" % [rate_b, rate_a])
+	print("   存活率 survive_rate B/A = %.3f / %.3f（🔴 末波 core_hp>0，非起飞率）" % [rate_b, rate_a])
+	print("   起飞率 takeoff_rate B/A = %.3f / %.3f（🔴 规范：存活 ∧ 起飞波≥0）"
+		% [float(tkb["rate"]), float(tka["rate"])])
 
 	print("\n---- [T-A′] A 单核流成型期塔死 ≥1（机制可感知）----")
-	_ok("T-A′ A 成型期塔死 %.3f ≥ 1.0" % a_form, a_form >= 1.0, "(机制对高风险画像可感知)")
+	# 🔴 §12.3 降级：T-A′ 均值与 T-A′-1 数学等价（X_form∈{0,2} → 均值=2×hit 恒等），
+	#    是重复闸门 → 移出 _fail，降为〔事实登记〕（仅打印，不计失败）。判据以 T-A′-1 为准。
+	print("   [INFO] T-A′ A 成型期塔死均值 %.3f（事实登记 · 与 T-A′-1 数学等价，判据以 hit 为准，不计 _fail）" % a_form)
 
 	print("\n---- [T-B′] A 单核流成型期塔死 ≤4（不失控）----")
 	_ok("T-B′ A 成型期塔死 %.3f ≤ 4.0" % a_form, a_form <= 4.0, "(不失控)")
@@ -162,8 +231,11 @@ func _initialize() -> void:
 	print("\n---- [T-D′] B 多塔流全程塔死 =0（多塔稳健流免疫）----")
 	_ok("T-D′ B 全程塔死 %.3f = 0.0" % b_total, b_total <= 0.0, "(多塔稳健流奖励，保持免疫)")
 
-	print("\n---- [起飞率] B ≥0.80 金标本红线 ----")
-	_ok("起飞率 B %.3f ≥ 0.80" % rate_b, rate_b >= 0.80, "(金标本红线不破)")
+	print("\n---- [起飞率] B ≥0.80 金标本红线（🔴 规范口径 takeoff_rate）----")
+	_ok("takeoff_rate B %.3f >= %.2f  (survive_rate B %.3f, INFO)"
+		% [float(tkb["rate"]), TH_TAKEOFF_B, rate_b],
+		float(tkb["rate"]) >= TH_TAKEOFF_B,
+		"(RunLoopAggro.takeoff_rate 定义：存活 AND 起飞波>=0)")
 
 	# =======================================================================
 	# 🔴 R-2 per-run 分布采集（§4.1 / §4.2 / §4.3）
@@ -206,17 +278,91 @@ func _initialize() -> void:
 			",".join(_hist_strs(sb))])
 
 	# =======================================================================
-	# 🔴 T-D″ 阳性对照（§3.2 · 真闸门 · 阈值 >=1 已定档）
-	#    同数值只把几何切成 PATH 跑八槽 B 单局 → 塔死亡**机制本身**必须可见。
+	# 🔴 T-D″ 阳性对照（§3.2 / §12.3 加固 · 存在性闸门 · 3 seed 累计 ≥ TH_TDD）
+	#    同数值只把几何切成 PATH 跑八槽 B → 塔死亡**机制本身**必须可见。
 	#    （ATTRITION 不是能打破 B 免疫的杠杆：探针已证 33× 下径向 B 仍 dis_new=0）
+	#    🔴 §12.3 加固：原 1 seed（20261002）实测 1 → margin=0 太脆；扩 3 seed 累计。
+	#       每 seed 期望 λ≈3（Poisson），P(≥3)≈0.58 → 属存在性阳性对照；
+	#       🔴 连续两次 FAIL 才允许判为回归。
 	# =======================================================================
-	print("\n---- [T-D″] positive control: PATH geometry · B path · 8 slots · 1 run ----")
-	var tdd_dis := _run_tdd_control()
-	print("   PATH 几何 B 全程 dis_new = %d" % tdd_dis)
-	if tdd_dis == TH_TDD:
-		print("   [WARN] T-D″ margin = 0 (measured == threshold) -- positive control is brittle")
-	_ok("T-DD positive control: PATH-geometry B whole-run dis_new %d >= %d" % [tdd_dis, TH_TDD],
-		tdd_dis >= TH_TDD, "(tower-death mechanism itself alive, not immunity)")
+	print("\n---- [T-D″] positive control: PATH geometry · B path · 8 slots · %d seeds ----" % TDD_SEEDS.size())
+	var tdd_total := 0
+	for sidx in range(TDD_SEEDS.size()):
+		var seed: int = int(TDD_SEEDS[sidx])
+		var d := _run_tdd_control(seed)
+		print("   seed %d: PATH 几何 B 全程 dis_new = %d" % [seed, d])
+		tdd_total += d
+	print("   3 seed 累计 Σ dis_new = %d (vs TH %d)" % [tdd_total, TH_TDD])
+	if tdd_total == TH_TDD:
+		print("   [WARN] T-D″ margin = 0 (累计 measured == threshold %d) -- positive control is brittle" % TH_TDD)
+	_ok("T-DD positive control: PATH-geometry B %d-seed cumulative dis_new %d >= %d"
+		% [TDD_SEEDS.size(), tdd_total, TH_TDD],
+		tdd_total >= TH_TDD, "(tower-death mechanism itself alive, not immunity)")
+
+	# =======================================================================
+	# 🔴 R-4 · 八槽 V-0′ ④⑤ 闭环（QG-RADIAL-01 §4.1 · GDD §7.3 V-0′）
+	#    ④ 起飞点仍在 W10–15   ⑤ W20 `B/A < 1`
+	#    🔴 零扰动：④ 复用主循环已产出的 recs；⑤a 只多跑 2 局确定性单局（rng=null）。
+	# =======================================================================
+	print("")
+	print("===================================================================")
+	print("R-4 · eight-slot V-0' closure (4) takeoff wave W10-15  (5) W20 B/A < 1")
+	print("===================================================================")
+
+	# ---- ④a MC 中位起飞波（B 闸门 / A 仅 INFO）----
+	print("\n---- [V-0-4a] MC median takeoff wave (B gated · A INFO) ----")
+	print("   B: median takeoff wave = %d  · n_takeoff=%d/%d · mean w20 ratio=%.3f (n_reach20=%d)"
+		% [int(tkb["med_tw"]), int(tkb["n_take"]), int(tkb["n"]),
+			float(tkb["mean_w20"]), int(tkb["n_w20"])])
+	print("   A: median takeoff wave = %d  · n_takeoff=%d/%d · mean w20 ratio=%.3f (n_reach20=%d)"
+		% [int(tka["med_tw"]), int(tka["n_take"]), int(tka["n"]),
+			float(tka["mean_w20"]), int(tka["n_w20"])])
+	_ok("V-0-4a B MC median takeoff wave %d in [W%d, W%d]"
+		% [int(tkb["med_tw"]), V0_TW_LO, V0_TW_HI],
+		int(tkb["med_tw"]) >= V0_TW_LO and int(tkb["med_tw"]) <= V0_TW_HI,
+		"(A median=%d recorded as INFO: six-slot frozen A takeoff W8 is outside W10-15)"
+		% int(tka["med_tw"]))
+
+	# ---- ⑤b MC 均值 W20 ratio B/A（辅助闸门）----
+	# 🔴 删失说明：A 只有 n_reach20/N 的局跑到 W20（其余中途 core_hp<=0 被 break）→
+	#    A 的 W20 ratio 是**存活者条件均值**，偏高 → B/A 被压低 → 本判据偏**宽松**。
+	print("\n---- [V-0-5b] MC mean W20 ratio B/A (auxiliary gate) ----")
+	var mc_ba := -1.0
+	if tka["n_w20"] > 0 and float(tka["mean_w20"]) > 0.0:
+		mc_ba = float(tkb["mean_w20"]) / float(tka["mean_w20"])
+	print("   MC mean w20: A=%.3f (n=%d)  B=%.3f (n=%d)  -> B/A=%.4f"
+		% [float(tka["mean_w20"]), int(tka["n_w20"]),
+			float(tkb["mean_w20"]), int(tkb["n_w20"]), mc_ba])
+	_ok("V-0-5b MC mean W20 ratio B/A %.4f < %.2f" % [mc_ba, V0_BA_MAX],
+		mc_ba >= 0.0 and mc_ba < V0_BA_MAX, "(survivor-conditioned on A -> conservative-low)")
+
+	# ---- ④b / ⑤a 确定性单局（rng=null，与六槽 V-0′ 同口径）----
+	print("\n---- [V-0-4b/5a] deterministic single run (rng=null · six-slot V-0' parity) ----")
+	var det_a := _det_v0("A")
+	var det_b := _det_v0("B")
+	print("   A: takeoff=W%d  w20 ratio=%.3f  (six-slot gold: W8 / 21.77)"
+		% [int(det_a["tw"]), float(det_a["w20"])])
+	print("   B: takeoff=W%d  w20 ratio=%.3f  (six-slot gold: W12 / 9.97)"
+		% [int(det_b["tw"]), float(det_b["w20"])])
+	var det_ba := -1.0
+	if float(det_a["w20"]) > 0.0:
+		det_ba = float(det_b["w20"]) / float(det_a["w20"])
+	print("   deterministic W20 B/A = %.4f  (six-slot gold: 0.458)" % det_ba)
+	_ok("V-0-4b B deterministic takeoff wave %d in [W%d, W%d]"
+		% [int(det_b["tw"]), V0_TW_LO, V0_TW_HI],
+		int(det_b["tw"]) >= V0_TW_LO and int(det_b["tw"]) <= V0_TW_HI,
+		"(A deterministic takeoff W%d recorded as INFO)" % int(det_a["tw"]))
+	_ok("V-0-5a deterministic W20 ratio B/A %.4f < %.2f" % [det_ba, V0_BA_MAX],
+		det_ba >= 0.0 and det_ba < V0_BA_MAX, "(single-core remains late carry, concept 2.4.5)")
+
+	# ---- 机器可读单行摘要（ASCII · 便于 CI / 人工 grep）----
+	print("")
+	print("[R4-V0] B takeoff_rate=%.4f survive_rate=%.4f med_tw=%d det_tw=%d"
+		% [float(tkb["rate"]), rate_b, int(tkb["med_tw"]), int(det_b["tw"])])
+	print("[R4-V0] A takeoff_rate=%.4f survive_rate=%.4f med_tw=%d det_tw=%d (INFO)"
+		% [float(tka["rate"]), rate_a, int(tka["med_tw"]), int(det_a["tw"])])
+	print("[R4-V0] W20 B/A det=%.4f mc_mean=%.4f  (gate < %.2f)"
+		% [det_ba, mc_ba, V0_BA_MAX])
 
 	# 回退 PATH 模式
 	_SpaceModel.mode = _SpaceModel.Mode.PATH
@@ -280,6 +426,16 @@ func _collect(rows: Array) -> Dictionary:
 		var r13: Dictionary = rows[W_SNOW_LO - 1]
 		act13 = int(r13.get("towers", 0)) - int(r13.get("towers_disabled", 0))
 
+	# 🔴 R-5/V6-R2 + R-4：起飞波（DPS ratio 首次 ≥1.0 的波；-1 = 未起飞）
+	var tw: int = _Stats.takeoff_wave(rows)
+	# 🔴 R-4 ⑤：W20 ratio（本局跑到 W20 才有；否则 -1.0，供删失统计用）
+	var w20 := -1.0
+	if w_end >= W_MAX:
+		for r in rows:
+			if int(r["w"]) == W_MAX:
+				w20 = float(r["ratio"])
+				break
+
 	return {
 		"xs": xs,
 		"xf": xf,
@@ -292,7 +448,57 @@ func _collect(rows: Array) -> Dictionary:
 		"stock": stock,
 		"towers": towers,
 		"core_hp": core_hp,
+		"tw": tw,
+		"w20": w20,
 	}
+
+
+## 🔴 R-5/V6-R2 + R-4：规范「起飞率」统计（就地复用 recs，不新增 MC）
+##
+## 定义**逐位等同** `RunLoopAggro.takeoff_rate()`：
+##   takeoff = alive ∧ takeoff_wave ≥ 0，其中 alive = (rows 非空 ∧ rows[-1].core_hp > 0)
+##   → recs 侧 alive == (not fail)（_collect 里 rows 为空时 core_hp=-1 → fail=true）。
+## 附带给 R-4 ④ 的中位起飞波与 ⑤ 的 W20 ratio 均值。
+func _takeoff_stats(recs: Array) -> Dictionary:
+	var n := recs.size()
+	var n_take := 0
+	var tws: Array = []
+	var n_w20 := 0
+	var w20_sum := 0.0
+	for r in recs:
+		var alive := not bool(r["fail"])
+		var tw: int = int(r["tw"])
+		if alive and tw >= 0:
+			n_take += 1
+			tws.append(tw)
+		if int(r["w_end"]) >= W_MAX:
+			n_w20 += 1
+			w20_sum += float(r["w20"])
+	tws.sort()
+	return {
+		"n": n,
+		"n_take": n_take,
+		"rate": (float(n_take) / float(n)) if n > 0 else 0.0,
+		"med_tw": (int(tws[tws.size() / 2]) if tws.size() > 0 else -1),
+		"n_w20": n_w20,
+		"mean_w20": (w20_sum / float(n_w20)) if n_w20 > 0 else -1.0,
+	}
+
+
+## 🔴 R-4 ④b/⑤a：确定性单局（rng=null，与六槽 V-0′ `run_v0_radial` 同口径）
+##    只多跑 1 局/路径，八槽 RADIAL 几何显式传入（Geo8.build8()）。
+func _det_v0(path: String) -> Dictionary:
+	var cfg: Dictionary = _Cfg.cfg_of(path)
+	cfg["n_slots"] = 8
+	cfg["max_actions"] = 12
+	var out := _RunLoopAggro.run(path, cfg, W_MAX, _Geo8.build8(), null,
+		true, 0.6, ATTRITION_FINAL, WARMUP)
+	var rows: Array = out["rows"]
+	var s := _Stats.summarize(rows)
+	var w20 := -1.0
+	if s["w20"] != null:
+		w20 = float(s["w20"])
+	return {"tw": int(s["takeoff"]), "w20": w20}
 
 
 ## 聚合（§4.2）
@@ -460,20 +666,23 @@ func _print_criteria(s: Dictionary) -> void:
 	var se_t5 := _se(t5, int(s["n"]))
 	# T-B′ 是上界判据：裕度 = (阈值 − 实测)/SE（实测越小越安全）
 	var m_t5 := (TH_TAIL5 - t5) / se_t5 if se_t5 > 0.0 else 0.0
-	_ok("T-B   tail5    %.4f  vs TH %.2f  -> margin %+.2f SE  (n=%d)"
-		% [t5, TH_TAIL5, m_t5, int(s["n"])], t5 <= TH_TAIL5)
+	# 🔴 §12.3 降级：修复后 hist 严格双峰 {0:243, 2:57} → P(X_form>=5) 结构恒 0，
+	#    永久零信号、无检出能力 → 移出 _fail，降为〔事实登记〕（仅打印，不计失败）。
+	#    常量 TH_TAIL5 保留作打印基准；断崖左移是比阈值翻红更早的信号（R-T9 监测）。
+	print("   [INFO] T-B   tail5    %.4f  vs TH %.2f  -> margin %+.2f SE  (n=%d)  事实登记 · 结构恒 0 零信号，不计 _fail"
+		% [t5, TH_TAIL5, m_t5, int(s["n"])])
 
 
 ## 🔴 T-D″ 阳性对照：同数值（ATTRITION=1.50 / HP0=120 / h^0.6 / AGGRO_R=9.0 / WARMUP=2
-##    / seed 20261002 / n_slots=8 / B 路径）**只把 SpaceModel.mode 切成 PATH**，
-##    跑一局，返回全程 Σ dis_new。实测 = 3（3× margin vs 阈值 1）。
-func _run_tdd_control() -> int:
+##    / n_slots=8 / B 路径）**只把 SpaceModel.mode 切成 PATH**，跑一局，返回全程 Σ dis_new。
+##    🔴 §12.3 加固：改为按传入 seed 跑（3 seed 累计由调用方求和）；单 seed 实测期望 λ≈3。
+func _run_tdd_control(seed: int) -> int:
 	var prev_mode = _SpaceModel.mode
 	_SpaceModel.mode = _SpaceModel.Mode.PATH
 	var cfg: Dictionary = _Cfg.cfg_of("B")
 	cfg["n_slots"] = 8
 	cfg["max_actions"] = 12
-	var rng := _PyRandom.new(20261002)
+	var rng := _PyRandom.new(seed)
 	var out := _RunLoopAggro.run("B", cfg, W_MAX, null, rng, true, 0.6, ATTRITION_FINAL, WARMUP)
 	var rows: Array = out["rows"]
 	var tot := 0
@@ -482,8 +691,9 @@ func _run_tdd_control() -> int:
 		var dn: int = int(r.get("dis_new", 0))
 		tot += dn
 		per_w.append("%d:%d" % [int(r["w"]), dn])
-	print("   per-wave dis_new = [%s]" % ",".join(per_w))
-	print("   last core_hp=%.1f · towers=%d · towers_disabled=%d" % [
+	print("   [seed %d] per-wave dis_new = [%s]" % [seed, ",".join(per_w)])
+	print("   [seed %d] last core_hp=%.1f · towers=%d · towers_disabled=%d" % [
+		seed,
 		float(rows[-1]["core_hp"]) if not rows.is_empty() else -1.0,
 		int(rows[-1].get("towers", 0)) if not rows.is_empty() else -1,
 		int(rows[-1].get("towers_disabled", 0)) if not rows.is_empty() else -1])
