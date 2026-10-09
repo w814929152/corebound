@@ -799,6 +799,429 @@ func _test_rite() -> void:
 		float(dps_default), float(dps0))
 
 
+# ===========================================================================
+#  🔒 V-8 肉盾循环 · 机制 M-1「战斗中被动复活」实时化（GDD mechanics-bulwark-cycle §2.2）
+#
+#  🔴 验收驱动顺序：先建「实时 ↔ 批处理」逐位对照（本组测试），**再**改实时版。
+#     故本组在实时版未实现时会 FAIL —— 那正是它要暴露的欠账（§12-6）。
+#
+#  🔴 T-E1（`mechanics-tower-life-death` §2.2.1）三要件在代码层的可证伪断言：
+#     ① 系统发起 —— wave_director.gd 无任何玩家输入入口（源码级守）；
+#     ② 对象 = 死亡时刻「暴露位 & 非 carry」—— `revive_misq ≡ 0` + carry 拒绝测；
+#     ③ 战斗内被动、零择时 —— snapshot 不导出倒计时/进度/余量数字（源码级守）。
+# ===========================================================================
+
+## 造一个「肉盾 + carry」双塔 player：S0（暴露位，低 h = 肉盾） + S4（安全位，高 h = carry）。
+##   🔴 carry 必须**严格**更高：`is_carry = (t.h >= max_h)`，h 相同则两塔都判 carry → 都被闸门拒绝。
+func _mk_player_bulwark_and_carry(h_bulwark: int, h_carry: int):
+	var p = _SimPlayer.new_player("B", _Cfg.cfg_of("B"), _Geo6.build())
+	p.towers = []
+	p.towers.append(_PS.make_tower(0, "Arrow", h_bulwark, {}))   # S0 暴露位（d_path=5.00 ≤ 9.0）
+	p.towers.append(_PS.make_tower(4, "Arrow", h_carry, {}))     # S4 安全位（d_path=10.82 > 9.0）
+	return p
+
+
+## 造一个只带「复活开关」差异的 cfg（其余全默认 → 金标本逐位）。
+func _mk_cfg_revive(mode: int) -> Dictionary:
+	# 🔴 H1：headless `--script` 无 global_script_class_cache → 一律用 preload 句柄取常量，
+	#    不写 `MvpConfig.*` 全局类名。
+	return _Cfg.cfg_of("B", _Cfg.KR_FINAL, _Cfg.LINK_RULE, "tier", "current", false,
+		{"repair_on_disable": mode})
+
+
+## 实时版：造 director（aggro 开、warmup=0 让 W1 就能死塔），绑给定 cfg。
+func _mk_director_revive(player, cfg: Dictionary, mode: int):
+	var geo = _Geo6.build()
+	var wd = _WaveDirector.new()
+	wd.tower_aggro_enabled = true
+	wd.warmup_waves = 0
+	wd.setup(player, cfg, geo)
+	return wd
+
+
+## 逐子步推进实时版并采集「各塔 disabled 位掩码」轨迹 —— 与批处理 `trace_box` 同口径
+##   （都在**子步末尾**、⑤复活之后采样）→ 可直接逐位比对。
+func _run_director_trace(wd) -> Array:
+	var tr: Array = []
+	var guard := 0
+	# State.SPAWNING = 1 / State.FIGHTING = 2（枚举在 wave_director.gd，headless 下取其整值）
+	while (int(wd.state) == 1 or int(wd.state) == 2) and guard < 100000:
+		guard += 1
+		wd.advance(_WaveSim.DT)
+		tr.append(_disabled_mask_of(wd.player))
+	return tr
+
+
+func _disabled_mask_of(player) -> int:
+	if player == null:
+		return 0
+	var mask := 0
+	var i := 0
+	for t in player.towers:
+		if bool(t.disabled):
+			mask |= (1 << i)
+		i += 1
+	return mask
+
+
+## 源码级扫描：在**非注释代码行**里找 token（🔴 注释里提到它不算 —— 否则写"本文件无 X"
+##   这句注释本身就会把闸门顶红，是自指陷阱）。
+func _src_has_code_token(src: String, token: String) -> bool:
+	for line in src.split("\n"):
+		var s := String(line).strip_edges()
+		if s.begins_with("#"):
+			continue
+		if s.contains(token):
+			return true
+	return false
+
+
+## 轨迹里「状态翻转」的次数（0→1 死亡 / 1→0 复活 各计一次）。
+##   用于长度不等时仍能判定两边事件序列一致（防分岔藏在尾巴里）。
+func _trace_transitions(tr: Array) -> int:
+	var c := 0
+	for i in range(1, tr.size()):
+		if int(tr[i]) != int(tr[i - 1]):
+			c += 1
+	return c
+
+
+# ===========================================================================
+#  AC-T1-20 · 🔴 实时 ↔ 批处理 逐位一致（mode 9 · 战斗内即时复活）
+# ===========================================================================
+func _test_realtime_batch_revive_parity() -> void:
+	_log("")
+	_log("--- [AC-T1-20] 实时↔批处理逐位一致（mode 9 · 战斗内被动复活 N=0.5s / K=1）---")
+	var geo = _Geo6.build()
+	var cfg := _mk_cfg_revive(9)
+	_check("AC-1 N = 0.5s", float(cfg["revive_n_seconds"]), 0.5)
+	_check("AC-2 K = 1", float(cfg["revive_k_per_wave"]), 1.0)
+	_check("AC-7 默认开关 repair_on_disable = 0（本臂显式设 9）",
+		float(_Cfg.cfg_of("B")["repair_on_disable"]), 0.0)
+
+	# ---- 实时版：逐子步推进，采 disabled 轨迹 ----
+	var p_rt = _mk_player_bulwark_and_carry(1, 2)
+	var wd = _mk_director_revive(p_rt, cfg, 9)
+	# 🔴 在**爬起那一瞬**抓塔状态（AC-3 满血 / AC-6 零副作用只能在这一瞬验 ——
+	#    本波肉盾会"爬起后又被打停"（revive_redied=1），波末读到的是第二次死亡的 hp=0）。
+	var box := {"n": 0, "slot": -1, "hp": -1.0, "hp_max": -1.0, "h": -1, "disabled": true}
+	wd.tower_revived.connect(func(slot: int) -> void:
+		box["n"] = int(box["n"]) + 1
+		box["slot"] = int(slot)
+		for t in p_rt.towers:
+			if int(t.slot) == int(slot):
+				box["hp"] = float(t.hp)
+				box["hp_max"] = float(t.hp_max)
+				box["h"] = int(t.h)
+				box["disabled"] = bool(t.disabled))
+	wd.start_wave(1)
+	var tr_rt: Array = _run_director_trace(wd)
+	var rt: Dictionary = wd.last_result
+	# ---- 批处理镜像：同一 player / 同一 cfg / 同一 geo，开 trace_box ----
+	var p_b = _mk_player_bulwark_and_carry(1, 2)
+	var tr_b: Array = []
+	var b := _WaveSimAggro.simulate_wave_aggro(p_b, 1, cfg, geo, true, 0.6, -1.0, 0,
+		false, false, false, tr_b)
+
+	# ---- ① 逐位：disabled 轨迹（每子步的「谁死了 / 谁爬起来了」）----
+	#   🟡 长度天然不等：实时版有 E-W1（怪清完即收波），批处理恒跑到 `limit`。
+	#      → 判据 = ① 公共前缀逐位相同 ② 批处理**尾部**（实时已收波那段）零翻转
+	#        → 尾部不可能产生实时版看不到的死亡/复活 → 可观测结果一致（E-B6 边界）。
+	var n_cmp: int = mini(tr_rt.size(), tr_b.size())
+	_log("   [info] 轨迹长度：实时 %d 子步 / 批处理 %d 子步（实时 E-W1 提前收波）"
+		% [tr_rt.size(), tr_b.size()])
+	var mismatch := 0
+	for i in range(n_cmp):
+		if int(tr_rt[i]) != int(tr_b[i]):
+			mismatch += 1
+	_check_int("逐位：公共前缀每子步 disabled 位掩码 实时==批处理（差异子步数）", mismatch, 0)
+	_check_int("逐位：轨迹翻转次数一致（死亡/复活事件序列）",
+		_trace_transitions(tr_rt), _trace_transitions(tr_b))
+	var tail: Array = [int(tr_rt[tr_rt.size() - 1]) if tr_rt.size() > 0 else 0]
+	for i in range(n_cmp, tr_b.size()):
+		tail.append(int(tr_b[i]))
+	_check_int("批处理尾部（实时已收波段）零死亡/复活翻转（E-B6 无隐藏分岔）",
+		_trace_transitions(tail), 0)
+	# ---- 逐位：死亡 → 爬起的**子步间隔**（N=0.5s = 5 次 DT 累计，与批处理同口径）----
+	var i_death := -1
+	var i_revive := -1
+	for i in range(tr_rt.size()):
+		if i_death < 0:
+			if int(tr_rt[i]) != 0:
+				i_death = i
+		elif int(tr_rt[i]) == 0:
+			i_revive = i
+			break
+	_check_int("死亡→爬起 = 4 子步间隔（= N=0.5s 的 5 次 DT 累计，与批处理同口径）",
+		i_revive - i_death, 4)
+	# ---- 🔴 复活确实发生过（不是"两边都没复活"的假绿）----
+	var fired: int = int(float(rt.get("v8_diag", {}).get("revive_fired", 0.0)))
+	_check_int("实时版：本波发生过战斗内复活（revive_fired ≥ 1）", mini(fired, 1), 1)
+	_check("实时版：复活成交数 实时==批处理",
+		float(rt.get("v8_diag", {}).get("revive_fired", 0.0)),
+		float(b.get("v8_diag", {}).get("revive_fired", 0.0)))
+	# ---- ② 逐位：战斗结果 ----
+	_check("W1 击杀 实时==批处理", float(rt["kills"]), float(b["kills"]))
+	_check("W1 漏怪 实时==批处理", float(rt["leaked"]), float(b["leaked"]))
+	_check("W1 scrap 实时==批处理", float(rt["scrap_earned"]), float(b["scrap_earned"]))
+	_check("W1 塔死数 实时==批处理",
+		float(rt.get("towers_disabled", 0)), float(b["towers_disabled"]))
+	# ---- ③ 逐位：8 个复活诊断量 ----
+	for k in ["revive_fired", "revive_elig", "revive_redied", "revive_refused",
+			"carry_death", "nonexp_death", "nosnap_death", "revive_misq"]:
+		_check("诊断量 %s 实时==批处理" % k,
+			float(rt.get("v8_diag", {}).get(k, -1.0)),
+			float(b.get("v8_diag", {}).get(k, -1.0)))
+	# ---- ④ 逐位：每塔运行时字段 ----
+	#   🟡 `revive_t_disabled` 是**唯一**天然不等的字段：实时版 E-W1 提前收波，批处理
+	#      在"场上已无怪"的空闲尾段仍继续累加（该塔尾段全程 Disabled）。
+	#      → 判据：差值**恰好等于**空闲尾段秒数 → 证明分岔只在尾段累加器里，
+	#        而该字段 F-4 波首清零 → **零玩法影响**（波末 disabled 态两边一致）。
+	var tail_dt := float(tr_b.size() - tr_rt.size()) * _WaveSim.DT
+	for i in range(p_rt.towers.size()):
+		var a = p_rt.towers[i]
+		var c = p_b.towers[i]
+		_check("塔%d hp 实时==批处理" % i, float(a.hp), float(c.hp))
+		_check("塔%d hp_max 实时==批处理" % i, float(a.hp_max), float(c.hp_max))
+		_check_bool("塔%d disabled 态 实时==批处理（波末归属一致）" % i,
+			bool(a.disabled), bool(c.disabled))
+		var want_td := float(a.revive_t_disabled)
+		if bool(a.disabled) and bool(c.disabled):
+			want_td += tail_dt
+		_check("塔%d revive_t_disabled 实时==批处理（差 = 空闲尾段 %.1fs，F-4 波首清零）" % [i, tail_dt],
+			want_td, float(c.revive_t_disabled))
+		_check_int("塔%d revive_used_w 实时==批处理" % i,
+			int(a.revive_used_w), int(c.revive_used_w))
+		_check_int("塔%d revived_ever 实时==批处理" % i,
+			int(a.revived_ever), int(c.revived_ever))
+		_check_bool("塔%d death_exposed 实时==批处理" % i,
+			bool(a.death_exposed), bool(c.death_exposed))
+		_check_bool("塔%d death_carry 实时==批处理" % i,
+			bool(a.death_carry), bool(c.death_carry))
+		_check_bool("塔%d death_valid 实时==批处理" % i,
+			bool(a.death_valid), bool(c.death_valid))
+
+	# ---- ⑤ AC-2/AC-3/AC-4/AC-5/AC-6：复活结算口径（满血 / 原地 / 资格 / 零副作用）----
+	var bul = p_rt.towers[0]
+	_check_bool("AC-5 资格：肉盾塔死亡快照 = 暴露位 & 非 carry",
+		bool(bul.death_exposed) and (not bool(bul.death_carry)), true)
+	_check_int("tower_revived 信号发过一次（K=1 → 本波只爬一次）", int(box["n"]), 1)
+	_check_int("AC-4 重启位置 = 原地（爬起的是 S0 那座）", int(box["slot"]), 0)
+	_check_bool("爬起瞬间 disabled 已清（停机态 → 主动态，二态互斥）",
+		bool(box["disabled"]), false)
+	_check("AC-3 重启 HP = hp_max（满血，与 _clear_disabled 同口径）",
+		float(box["hp"]), float(box["hp_max"]))
+	_check("AC-3 重启 HP 非空血（hp_max = HP0 × h^0.6 = 120）", float(box["hp_max"]), 120.0)
+	_check_int("AC-6 副作用：h 不变（不重算 E_i / κ / N_tower / 乘区）", int(box["h"]), 1)
+	_check_int("AC-2 每波每塔限 K=1（revive_used_w = 1）", int(bul.revive_used_w), 1)
+	# ---- AC-8 硬断言 ----
+	_check("AC-8 硬断言 revive_misq = 0（已落地重启无一违反资格）",
+		float(rt.get("v8_diag", {}).get("revive_misq", -1.0)), 0.0)
+	_check("AC-9 硬断言 nosnap_death = 0（无快照死亡）",
+		float(rt.get("v8_diag", {}).get("nosnap_death", -1.0)), 0.0)
+
+
+# ===========================================================================
+#  AC-T1-21 · 🔴 T-E1 边界一：carry 死亡 → 闸门**拒绝**，不爬起
+# ===========================================================================
+func _test_revive_carry_refused() -> void:
+	_log("")
+	_log("--- [AC-T1-21] T-E1 边界一：carry 死亡 → 闸门正确拒绝（不爬起）---")
+	var geo = _Geo6.build()
+	var cfg := _mk_cfg_revive(9)
+	# 单塔 = 唯一的非 Disabled 塔 = 死亡时刻 h 最高 = carry → 必须被拒绝
+	var p_rt = _SimPlayer.new_player("B", cfg, geo)
+	p_rt.towers = []
+	p_rt.towers.append(_PS.make_tower(0, "Arrow", 1, {}))
+	var wd = _mk_director_revive(p_rt, cfg, 9)
+	wd.start_wave(1)
+	var tr_rt: Array = _run_director_trace(wd)
+	var rt: Dictionary = wd.last_result
+	_check_int("实时版：本波发生过塔死亡（carry 死）",
+		mini(int(float(rt.get("v8_diag", {}).get("carry_death", 0.0))), 1), 1)
+	_check("实时版：carry 死亡 → revive_fired = 0（🔴 不爬起）",
+		float(rt.get("v8_diag", {}).get("revive_fired", -1.0)), 0.0)
+	_check("实时版：carry 死亡 → revive_refused ≥ 1（闸门正确拒绝）",
+		mini(float(rt.get("v8_diag", {}).get("revive_refused", 0.0)), 1.0), 1.0)
+	_check("实时版：carry 死亡 → revive_elig = 0（不算合格事件）",
+		float(rt.get("v8_diag", {}).get("revive_elig", -1.0)), 0.0)
+	_check("AC-8 硬断言 revive_misq = 0",
+		float(rt.get("v8_diag", {}).get("revive_misq", -1.0)), 0.0)
+	# 与批处理逐位一致
+	var p_b = _SimPlayer.new_player("B", cfg, geo)
+	p_b.towers = []
+	p_b.towers.append(_PS.make_tower(0, "Arrow", 1, {}))
+	var tr_b: Array = []
+	var b := _WaveSimAggro.simulate_wave_aggro(p_b, 1, cfg, geo, true, 0.6, -1.0, 0,
+		false, false, false, tr_b)
+	var n_cmp: int = mini(tr_rt.size(), tr_b.size())
+	var mismatch := 0
+	for i in range(n_cmp):
+		if int(tr_rt[i]) != int(tr_b[i]):
+			mismatch += 1
+	_check_int("逐位：carry 臂 disabled 轨迹 实时==批处理", mismatch, 0)
+	_check("carry 臂 击杀 实时==批处理", float(rt["kills"]), float(b["kills"]))
+	_check("carry 臂 塔死数 实时==批处理",
+		float(rt.get("towers_disabled", 0)), float(b["towers_disabled"]))
+
+
+# ===========================================================================
+#  AC-T1-22 · 🔴 snap/rest 往返守恒（V-8 六字段 · E-B11 / AC-11）
+#     🔴 同类坑已踩两次（V-7 的 disabled/hp/hp_max、V-8 的死亡快照）→ 钉死。
+# ===========================================================================
+func _test_revive_snap_rest_roundtrip() -> void:
+	_log("")
+	_log("--- [AC-T1-22] snap→rest 往返守恒（复活 6 字段逐位守恒 · E-B11 / AC-11）---")
+	var cfg := _Cfg.cfg_of("B")
+	var geo = _Geo6.build()
+	var p = _SimPlayer.new_player("B", cfg, geo)
+	p.towers = []
+	# 塔 A：非初值（真死过、真爬起过）
+	var a = _PS.make_tower(0, "Arrow", 5, {})
+	a.revive_t_disabled = 0.7
+	a.revive_used_w = 1
+	a.revived_ever = 3
+	a.death_exposed = true
+	a.death_carry = false
+	a.death_valid = true
+	a.disabled = true
+	a.hp = 12.5
+	a.hp_max = 300.0
+	p.towers.append(a)
+	# 塔 B：另一组非初值（尤其 **bool=false 的非默认组合** —— carry 死在暴露位）
+	var c = _PS.make_tower(4, "Cannon", 9, {"FireUp": 2})
+	c.revive_t_disabled = 2.35
+	c.revive_used_w = 0
+	c.revived_ever = 0
+	c.death_exposed = true
+	c.death_carry = true      # 🔴 死了但是 carry（应为 true 而不是被清回 false）
+	c.death_valid = true
+	p.towers.append(c)
+	# 塔 C：全初值（确保 rest 不凭空造值）
+	p.towers.append(_PS.make_tower(2, "Frost", 1, {}))
+
+	var s := _SimPlayer.snap(p)
+	var p2 = _SimPlayer.new_player("B", cfg, geo)
+	_SimPlayer.rest(p2, s)
+
+	_check_int("往返后塔数守恒", p2.towers.size(), 3)
+	# ---- 六字段逐位守恒 ----
+	var want_t := [0.7, 2.35, 0.0]
+	var want_used := [1, 0, 0]
+	var want_ever := [3, 0, 0]
+	var want_exposed := [true, true, false]
+	var want_carry := [false, true, false]
+	var want_valid := [true, true, false]
+	for i in range(3):
+		var g = p2.towers[i]
+		_check("塔%d revive_t_disabled 往返守恒" % i, float(g.revive_t_disabled), float(want_t[i]))
+		_check_int("塔%d revive_used_w 往返守恒" % i, int(g.revive_used_w), want_used[i])
+		_check_int("塔%d revived_ever 往返守恒" % i, int(g.revived_ever), want_ever[i])
+		_check_bool("塔%d death_exposed 往返守恒" % i, bool(g.death_exposed), want_exposed[i])
+		_check_bool("塔%d death_carry 往返守恒" % i, bool(g.death_carry), want_carry[i])
+		_check_bool("塔%d death_valid 往返守恒" % i, bool(g.death_valid), want_valid[i])
+	# ---- 连带：V-7 三字段与塔身字段同样守恒（防回归）----
+	_check_bool("塔0 disabled 往返守恒", bool(p2.towers[0].disabled), true)
+	_check("塔0 hp 往返守恒", float(p2.towers[0].hp), 12.5)
+	_check("塔0 hp_max 往返守恒", float(p2.towers[0].hp_max), 300.0)
+	_check_int("塔0 slot 往返守恒", int(p2.towers[0].slot), 0)
+	_check_int("塔0 h 往返守恒", int(p2.towers[0].h), 5)
+	_check_int("塔1 attach 层数往返守恒", int(p2.towers[1].attach.get("FireUp", 0)), 2)
+	# ---- 🔴 关键：`rest()` 用 make_tower **重建**对象 → 漏序列化会被静默清回初值。
+	#      这里反证：若漏了 death_carry，塔1 会读成 false（闸门放行）→ 与 want 不符。
+	_check_bool("反证：death_carry=true 未被清回初值（漏序列化立刻红）",
+		bool(p2.towers[1].death_carry), true)
+
+
+# ===========================================================================
+#  AC-T1-23 · 🔴 默认回归零扰动：repair_on_disable = 0 → 实时版一行复活逻辑都不走
+# ===========================================================================
+func _test_revive_default_off_noop() -> void:
+	_log("")
+	_log("--- [AC-T1-23] 默认 off（repair_on_disable=0）→ 实时版复活逻辑零写入、逐位不变 ---")
+	var cfg := _Cfg.cfg_of("B")
+	_check("默认 repair_on_disable = 0", float(cfg["repair_on_disable"]), 0.0)
+	var p = _mk_player_bulwark_and_carry(1, 2)
+	var wd = _mk_director_revive(p, cfg, 0)
+	wd.start_wave(1)
+	var tr_rt: Array = _run_director_trace(wd)
+	var rt: Dictionary = wd.last_result
+	# 塔确实死了（机制有对象），但复活**一次都没发生**
+	_check_int("off 臂：本波确实有塔死亡（否则本测无意义）",
+		mini(int(rt.get("towers_disabled", 0)), 1), 1)
+	var d: Dictionary = rt.get("v8_diag", {})
+	_check("off 臂：revive_fired = 0", float(d.get("revive_fired", -1.0)), 0.0)
+	_check("off 臂：revive_elig = 0（连资格都不判）", float(d.get("revive_elig", -1.0)), 0.0)
+	_check("off 臂：revive_refused = 0", float(d.get("revive_refused", -1.0)), 0.0)
+	_check("off 臂：carry_death = 0（未取死亡快照）", float(d.get("carry_death", -1.0)), 0.0)
+	# 🔴 六个复活字段全部保持初值 → 证明 off 路径零写入
+	for i in range(p.towers.size()):
+		var t = p.towers[i]
+		_check("off 臂：塔%d revive_t_disabled 保持初值 0" % i, float(t.revive_t_disabled), 0.0)
+		_check_int("off 臂：塔%d revive_used_w 保持初值 0" % i, int(t.revive_used_w), 0)
+		_check_int("off 臂：塔%d revived_ever 保持初值 0" % i, int(t.revived_ever), 0)
+		_check_bool("off 臂：塔%d death_valid 保持初值 false（未取快照）" % i,
+			bool(t.death_valid), false)
+	# 与批处理（默认 cfg）逐位一致
+	var geo = _Geo6.build()
+	var p_b = _mk_player_bulwark_and_carry(1, 2)
+	var tr_b: Array = []
+	var b := _WaveSimAggro.simulate_wave_aggro(p_b, 1, cfg, geo, true, 0.6, -1.0, 0,
+		false, false, false, tr_b)
+	var mismatch := 0
+	for i in range(mini(tr_rt.size(), tr_b.size())):
+		if int(tr_rt[i]) != int(tr_b[i]):
+			mismatch += 1
+	_check_int("off 臂：disabled 轨迹 实时==批处理", mismatch, 0)
+	_check("off 臂：击杀 实时==批处理", float(rt["kills"]), float(b["kills"]))
+	_check("off 臂：漏怪 实时==批处理", float(rt["leaked"]), float(b["leaked"]))
+
+
+# ===========================================================================
+#  AC-T1-24 · 🔴 T-E1 合规自查（源码级 / 快照级 · 可证伪）
+# ===========================================================================
+func _test_te1_compliance() -> void:
+	_log("")
+	_log("--- [AC-T1-24] T-E1 合规自查（系统发起 / 暴露位&非carry / 零择时读数）---")
+	# ---- ① 系统发起：wave_director.gd 不得有任何玩家输入入口 ----
+	var wd_src := FileAccess.get_file_as_string("res://scripts/gameplay/wave_director.gd")
+	_check_bool("T-E1① 代码行无 `_unhandled_input` 入口（🔴 无玩家点击路径）",
+		_src_has_code_token(wd_src, "_unhandled_input"), false)
+	_check_bool("T-E1① 代码行无 `func _input(` 入口",
+		_src_has_code_token(wd_src, "func _input("), false)
+	_check_bool("T-E1① 代码行无 `Input.` 查询（无按键触发/加速/取消路径）",
+		_src_has_code_token(wd_src, "Input."), false)
+	_check_bool("T-E1① 代码行无 `is_action_` 类输入查询",
+		_src_has_code_token(wd_src, "is_action_"), false)
+	# ---- ③ 零择时：战斗内 UI 不得有任何读数（数字/倒计时/进度条）----
+	var ml_src := FileAccess.get_file_as_string("res://scripts/ui/monster_layer.gd")
+	_check_bool("T-E1③ 渲染层代码行无 `draw_string`（零数字文本）",
+		_src_has_code_token(ml_src, "draw_string"), false)
+	_check_bool("T-E1③ 渲染层代码行无 `Label` 节点（零文本控件）",
+		_src_has_code_token(ml_src, "Label"), false)
+	_check_bool("T-E1③ 渲染层代码行无倒计时/进度条绘制",
+		_src_has_code_token(ml_src, "progress"), false)
+	# ---- ③ 零择时：snapshot 不得导出任何择时读数 ----
+	var cfg := _mk_cfg_revive(9)
+	var p = _mk_player_bulwark_and_carry(1, 2)
+	var wd = _mk_director_revive(p, cfg, 9)
+	wd.start_wave(1)
+	wd.advance(_WaveSim.DT)
+	var snap := wd.snapshot()
+	for k in ["revive_countdown", "revive_progress", "revive_remain", "revive_eta",
+			"revive_n_seconds", "revive_k_per_wave", "revive_t_disabled"]:
+		_check_bool("T-E1③ snapshot 不得导出择时读数键 `%s`" % k, snap.has(k), false)
+	# 🔴 反向：snapshot **必须**导出「充能是否还在」的**布尔**（点亮 = 自解释，非读数）
+	_check_bool("T-E1③ snapshot 导出 `revive_ui` 总闸（布尔，非数字）",
+		snap.has("revive_ui"), true)
+	var tw: Array = snap.get("towers", [])
+	_check_bool("T-E1③ snapshot 每塔导出 `revive_charged` 布尔（塔底点亮用）",
+		tw.size() > 0 and (tw[0] as Dictionary).has("revive_charged"), true)
+	# ---- ② 对象资格：carry / 非暴露位在**死亡时刻**快照，且硬断言恒 0 ----
+	_check_bool("T-E1② `tower_revived` 信号存在（供渲染层做动效，非玩家输入）",
+		wd.has_signal("tower_revived"), true)
+
+
 func run_all() -> bool:
 	_test_tower_hp_derivation()
 	_test_aggro_constants()
@@ -819,6 +1242,11 @@ func run_all() -> bool:
 	_test_sapper_realtime()
 	_test_sapper_batch()
 	_test_rite()
+	_test_realtime_batch_revive_parity()
+	_test_revive_carry_refused()
+	_test_revive_snap_rest_roundtrip()
+	_test_revive_default_off_noop()
+	_test_te1_compliance()
 	_log("")
 	_log("T1 仇恨 汇总：通过 %d 项 / 失败 %d 项" % [_pass, _fail])
 	return _fail == 0

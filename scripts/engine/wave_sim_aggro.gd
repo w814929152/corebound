@@ -57,7 +57,13 @@ const DT := 0.1
 static func simulate_wave_aggro(player, w: int, cfg: Dictionary, geo,
 		aggro_enabled: bool = true, exp: float = 0.6, attrition: float = -1.0,
 		warmup_waves: int = 0, protect_core: bool = false, bulwark: bool = false,
-		sapper: bool = false) -> Dictionary:
+		sapper: bool = false, trace_box = null) -> Dictionary:
+	# 🔒 V-8 实时↔批处理逐位对照钩子（**纯诊断，零玩法语义**）：
+	#   `trace_box` 传入**一个 Array**（非 null）时，每个子步末尾把「各塔 disabled 位」压成
+	#   一个位掩码 append 进去 → 单测可拿它与实时版 `WaveDirector` 的逐子步快照**逐位比对**，
+	#   证明两边的「塔死亡 / 复活时机」在同一子步上完全一致。
+	#   🔴 默认 `null`（既有 11 参调用全部不传）→ `if trace_box != null` 守卫整段跳过 →
+	#      **逐位零扰动**（不写任何塔状态、不改任何浮点、不改变循环次数）。仅单测显式传容器才生效。
 	# 🔒 T1 肉盾塔诊断（bulwark）：模拟"玩家把主力塔放安全位"（理想肉盾策略）。
 	#   必须在塔 HP 初始化 / 战斗结算**之前**重定位 → dps_only 重算读到新 slot 的 E。
 	if bulwark and player != null and w > warmup_waves:
@@ -247,6 +253,10 @@ static func simulate_wave_aggro(player, w: int, cfg: Dictionary, geo,
 		#   🔴 默认 repair_on_disable=0 → 不触发。
 		if revive_mode >= 9 and revive_mode != 11 and w > warmup_waves:
 			_tick_revive(player, cfg, geo, dps_box, D8, exp)
+
+		# ---- ⑥ 逐位对照钩子（纯诊断）---- `trace_box` 为 null 时整行跳过。
+		if trace_box != null:
+			trace_box.append(_disabled_mask(player))
 
 		time += DT
 
@@ -598,6 +608,20 @@ static func _tick_revive(player, cfg: Dictionary, geo, dps_box: Array,
 		if float(t.revive_t_disabled) + 1e-9 < n_sec:
 			continue
 		_try_revive(t, player, cfg, geo, dps_box, D8, exp)
+
+
+## 🔒 V-8 逐位对照钩子：把 `player.towers` 的 `disabled` 位压成一个位掩码（塔序 = 列表序）。
+##   🔴 纯读取，不写任何状态。仅供 `trace_box` 非空时调用（单测逐位比对实时版）。
+static func _disabled_mask(player) -> int:
+	if player == null:
+		return 0
+	var mask := 0
+	var i := 0
+	for t in player.towers:
+		if bool(t.disabled):
+			mask |= (1 << i)
+		i += 1
+	return mask
 
 
 ## 残响场内判定：怪物是否落在**任一 Disabled 塔**的 `R_reverb` 半径内。

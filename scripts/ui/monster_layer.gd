@@ -41,6 +41,18 @@ const C_SAFE_ICON := Color(0.42, 0.82, 0.55, 1.0)     # 安全位 = 绿盾（安
 #   与 H10 决策期暴露度图标互补：决策期看"会不会挨打"（红X/绿盾），战斗期看"正在挨打"。
 const C_UNDER_ATTACK := Color(1.0, 0.55, 0.20, 0.95)  # 正在挨打 = 橙环（肉盾塔在扛伤）
 
+# 🔒 V-8 肉盾循环 M-1「战斗内被动复活」可读性（GDD mechanics-bulwark-cycle §6.1）
+#   🔴 T-E1③ / T-C2 红线：**零数字、零倒计时、零进度条**。
+#      只允许两样东西：① 塔体动效（**运动 + 亮度**，余光可读、不依赖色相）；
+#      ② 塔底「重启充能」**点亮/熄灭**二态（布尔，不是 "1/1"、不是进度条）。
+#   🔴 因此本文件用 `draw_arc` / `draw_circle` 画，🈚 `draw_string`、🈚 Label。
+const C_REVIVE_LIT := Color(1.0, 0.86, 0.35, 0.95)    # 充能还在 = 暖金亮点（这座塔还能爬一次）
+const C_REVIVE_SPENT := Color(0.30, 0.31, 0.35, 0.55) # 充能用尽 = 熄灭暗点（本波不会再爬）
+const C_REVIVE_FLASH := Color(1.0, 0.96, 0.78, 1.0)   # 爬起瞬间 = 高亮扩散环（运动 + 亮度）
+## 爬起动效时长（秒）。🔴 它是**事后**演出（塔已经爬起来了才播），不是倒计时 ——
+##   玩家无法据此预判任何时刻，不违反 T-E1③「零择时提示」。
+const REVIVE_FLASH_SEC := 0.6
+
 # 原型配色 / 半径（占位美术，无玩法含义）
 const C_RUSH := Color(0.98, 0.45, 0.25, 1.0)
 const C_SWARM := Color(0.82, 0.84, 0.88, 1.0)
@@ -58,6 +70,10 @@ var time_director: Node = null   # TimeDirector（读抽屉宽，决定战场可
 var controller: Node = null
 var _slot_rows: Array = []
 var _snap: Dictionary = {}
+## 🔒 V-8：塔位 → 爬起动效**剩余秒数**（纯演出计时器，UI 本地状态）。
+##   🔴 不是游戏状态（control-manifest §5 指的是玩法状态）：它只驱动画面衰减，
+##      不回写任何玩法数据、不参与任何判定。
+var _revive_flash: Dictionary = {}
 
 
 func _ready() -> void:
@@ -69,6 +85,18 @@ func _ready() -> void:
 
 func bind_director(d: Node) -> void:
 	director = d
+	if d == null:
+		return
+	# 🔒 V-8：`tower_revived` 是**单向**通知（导演 → 画面）。渲染层只能订阅播动效，
+	#   🔴 没有任何反向路径 —— 这是 T-E1 边界二「无玩家战斗内操作/择时」的画面侧保证。
+	if not d.is_connected("tower_revived", _on_tower_revived):
+		d.tower_revived.connect(_on_tower_revived)
+	queue_redraw()
+
+
+## 🔒 V-8：塔自动爬起 → 记录动效计时（**只写画面状态**）。
+func _on_tower_revived(slot: int) -> void:
+	_revive_flash[int(slot)] = REVIVE_FLASH_SEC
 	queue_redraw()
 
 
@@ -128,7 +156,20 @@ func _slots_arr() -> Array:
 	return _Geo6.SLOTS6
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
+	# 🔒 V-8：爬起动效计时衰减（纯画面）。🔴 夹住 delta：窗口失焦回来的巨大跳变
+	#   会让动效瞬间蒸发（也不会卡住 —— 上限 clamp 只影响观感，不影响任何玩法数值）。
+	if not _revive_flash.is_empty():
+		var d := clampf(float(delta), 0.0, 0.1)
+		var done: Array = []
+		for slot in _revive_flash:
+			var v := float(_revive_flash[slot]) - d
+			if v <= 0.0:
+				done.append(slot)
+			else:
+				_revive_flash[slot] = v
+		for slot in done:
+			_revive_flash.erase(slot)
 	if director == null:
 		return
 	_snap = director.snapshot()
@@ -290,12 +331,92 @@ func _draw_towers(sc: float) -> void:
 		# 选中高亮（最外圈，青）
 		if slot == selected:
 			draw_arc(sp, rad + maxf(4.0, sc * 0.6), 0.0, TAU, 30, C_SELECT, maxf(2.5, sc * 0.24), true)
+		# 🔒 V-8 停机态：塔身压暗（"倒下了"）→ 爬起时由 `_draw_revive_flash` 重新点亮，
+		#   形成「压暗 → 高亮扩散环 → 恢复常亮」的**运动 + 亮度**演出（T-C2 / §6.1）。
+		#   🔴 只在 revive 功能生效时画（默认 off → 默认画面逐像素不变）。
+		if _revive_on() and _is_disabled(slot):
+			draw_circle(sp, rad, Color(0.06, 0.07, 0.09, 0.62))
+			draw_arc(sp, rad, 0.0, TAU, 28, Color(0.55, 0.57, 0.62, 0.55),
+				maxf(1.0, sc * 0.10), true)
+		# 🔒 V-8 塔底「重启充能」点亮（K 未用 = 亮 / 用尽 = 灭）。🔴 零数字、零文本。
+		_draw_revive_charge(sp, slot, rad, sc)
 		# 层数刻度（h 个白点，沿塔身底部排开）
 		var n := mini(h, 8)
 		for k in range(n):
 			var ang := PI * (0.25 + 0.5 * float(k) / float(maxi(1, n - 1)))
 			var dot := Vector2(sp.x + cos(ang) * rad * 0.5, sp.y + sin(ang) * rad * 0.5)
 			draw_circle(dot, maxf(1.2, sc * 0.14), Color(1.0, 1.0, 1.0, 0.9))
+
+
+## 🔒 V-8 塔底「重启充能」点亮 —— 回答「这座塔**还能不能再爬一次**」。
+##   🟢 表达方式：**一个亮点 / 一个暗点**（二态布尔），零文本、零数字、零进度条。
+##   🔴 只在「仇恨开 + 复活档位开」且**战斗态**下画 —— 默认配置下 `_snap["revive_ui"]`
+##      恒 false → 本函数零绘制，默认画面与改前**逐像素相同**（金标本回归零扰动）。
+##   🔴 不显示 K 余量数字、不显示倒计时、不显示"还有几秒"（T-E1③ / §6.1）。
+func _draw_revive_charge(sp: Vector2, slot: int, rad: float, sc: float) -> void:
+	if not _revive_on():
+		return
+	# 仅战斗态（SPAWNING=1 / FIGHTING=2）：波次间不画，避免与商店抽屉互相干扰。
+	if not (int(_snap.get("state", 0)) == 1 or int(_snap.get("state", 0)) == 2):
+		return
+	var lit := bool(_revive_charged().get(slot, false))
+	var cr := maxf(1.8, sc * 0.20)
+	var cp := Vector2(sp.x, sp.y + rad + maxf(4.5, sc * 0.62))
+	if lit:
+		draw_circle(cp, cr, C_REVIVE_LIT)
+		# 亮度外晕（余光可读；不依赖色相 → 色觉可访问，§6.3）
+		draw_arc(cp, cr + maxf(1.2, sc * 0.14), 0.0, TAU, 12,
+			Color(C_REVIVE_LIT.r, C_REVIVE_LIT.g, C_REVIVE_LIT.b, 0.45),
+			maxf(1.0, sc * 0.10), true)
+	else:
+		draw_circle(cp, cr, C_REVIVE_SPENT)
+
+
+## 🔒 V-8 总闸：复活功能是否对**画面**生效（仇恨开 + `repair_on_disable >= 9`）。
+##   🔴 默认恒 false → 下面的停机压暗 / 充能点亮 / 爬起动效**全部零绘制**，
+##      默认画面与改前**逐像素相同**（金标本回归零扰动）。
+func _revive_on() -> bool:
+	return bool(_snap.get("revive_ui", false))
+
+
+## 塔位 → 本波「还能不能再爬一次」（布尔）。数据源 = 导演 snapshot 的每塔
+##   `revive_charged`（🔴 布尔，非数字 —— 渲染层拿不到也无法画出任何读数）。
+func _revive_charged() -> Dictionary:
+	var out: Dictionary = {}
+	for t in _snap.get("towers", []):
+		out[int(t.get("slot", -1))] = bool(t.get("revive_charged", false))
+	return out
+
+
+## 塔位 → 是否处于停机态（`disabled`）。数据源同为导演 snapshot（只读）。
+func _is_disabled(slot: int) -> bool:
+	for t in _snap.get("towers", []):
+		if int(t.get("slot", -1)) == slot:
+			return bool(t.get("disabled", false))
+	return false
+
+
+## 🔒 V-8 塔体**重启动效**：一圈高亮环从塔身向外扩散并变暗（**运动 + 亮度**）。
+##   🟢 它播在**爬起之后**（事后演出），不预告任何时刻 → 不构成倒计时/进度条。
+##   🟢 不依赖色相（白/暖金的高亮环）→ 色觉可访问（§6.3 第 4 条）。
+func _draw_revive_flash(sc: float) -> void:
+	if _revive_flash.is_empty():
+		return
+	for slot in _revive_flash:
+		var rem := float(_revive_flash[slot])
+		if rem <= 0.0:
+			continue
+		var s := int(slot)
+		if s < 0 or s >= _slots_arr().size():
+			continue
+		var sp := _to_screen(_slots_arr()[s])
+		var p := clampf(rem / REVIVE_FLASH_SEC, 0.0, 1.0)   # 1 → 0（越晚越暗越大）
+		var rad := maxf(7.0, sc * 1.1)
+		var grow := (1.0 - p) * maxf(15.0, sc * 2.2)
+		var col := Color(C_REVIVE_FLASH.r, C_REVIVE_FLASH.g, C_REVIVE_FLASH.b, p)
+		draw_arc(sp, rad + grow, 0.0, TAU, 32, col, maxf(2.0, sc * 0.30), true)
+		# 塔身一瞬提亮（亮度表达，与"重新点亮"同义）
+		draw_circle(sp, rad, Color(1.0, 1.0, 1.0, 0.40 * p))
 
 
 ## D-TB-6：若当前商店焦点位是"需强制点选"的 reinforce 卡，返回其合法宿主塔位；否则空。
@@ -445,6 +566,9 @@ func _draw() -> void:
 
 	# ---- 已建塔（I-7：按塔原型上色 + 层数刻度 + 选中/合法宿主高亮）----
 	_draw_towers(sc)
+
+	# ---- 🔒 V-8 塔体「重启动效」（画在塔体之上，事后演出 · 运动 + 亮度）----
+	_draw_revive_flash(sc)
 
 	# ---- 怪物 ----
 	if _snap.is_empty():

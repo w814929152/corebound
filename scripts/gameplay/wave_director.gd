@@ -56,6 +56,11 @@ const _PathGeometry := preload("res://scripts/geo/path_geometry.gd")
 const _SpaceModel := preload("res://scripts/geo/space_model.gd")
 const _MonsterData := preload("res://scripts/data/monster_data.gd")
 const _Monster := preload("res://scripts/gameplay/monster.gd")
+## 🔒 V-8：复用批处理镜像的**诊断量容器工厂** —— 复活诊断字典与 `wave_sim_aggro` 共用
+##   同一份 schema（键名/初值逐位相同）→ 实时↔批处理逐位比对才能直接对键取值，
+##   也杜绝"两边各写一份 schema、改了一边忘了另一边"的漂移。🔴 只调它的 static 工厂，
+##   不调用任何战斗结算函数（实时版从不走批处理路径）。
+const _WaveSimAggro := preload("res://scripts/engine/wave_sim_aggro.gd")
 
 
 enum State {
@@ -79,6 +84,11 @@ signal monster_leaked(m)                         # → Core.hp -= 50
 ## 🔒 T1（Q-T4 = ① 已定稿）：塔被仇恨打死 → 进入 Disabled 中间态（断输出不断链）。
 ##   携带塔位 slot。渲染层订阅做「塔体损伤演出」（T-C2 余光编码，不做数字条）。
 signal tower_destroyed(slot: int)
+## 🔒 V-8 肉盾循环 M-1：塔**自动爬起**（系统发起）→ 供渲染层做「塔体重启动效」。
+##   🔴 这是**单向通知**（导演 → 画面），🈚 任何反向输入路径：没有"手动触发/取消/加速"
+##      的接口，渲染层只能订阅。🔴 T-E1 边界二的源码级保证（由单测 AC-T1-24 守）。
+##   🔴 不携带任何择时读数（只有 slot）→ 渲染层无法据此画倒计时/进度条（T-E1③）。
+signal tower_revived(slot: int)
 signal run_lost(w: int)                          # E-W3：核心 HP ≤ 0 立即失败
 ## 🟢 切片8续3（可玩 MVP）：通关胜利 —— 打完最后一波（W_MAX_WAVE）且核心未归零。
 ##   与 `run_lost` 对称：`run_lost` = 核心归零失败，`run_won` = 全波次清空胜利。
@@ -142,6 +152,11 @@ var _spd_mults: Array = []
 
 var last_result: Dictionary = {}
 var last_result_w: int = -1
+
+## 🔒 V-8 肉盾循环 M-1 诊断量（本波）。🔴 纯计数，不参与战斗结算。
+##   schema 与批处理镜像 `wave_sim_aggro._new_v8_diag()` 逐位相同（同一工厂），
+##   → 单测可逐键比对实时/批处理。🔴 默认 `repair_on_disable=0` → 全零、零扰动。
+var revive_diag: Dictionary = {}
 
 # 🔴 工程夹子：单帧最多跑多少个子步（窗口失焦回来时 delta 会是一次巨大跳变）。
 #    只影响"追赶速度"，不影响任何数值口径（子步总数由 `t_wave` 与 `limit` 决定）。
@@ -209,6 +224,17 @@ func start_wave(p_w: int) -> void:
 	if player == null or cfg.is_empty():
 		return
 	w = p_w
+	# ---- 🔒 V-8 波首复活档（`mechanics-bulwark-cycle` F-4 + mode 11）----
+	#   🔴 必须落在 `dps_only` **之前**（与批处理镜像 `simulate_wave_aggro` 同序）：
+	#      mode 11（波首对照臂）清掉的 disabled 要被本波 dps 读到，否则两边分岔。
+	revive_diag = _WaveSimAggro._new_v8_diag()
+	if _revive_mode() >= 9:
+		for t in player.towers:
+			t.revive_t_disabled = 0.0     # F-4：本波 disabled 累计秒数清零
+			t.revive_used_w = 0           # F-4：K 是「每波」配额，不是每局
+		# 🔴 revived_ever / death_* 不清（跨波语义：revived_ever 是本局波浪标记）
+		if _revive_mode() == 11 and w > warmup_waves:
+			_wave_start_revive()
 	# 🔴 HP_unit / N / scrap_per_kill / D / t_reach 全部取**金标本** `monster_stats`
 	#    （一字不改地复用，杜绝二次定义）
 	var ms := _WaveSim.monster_stats(w, cfg)
@@ -388,6 +414,11 @@ func _substep() -> void:
 	if tower_aggro_enabled and w > warmup_waves:
 		_apply_aggro()
 
+	# ---- ⑤ 🔒 V-8 战斗中复活（M-1）：Disabled 塔累计 N 秒 → 系统自动重启 ----
+	#   🔴 与批处理镜像同序（都在④仇恨之后）→ 死亡当子步就开始累计 `revive_t_disabled`。
+	#   🔴 `repair_on_disable < 9`（默认 0）→ 函数首行 return，off 路径逐位不变。
+	_tick_revive()
+
 
 ## 🔒 T1（Q-T3 = ① 机会型仇恨）：每子步的仇恨判定（GDD §2.6 状态机）。
 ##   · Marching 怪：当前位置与某座 **未 Disabled** 塔的距离 ≤ AGGRO_R → 转 AggroTower，
@@ -488,6 +519,11 @@ func _damage_tower(m) -> void:
 	t.hp = float(t.hp) - dmg
 	if float(t.hp) <= 0.0:
 		t.hp = 0.0
+		# 🔒 V-8：死亡时刻资格快照（F-1）→ 🔴 必须在 `disabled = true` **之前**取
+		#   （此时本塔尚属"未 Disabled"，carry 判定与批处理镜像同口径）。
+		#   🔴 默认 repair_on_disable=0 → 不触发，零开销零扰动。
+		if _revive_mode() >= 9:
+			_death_snapshot(t)
 		t.disabled = true          # 进入 Disabled 中间态（断输出不断链）
 		# 🔴 塔死亡 → 全场 DPS 立即下降（disabled 乘数生效）。本波 dps 是波首算的
 		#    常量，此处重算让**下一子步**的集火用新 DPS（批处理镜像同处理 → 逐位一致）。
@@ -509,6 +545,162 @@ func _tower_pos(t) -> Vector2:
 		return geo.slots[int(t.slot)]
 	# 兜底：塔位坐标缺失时返回核心（不会进仇恨判定，安全）
 	return _PathGeometry.CORE_POS
+
+
+# ===========================================================================
+#  🔒 V-8 肉盾循环 · 机制 M-1「战斗中被动复活」
+#    GDD `mechanics-bulwark-cycle` §2.2（定稿 N=0.5s / K=1 / 暴露位&非 carry / 满血 / 原地）
+#    🔴 与批处理镜像 `wave_sim_aggro.gd`（`_death_snapshot`/`_try_revive`/`_tick_revive`/
+#       `_clear_disabled`/`_wave_start_revive`）**逐位对称** —— 同一开关语义、同一子步序、
+#       同一浮点累加式。差异只有"宿主"（player.towers 成员 vs static 参数）。
+#
+#  🔴 T-E1（`mechanics-tower-life-death` §2.2.1）三要件 —— 本段实现逐条兑现：
+#     ① **系统发起** —— 只由 `_substep` ⑤ 自动调用；本文件没有任何玩家输入回调或
+#        输入查询（无 `_input*` 系回调、无 Input 单例查询），也🈚 确认弹窗 /
+#        手动触发 / 取消 / 加速接口（`tower_revived` 是**单向**信号，只能订阅）。
+#        → 单测 AC-T1-24 源码级守（逐行扫**非注释**代码里的输入类 token）。
+#     ② **对象 = 死亡时刻快照「暴露位 & 非 carry」** —— `_death_snapshot` 在
+#        `disabled = true` **之前**一次性求值；carry / 非暴露位一律**拒绝**（不爬起），
+#        硬断言 `revive_misq` 恒 0。
+#     ③ **时机 = 战斗内被动**（Disabled 后 N=0.5s 自动）且**零择时提示** ——
+#        `snapshot()` 只导出**布尔**（`revive_ui` / 每塔 `revive_charged`），
+#        🔴 不导出任何倒计时 / 进度 / 余量数字 → 单测 AC-T1-24 快照级守。
+#
+#  🔴 默认 `repair_on_disable = 0` → 下面全部函数**一次都不会被调到**，off 路径逐位不变。
+# ===========================================================================
+
+## 复活开关档位（`mvp_config :: repair_on_disable`）：0=OFF / 1=FREE / 2=PRICED
+##   （既有三档语义一字不改）/ 9=战斗内即时 / 11=波首（对照臂）。🔴 默认恒 0。
+func _revive_mode() -> int:
+	return int(cfg.get("repair_on_disable", 0))
+
+
+## 战斗内即时复活（mode 9）：Disabled 塔累计 `N` 秒后自动重启，每波每塔最多 `K` 次。
+##   🔴 `K` 用尽 → 保持 Disabled 到波末（GDD §2 段③ → 波次间交给玩家三选一）。
+func _tick_revive() -> void:
+	var rm := _revive_mode()
+	if player == null or rm < 9 or rm == 11:
+		return
+	if w <= warmup_waves:          # E-B7：WARMUP 期间仇恨未激活 → 不触发
+		return
+	var n_sec := float(cfg.get("revive_n_seconds", 0.5))
+	var k_max := int(cfg.get("revive_k_per_wave", 1))
+	var exp := float(cfg.get("tower_stack_exp", 0.6))
+	for t in player.towers:
+		if not bool(t.disabled):
+			continue
+		t.revive_t_disabled = float(t.revive_t_disabled) + _WaveSim.DT
+		if int(t.revive_used_w) >= k_max:
+			continue
+		if float(t.revive_t_disabled) + 1e-9 < n_sec:
+			continue
+		_try_revive(t, exp)
+
+
+## 波首复活（mode 11 = 对照臂 B3，`N → ∞` 极限档）：波首一次性清合格的 Disabled 塔。
+##   🟢 落在 `dps_only` 重算**之前**调用（start_wave 内）→ 本波 dps 直接读到已恢复的塔。
+func _wave_start_revive() -> void:
+	if player == null:
+		return
+	var exp := float(cfg.get("tower_stack_exp", 0.6))
+	var k_max := int(cfg.get("revive_k_per_wave", 1))
+	for t in player.towers:
+		if not bool(t.disabled):
+			continue
+		if int(t.revive_used_w) >= k_max:
+			continue
+		_try_revive(t, exp)
+
+
+## 资格判定 + 成交（与批处理镜像 `_try_revive` 逐位对称）。
+##   🔴 硬断言：已落地的重启必须仍满足死亡快照资格（`revive_misq` 恒 0，AC-8）。
+##   🟡 与「闸门**正确拒绝**」是两件事：拒绝数走 `revive_refused`（诊断量，不是断言）。
+func _try_revive(t, exp: float) -> bool:
+	var k_max := int(cfg.get("revive_k_per_wave", 1))
+	if bool(t.death_valid) and bool(t.death_exposed) and (not bool(t.death_carry)):
+		t.hp_max = _MonsterData.tower_hp(int(t.h), exp)
+		if _clear_disabled(int(t.slot)):
+			t.revive_used_w = int(t.revive_used_w) + 1
+			t.revived_ever = int(t.revived_ever) + 1
+			revive_diag["revive_fired"] = float(revive_diag["revive_fired"]) + 1.0
+			if (not bool(t.death_exposed)) or bool(t.death_carry) or (not bool(t.death_valid)):
+				revive_diag["revive_misq"] = float(revive_diag["revive_misq"]) + 1.0
+			# 🔴 塔恢复输出 → 全场 DPS 立即重算（与塔死亡时重算同一条纪律）
+			dps = _DE.dps_only(player, cfg, geo)
+			emit_signal("tower_revived", int(t.slot))
+			return true
+		return false
+	# ---- 闸门口**正确拒绝**：不合格（carry 死 / 非暴露位死）→ 不重启 ----
+	if not bool(t.death_valid):
+		revive_diag["nosnap_death"] = float(revive_diag["nosnap_death"]) + 1.0
+	revive_diag["revive_refused"] = float(revive_diag["revive_refused"]) + 1.0
+	# 🔴 打满本波配额 → 同一座塔不会被每子步重复判定（否则拒绝计数会被刷爆）
+	t.revive_used_w = k_max
+	return false
+
+
+## 清指定塔位的 Disabled 标记 + 回满 HP（与批处理镜像 `_clear_disabled` 逐位对称，
+##   与 §2.3 `Repair` 同口径 —— 只恢复 HP 与输出，不动 h / attach / 历史最大塔数）。
+func _clear_disabled(slot: int) -> bool:
+	if player == null:
+		return false
+	for t in player.towers:
+		if int(t.slot) == slot:
+			if not bool(t.disabled):
+				return false
+			t.disabled = false
+			t.hp = t.hp_max
+			return true
+	return false
+
+
+## 死亡时刻资格快照（F-1）：`is_exposed` + 非 carry。🔴 必须在 `disabled = true` **之前**取。
+##   🟢 零新字段：复用 `_PathGeometry.slot_exposure[_radial]` 的既有 `is_exposed`。
+func _death_snapshot(t) -> void:
+	var rm := _revive_mode()
+	var slot := int(t.slot)
+	var exposed := false
+	if geo != null:
+		var slots: Array = _slot_positions()
+		var rows: Array
+		if _SpaceModel.is_radial():
+			rows = _PathGeometry.slot_exposure_radial(
+				slots, _MonsterData.AGGRO_R, _SpaceModel.core_pos(),
+				_PathGeometry.EXPO_SAFE_MAX)
+		else:
+			rows = _PathGeometry.slot_exposure(slots, _MonsterData.AGGRO_R)
+		for r in rows:
+			if int(r["slot"]) == slot:
+				exposed = bool(r["is_exposed"])
+				break
+	var carry_h := -1
+	for o in player.towers:
+		if bool(o.disabled):
+			continue
+		if int(o.h) > carry_h:
+			carry_h = int(o.h)
+	var is_carry := (carry_h >= 0 and int(t.h) >= carry_h)
+	t.death_exposed = exposed
+	t.death_carry = is_carry
+	t.death_valid = true
+	# 死亡事件分类（🟡 闸门**正确拒绝**约半数死亡事件是设计意图，不是 bug）
+	if is_carry:
+		revive_diag["carry_death"] = float(revive_diag["carry_death"]) + 1.0
+	elif not exposed:
+		revive_diag["nonexp_death"] = float(revive_diag["nonexp_death"]) + 1.0
+	if rm >= 9 and exposed and (not is_carry):
+		revive_diag["revive_elig"] = float(revive_diag["revive_elig"]) + 1.0
+	# 重启后又死（履职证明，不判负）
+	if int(t.revived_ever) > 0:
+		revive_diag["revive_redied"] = float(revive_diag["revive_redied"]) + 1.0
+
+
+func _slot_positions() -> Array:
+	var out: Array = []
+	if geo != null and "slots" in geo:
+		for p in geo.slots:
+			out.append(p)
+	return out
 
 
 ## 🔒 T1：本局已 Disabled 的塔数（供 last_result / snapshot 断言塔死亡后果）。
@@ -616,6 +808,9 @@ func _end_wave() -> void:
 		emit_signal("run_won", w)
 	# 🔒 T1：记录本波结束时已 Disabled 的塔数（供 UI/单测断言塔死亡后果）。
 	last_result["towers_disabled"] = _count_disabled_towers()
+	# 🔒 V-8：本波复活诊断量（schema 与批处理镜像逐位相同 → 单测可逐键比对）。
+	#   🔴 纯计数，默认全零，不参与战斗结算 → 金标本零扰动。
+	last_result["v8_diag"] = revive_diag
 	emit_signal("wave_result", w, last_result)
 	# 时钟侧：进安全窗（TimeDirector 会写 paused 并广播 wave_ended）
 	if director != null:
@@ -641,6 +836,10 @@ func snapshot() -> Dictionary:
 			"sapper": bool(m.sapper),   # 🔒 T1 ⑤ Sapper：供渲染层做 Elite 锁塔怪标识（MVP 恒 false）
 		})
 	# 🔒 T1：每座塔的运行时耐久 + Disabled 态（供渲染层做塔体损伤演出，T-C2 余光编码）
+	# 🔒 V-8：每座塔额外导出一个**布尔** `revive_charged`（本波还能不能再爬一次）。
+	#   🔴 只给布尔、不给数字 —— T-E1③「零择时读数」：`K` 余量以「塔底点亮/熄灭」
+	#      表达，玩家看不到 "1/1"、也看不到任何倒计时（GDD §6.1）。
+	var k_max := int(cfg.get("revive_k_per_wave", 1))
 	var towers: Array = []
 	if player != null:
 		for t in player.towers:
@@ -649,6 +848,7 @@ func snapshot() -> Dictionary:
 				"hp": float(t.hp),
 				"hp_max": float(t.hp_max),
 				"disabled": bool(t.disabled),
+				"revive_charged": bool(int(t.revive_used_w) < k_max),
 			})
 	return {
 		"w": w,
@@ -672,6 +872,9 @@ func snapshot() -> Dictionary:
 		"monsters": live,
 		"towers": towers,
 		"towers_disabled": _count_disabled_towers(),
+		# 🔒 V-8 渲染层总闸（**布尔**）：只有「仇恨开 + 复活档位开」时渲染层才画
+		#   塔底充能点亮 / 重启动效。🔴 默认恒 false → 默认画面与改前**逐像素相同**。
+		"revive_ui": tower_aggro_enabled and _revive_mode() >= 9,
 		"prototype_split_enabled": prototype_split_enabled,
 		"elite_waves_enabled": elite_waves_enabled,
 		"tower_aggro_enabled": tower_aggro_enabled,
