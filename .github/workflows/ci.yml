@@ -7,9 +7,16 @@ name: CI
 #   2) radial8 聚合闸门（geo8 / radial / geo8_smoke / geo8_golden / expo /
 #      bulwark8 / panorama8 / attrition8，统一退出码 0）
 #   3) 实机口径 MC（RADIAL + proto/elite ON）—— S5-D1 门禁 B 起飞率 ≥ 0.80
+#   4) aggro_golive 退化逐位守护（第五刀 · 三轴合并镜像：
+#      ①aggro OFF==proto ②proto OFF+aggro==真身 ③全 OFF==金标本 ④全开==真身
+#      ⑤repair_on_disable=0 零扰动）
+#   5) 实机**全开** MC + 口径矩阵（RADIAL + proto/elite/aggro 全 ON ·
+#      repair_on_disable ∈ {0 OFF,1 FREE,2 PRICED}）—— 第五刀上线门禁 B 起飞率 ≥ 0.80
+#      🔴 当前已知破线 → **本步为诊断（非阻断）**，见下方 step 注释。
 #
 # 🔴 口径红线的守门人：CI 只跑既有判据，**不新增、不下调任何阈值**。
 #    任何一步非零退出 = 红（例如默认回归聚合读数漂移、radial8 任一项挂、MC 破线）。
+#    🔴 例外 = 「实机全开 MC」诊断步（continue-on-error）：已知破线，故不阻断（工单 B-2）。
 
 on:
   push:
@@ -98,12 +105,28 @@ jobs:
           mkdir -p ci-logs
           "$GODOT" --headless --path . --script res://tests/run_tests.gd -- radial8 2>&1 | tee ci-logs/radial8.log
 
+      - name: aggro_golive 退化逐位守护（三轴合并镜像 · 第五刀）
+        run: |
+          set -euo pipefail
+          GODOT="$HOME/godot/Godot_v${GODOT_VERSION}_linux.x86_64"
+          mkdir -p ci-logs
+          "$GODOT" --headless --path . --script res://tests/run_tests.gd -- aggro_golive 2>&1 | tee ci-logs/aggro_golive_guards.log
+
       - name: 实机口径 MC（proto/elite ON · B≥0.80 门禁）
         run: |
           set -euo pipefail
           GODOT="$HOME/godot/Godot_v${GODOT_VERSION}_linux.x86_64"
           mkdir -p ci-logs
           "$GODOT" --headless --path . --script res://tests/run_slice_proto_elite_mc.gd 2>&1 | tee ci-logs/proto_elite_mc.log
+
+      # 🔴 当前已知破线（B@6=0.677 < 0.80，见 tower-aggro-golive-impl.md §4-2）→ 本步为诊断（不阻断）；待「玩家修复口径」补全并达标后转回硬门禁
+      - name: 实机全开 MC（proto/elite/aggro 全 ON · 第五刀 B≥0.80 → 诊断·非阻断）
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          GODOT="$HOME/godot/Godot_v${GODOT_VERSION}_linux.x86_64"
+          mkdir -p ci-logs
+          "$GODOT" --headless --path . --script res://tests/run_slice_aggro_golive_mc.gd 2>&1 | tee ci-logs/aggro_golive_mc.log
 
       - name: 上传日志（无论成败）
         if: always()

@@ -152,7 +152,9 @@ func _make_row(row: Dictionary) -> Control:
 
 	var hint := Label.new()
 	hint.add_theme_font_size_override("font_size", 12)
-	hint.text = "修复 %d 分（回满 HP · 保留装配卡）｜ 被动拆除（返还 0% · 销毁 %d 层）" % [repair_cost, n_layers]
+	# 🔴 字面 `0%` 在 `String % [...]` 里会被当格式符 → 必须转义为 `0%%`（否则整串格式化失败，
+	#    `%d` 原样残留 + 运行时 `ERROR: String formatting error: unsupported format character`）。
+	hint.text = "修复 %d 分（回满 HP · 保留装配卡）｜ 被动拆除（返还 0%% · 销毁 %d 层）" % [repair_cost, n_layers]
 	hint.add_theme_color_override("font_color", Color(0.55, 0.57, 0.60, 1.0))
 	box.add_child(hint)
 

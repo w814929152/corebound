@@ -46,6 +46,7 @@ const TestSuiteSlice6 := preload("res://tests/test_suite_slice6.gd")
 const TestSuiteSlice7 := preload("res://tests/test_suite_slice7.gd")
 const TestSuiteSlice8 := preload("res://tests/test_suite_slice8.gd")
 const TestSuiteT1Aggro := preload("res://tests/test_suite_t1_aggro.gd")
+const TestSuiteAggroGolive := preload("res://tests/test_suite_aggro_golive.gd")
 const TestSuiteRadial := preload("res://tests/test_suite_radial.gd")
 const TestSuiteGeo8 := preload("res://tests/test_suite_geo8.gd")
 const _Geo := preload("res://scripts/geo/geo.gd")
@@ -109,7 +110,7 @@ func _initialize() -> void:
 	for a in OS.get_cmdline_user_args():
 		if (a.begins_with("slice") or a.begins_with("t1") or a == "v0radial"
 				or a == "radial" or a == "geo8" or a == "radial8" or a == "radial8diag"
-				or a == "repair8"):
+				or a == "repair8" or a == "aggro_golive"):
 			only = a
 
 	var ok := true
@@ -153,6 +154,9 @@ func _initialize() -> void:
 		ok = TestSuiteSlice8.new().run_all() and ok
 	if only == "" or only == "t1aggro":
 		ok = TestSuiteT1Aggro.new().run_all() and ok
+	# 🔴 第五刀 · 三轴合并镜像退化逐位守护（独立入口，**不进**默认无参回归 → 九段聚合读数逐位不变）。
+	if only == "aggro_golive":
+		ok = TestSuiteAggroGolive.new().run_all() and ok
 	if only == "v0radial":
 		var candidate = _Geo.new(R2_SLOTS)
 		ok = TestSuite.new().run_radial_golden(candidate) and ok

@@ -33,17 +33,26 @@ func _ready() -> void:
 		#    回滚：把下面这行删掉 / 改回 `Mode.PATH` 即可（一行回退，双模设计本就为此）。
 		SpaceModel.mode = SpaceModel.Mode.RADIAL
 		# 🔴 第四刀：原型 / 精英波**上线**（`docs/phase3/proto-elite-golive-spec.md` §2.2 / 附录 C-1）。
+		# 🔴 第五刀：仇恨（tower_aggro）**未上线**（B 轮 2026-10-10 回退，用户已拍板）——
+		#    上线门禁破线：实机全开 MC 的多塔 B 起飞率 **B@6 = 0.677 < 0.80**
+		#    （详见 `docs/phase3/tower-aggro-golive-impl.md` §4-2）；待「玩家安全窗修复口径」
+		#    补全（B-3 口径矩阵 · repair_on_disable ∈ {0,1,2}）并达标后重评。
+		#    ⇒ 本分支**不注入** `tower_aggro_enabled` → 实机保持**第四刀口径**
+		#      （RADIAL + 三原型 + Elite，仇恨关闭 / 塔不可受损 / 无 Disabled）。
 		#    注入点必须在 `add_child(bs)` **之后**（battle_shop._ready() 同步建好 wave_director，
 		#    见 battle_shop.gd:50）、`controller.call_deferred("start_run", 1)` **之前**（deferred →
 		#    下一帧才开波，见 battle_shop.gd:91）→ 此处设开关安全、早于首局。
 		#    🔴 headless 分支与 `tests/run_tests.gd` 路径**永不进入**本分支 → 金标本零扰动。
-		#    🔴 tower_aggro_enabled 保持 false（本轮只上原型 / 精英，aggro 属 T1 批次）。
-		#    回滚：删掉下面三行（或把两个开关设回 false）即可一行回退。
+		#    🔴 repair_on_disable 保持 0（诊断开关，非产品功能）；塔死亡产品路径 = 安全窗三选一弹窗。
+		#    一行回滚（重新开启 aggro）：在下面两行注入之后加回
+		#      `bs.wave_director.tower_aggro_enabled = true`
+		#    即回到第五刀全开口径（若届时门禁已达标 / 用户另行裁决）。
 		var bs = BattleShop.instantiate()
 		add_child(bs)
 		bs.wave_director.prototype_split_enabled = true
 		bs.wave_director.elite_waves_enabled = true
 		print("[boot] proto/elite ON（RADIAL 实机口径）")
+		print("[boot] aggro OFF（第五刀未上线 · 门禁 B@6=0.677<0.80 · 见 tower-aggro-golive-impl.md §4-2）")
 		print("[boot] SpaceModel.mode = RADIAL（径向核心围攻 · 实机默认）")
 		print("[boot] Corebound MVP · 切片4（实时商店覆盖层 + 完整商店逻辑接线）")
 		print("[boot] Tab 开关抽屉 · Esc 关闭/取消 · R 刷新 · 1/2/3 选中即买 · Space 锁定焦点位")
