@@ -13,16 +13,20 @@ extends SceneTree
 ##       原安全位的塔换到暴露位充当肉盾。更贴近玩家真实保塔操作。
 ##
 ## 四组对照（各 300 局 MC，同 seed PyRandom，与金标本逐位一致）：
-##   · A 无保护      （protect_core=false, bulwark=false）→ 复现起飞率 A 0.393（破 60% 红线）
-##   · A 主力塔隐身  （protect_core=true,  bulwark=false）→ 复现 V-2 的 0.583（仍破线）
+##   · A 无保护      （protect_core=false, bulwark=false）→ 复现起飞率 A 0.277（破 60% 红线）
+##   · A 主力塔隐身  （protect_core=true,  bulwark=false）→ 复现 V-2 的 0.580（仍破线）
 ##   · A 理想肉盾    （protect_core=false, bulwark=true） → 主力塔放安全位（本诊断核心）
-##   · B 无保护      （protect_core=false, bulwark=false）→ 复现起飞率 B 0.883（通过）
+##   · B 无保护      （protect_core=false, bulwark=false）→ 复现起飞率 B 0.817（通过）
+##
+## 🔴 口径自证（防跨口径串味，见 a-side-balance-adjudication.md §1.4/§4）：
+##   本脚本 = 六槽 PATH（cfg_of 默认 n_slots=6 · SpaceModel.mode=PATH），**非**八槽 RADIAL。
+##   其输出与「八槽 survive_rate 0.60 红线」**不可直接比**（红线归属 = A 起飞率 × 六槽定稿）。
 ##
 ## 判读：
 ##   · 若 A 理想肉盾 ≥ 0.60 → 保塔策略对单核流有效，肉盾塔玩法成立（玩家能救 A）；
 ##     但 GDD §3.6 预判"肉盾对单核流是纯成本"（牺牲输出塔当肉盾 + 安全位 DPS 不足）→
 ##     若仍破线则印证预判：单核流天生不适合肉盾，多塔流才是肉盾主场（对接 V-4）。
-##   · 对比 A 隐身(0.583) vs A 理想肉盾：量化"真放安全位"相对"隐身"的 DPS 代价。
+##   · 对比 A 隐身(0.580) vs A 理想肉盾：量化"真放安全位"相对"隐身"的 DPS 代价。
 ##
 ## 跑法：
 ##   <godot> --headless --path D:/roguedemo --script res://tests/scan_bulwark.gd [runs]
@@ -74,9 +78,9 @@ func _initialize() -> void:
 
 	print("")
 	print("  ▶ 判读：")
-	print("     · A 破线复现：%s（预期 0.29–0.46 < 0.60）" % ("✅" if float(rA["rate"]) < 0.60 else "❌"))
+	print("     · A 破线复现：%s（预期 ≈0.28 < 0.60）" % ("✅" if float(rA["rate"]) < 0.60 else "❌"))
 	print("     · B 通过复现：%s（预期 ≥0.80）" % ("✅" if float(rB["rate"]) >= 0.80 else "❌"))
-	print("     · A 隐身复现：%s（预期 ≈0.583，V-2 基线）" % ("✅" if absf(float(rAp["rate"]) - 0.583) < 0.05 else "⚠ %.3f" % float(rAp["rate"])))
+	print("     · A 隐身复现：%s（预期 ≈0.580，V-2 基线）" % ("✅" if absf(float(rAp["rate"]) - 0.580) < 0.05 else "⚠ %.3f" % float(rAp["rate"])))
 	print("")
 	if float(rAb["rate"]) >= 0.60:
 		print("     · A 理想肉盾回升至 %s ≥ 0.60 → 保塔策略对单核流有效，肉盾塔玩法成立（玩家能救 A）✓" % _fmt(rAb["rate"]))
