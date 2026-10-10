@@ -101,6 +101,23 @@ const CONCENTRIC_U: Array = [15.0, 30.0, 45.0]     # 同心环半径 u（spec §
 # 确定性 12 边形扰动表（全员共享 → 帧间稳定，杜绝逐帧抖动；spec §A.2.2）
 const BLOB_R12: Array = [1.00, 0.88, 1.06, 0.92, 1.02, 0.86, 1.04, 0.95, 1.00, 0.90, 1.05, 0.93]
 
+# ===========================================================================
+#  🔴 P0 增强集（第二刀 · spec §A.4 / §A.2.1 增强 / §A.2.3 受创）
+#  ---------------------------------------------------------------------------
+#  同架构、零扰动：仍**只读** snapshot；新增本地状态全是**纯演出计时器/差分缓存**
+#  （与 `_revive_flash` / `_vfx_t` 同性质），不回写玩法、不新增信号（spec §C.4）。
+# ===========================================================================
+# ---- Rim Light 内发光（spec §A.4）：本体内侧再叠一圈阵营色细弧 ----
+#   作用：同屏混乱时分离相邻单位。宽恒定 0.8px（屏幕空间），α 0.6。
+const RIM_W := 0.8                                    # 内发光细弧宽（屏幕 px）
+const RIM_ALLY := Color(0.243, 0.816, 0.910, 0.6)     # 塔：耀青 #3ED0E8 @α0.6
+const RIM_ENEMY := Color(1.000, 0.420, 0.239, 0.6)    # 怪：熔橙 #FF6B3D @α0.6
+# ---- 受击闪（spec §A.2.3 受创 / §8.1）：帧间差分触发，本地计时器衰减 ----
+const CORE_FLASH_SEC := 0.12      # 核心外环闪 #FF2E4E @α0.8 持续 0.12s
+const TOWER_FLASH_SEC := 0.15     # 塔受击一瞬白闪时长（本地演出）
+# 塔升级「形态」递进 —— 护角长度上限 0.30u（红线：不超 R + 0.30u，不侵占相邻塔位）。
+const TOWER_CORNER_MAX_U := 0.30
+
 
 var director: Node = null        # WaveDirector
 var time_director: Node = null   # TimeDirector（读抽屉宽，决定战场可视宽）
@@ -116,6 +133,13 @@ var _revive_flash: Dictionary = {}
 ## 🔴 P0：纯演出相位（驱动核心内芯呼吸等）。与 `_revive_flash` 同性质 ——
 ##   只是画面计时器，不回写任何玩法数据、不参与任何判定（spec §C.4 第 3 条）。
 var _vfx_t: float = 0.0
+## 🔴 P0 增强：受击闪演出计时器 + 帧间差分缓存（纯本地画面状态）。
+##   `_core_hp_prev` / `_tower_hp_prev` 只是"上一帧读数"，用于检测**下降**；
+##   计时器 `_core_flash` / `_tower_flash` 只驱动画面衰减 —— 均不回写玩法、不参与判定。
+var _core_hp_prev: float = -1.0
+var _core_flash: float = 0.0
+var _tower_hp_prev: Dictionary = {}
+var _tower_flash: Dictionary = {}
 
 
 func _ready() -> void:
@@ -200,7 +224,18 @@ func _slots_arr() -> Array:
 
 func _process(delta: float) -> void:
 	# 🔴 P0：演出相位累加（只驱动画面，纯本地状态）。
-	_vfx_t += clampf(float(delta), 0.0, 0.1)
+	var dt := clampf(float(delta), 0.0, 0.1)
+	_vfx_t += dt
+	# 🔴 P0 增强：受击闪演出计时衰减（纯画面；夹住 dt 防失焦跳变瞬间蒸发）。
+	if _core_flash > 0.0:
+		_core_flash = maxf(0.0, _core_flash - dt)
+	if not _tower_flash.is_empty():
+		for slot in _tower_flash.keys():
+			var v := float(_tower_flash[slot]) - dt
+			if v <= 0.0:
+				_tower_flash.erase(slot)
+			else:
+				_tower_flash[slot] = v
 	# 🔒 V-8：爬起动效计时衰减（纯画面）。🔴 夹住 delta：窗口失焦回来的巨大跳变
 	#   会让动效瞬间蒸发（也不会卡住 —— 上限 clamp 只影响观感，不影响任何玩法数值）。
 	if not _revive_flash.is_empty():
@@ -217,7 +252,31 @@ func _process(delta: float) -> void:
 	if director == null:
 		return
 	_snap = director.snapshot()
+	_detect_hits()
 	queue_redraw()
+
+
+## 🔴 P0 增强：帧间差分检测核心 / 塔**受击**（只读快照；仅写本地演出计时器）。
+##   · 核心：`runtime.snapshot()["core_hp"]` 下降 → 外环闪 0.12s。
+##   · 塔：`runtime.player.towers[slot].hp` 下降 → 该塔白闪（仅可见塔）。
+##   🔴 无稳定怪物 id（第一刀已验证）→ 怪物命中闪**不做**（登记不做项）。
+func _detect_hits() -> void:
+	if controller == null or controller.runtime == null:
+		return
+	var rt = controller.runtime
+	var chp := float(rt.snapshot().get("core_hp", 0.0))
+	if _core_hp_prev >= 0.0 and chp < _core_hp_prev - 0.0001:
+		_core_flash = CORE_FLASH_SEC
+	_core_hp_prev = chp
+	var cur: Dictionary = {}
+	for tw in rt.player.towers:
+		var s := int(tw.slot)
+		var hp := float(tw.hp)
+		cur[s] = hp
+		var prev := float(_tower_hp_prev.get(s, -1.0))
+		if prev >= 0.0 and hp < prev - 0.0001:
+			_tower_flash[s] = TOWER_FLASH_SEC
+	_tower_hp_prev = cur
 
 
 # ---------------------------------------------------------------------------
@@ -722,6 +781,48 @@ func _blob_shadow(c: Vector2, r: float, off: Vector2, a: float) -> void:
 	draw_circle(p, r * 0.7, Color(0.0, 0.0, 0.0, a))
 
 
+## 🔴 P0 增强 · Rim Light 内发光（spec §A.4）：本体内侧 `R − 0.55w` 叠一圈阵营色
+##   细弧 —— 塔耀青 / 怪熔橙 @α0.6，宽恒定 0.8px。作用：混乱时分离相邻单位。
+##   `w` = 该单位描边宽（屏幕 px）。
+func _draw_rim(c: Vector2, r: float, w: float, col: Color) -> void:
+	var rr := maxf(1.0, r - 0.55 * w)
+	draw_arc(c, rr, 0.0, TAU, 32, col, RIM_W, true)
+
+
+## 🔴 P0 增强 · 塔升级「形态」递进（spec §A.2.1 增强，**取代**"只堆层数白点"）。
+##   约束（红线）：① 严格 8 次旋转对称 —— 所有附加件都落在八边形 8 个顶点/8 等分角；
+##   ② 不超出 `R + 0.30u`（不侵占相邻塔位，最近塔间距仅 10.14u）；
+##   ③ 零数字/文本（沿用 T-E1③ 口径）；④ 不改塔位坐标/原型语言。
+##   递进（落地后一眼可辨「这座比那座强」）：
+##     h≥2 内层细环 → h≥3 外圈规整护角×8（长度随等级增长）→
+##     h≥5 星紫 `#7A5CFF` 顶点点缀 → h≥8 星紫外环（满级）。
+func _draw_tower_form(c: Vector2, R: float, h: int, sc: float) -> void:
+	# h≥2 内层细环：**深色**环叠在亮塔身（0.46R）→ 与亮体强对比，一眼可辨"多了一层"。
+	if h >= 2:
+		draw_arc(c, R * 0.46, 0.0, TAU, 28,
+			Color(P_ALLY_DARK.r, P_ALLY_DARK.g, P_ALLY_DARK.b, 0.9),
+			maxf(1.2, 0.12 * sc), true)
+	# h≥3 外圈规整护角 ×8：**亮色**短三角落在八边形 8 顶点 → 严格 8 重对称、向外可辨。
+	if h >= 3:
+		var lv := clampf((float(h) - 3.0) / 5.0, 0.0, 1.0)
+		var blen := (0.10 + (TOWER_CORNER_MAX_U - 0.10) * lv) * sc   # 0.10u → 0.30u
+		var bhalf := 0.13 * sc
+		for k in 8:
+			var outn := _dir(TAU * float(k) / 8.0)
+			var pv := c + outn * R
+			var tan := Vector2(-outn.y, outn.x) * bhalf
+			draw_colored_polygon(PackedVector2Array([
+				pv - tan, pv + tan, pv + outn * blen]), P_ALLY)
+	# h≥5 星紫 `#7A5CFF` 顶点点缀（8 重对称）→ 高等级副色标记。
+	if h >= 5:
+		for k in 8:
+			draw_circle(c + _dir(PI / 8.0 + TAU * float(k) / 8.0) * (R * 0.60),
+				maxf(1.5, 0.16 * sc), P_ALLY_2)
+	# h≥8 星紫外环（满级）。
+	if h >= 8:
+		draw_arc(c, R + 0.16 * sc, 0.0, TAU, 32, P_ALLY_2, maxf(2.0, 0.20 * sc), true)
+
+
 # ---- 层1/2：地面 decal + 出生环（spec §A.7）----
 func _draw_radial_ground(sc: float) -> void:
 	var c := _to_screen(_SpaceModel.RADIAL_CORE)
@@ -819,6 +920,13 @@ func _draw_radial_core(sc: float) -> void:
 	var breath := 1.0 + 0.06 * sin(_vfx_t * TAU / 1.6)                        # 呼吸内芯
 	draw_circle(c, rc * 0.32 * breath, P_CORE_HI)
 	draw_arc(c, rc + 0.11 * sc, 0.0, TAU, 48, P_TOWER_EDGE, maxf(1.5, 0.22 * sc), true)
+	# 🔴 P0 增强 · 受创闪（spec §A.2.3）：核心受击瞬间外环闪 #FF2E4E @α0.8，0.12s。
+	#   本地演出计时器驱动衰减，只读 `core_hp` 帧间下降（不回写玩法）。
+	if _core_flash > 0.0:
+		var fp := clampf(_core_flash / CORE_FLASH_SEC, 0.0, 1.0)
+		draw_arc(c, rc + 0.05 * sc, 0.0, TAU, 48,
+			Color(P_ALERT.r, P_ALERT.g, P_ALERT.b, 0.8 * fp),
+			maxf(2.0, 0.35 * sc), true)
 
 
 # ---- 层6：塔（双层八边形 + 中心圆 + 左上高光 + 外扩描边 + 层数刻度）----
@@ -846,6 +954,7 @@ func _draw_radial_towers(sc: float) -> void:
 		draw_colored_polygon(_oct8(c, R * 0.66, PI / 8.0), P_ALLY)   # 塔身（亮，旋转 22.5°）
 		draw_circle(c, R * 0.30, P_ALLY_DARK)                        # 中心圆
 		draw_circle(c + Vector2(-0.28 * R, -0.28 * R), R * 0.30, Color(1.0, 1.0, 1.0, 0.9))
+		_draw_rim(c, R, maxf(1.5, U_OUTLINE * sc), RIM_ALLY)         # P0 增强：内发光
 		draw_polyline(_closed(_oct8(c, R + 0.5 * U_OUTLINE * sc, 0.0)),
 			P_TOWER_EDGE, maxf(1.5, U_OUTLINE * sc), true)          # 外扩描边
 		if slot == core_slot:   # 主塔标记（星紫）
@@ -856,12 +965,12 @@ func _draw_radial_towers(sc: float) -> void:
 			draw_circle(c, R, Color(0.06, 0.07, 0.09, 0.62))
 			draw_arc(c, R, 0.0, TAU, 28, Color(0.55, 0.57, 0.62, 0.55), maxf(1.0, 0.10 * sc), true)
 		_draw_revive_charge(c, slot, R, sc)
-		var h: int = int(tw.get("h", 1))          # 层数刻度点（沿八边形顶点）
-		var n := mini(h, 8)
-		for k in range(n):
-			var ang := PI / 8.0 + TAU * float(k) / 8.0
-			draw_circle(c + _dir(ang) * (R * 0.60), maxf(1.2, 0.14 * sc),
-				Color(1.0, 1.0, 1.0, 0.9))
+		# 🔴 P0 增强：升级「形态」递进（h 越高越醒目；**取代**原"层数白点"）。
+		_draw_tower_form(c, R, int(tw.get("h", 1)), sc)
+		# 🔴 P0 增强：塔受击一瞬白闪（本地计时器；仅对可见塔）。
+		if _tower_flash.has(slot):
+			var tfp := clampf(float(_tower_flash[slot]) / TOWER_FLASH_SEC, 0.0, 1.0)
+			draw_circle(c, R, Color(1.0, 1.0, 1.0, 0.6 * tfp))
 
 
 # ---- 层7：怪（12 边不规则 + 朝核心尖刺扇 + 外扩描边）----
@@ -896,6 +1005,7 @@ func _draw_radial_monsters(sc: float) -> void:
 		draw_colored_polygon(_blob12(c, R, out_dir, rs, ts), P_ENEMY)   # 主体
 		if proto == "Tank":   # 内层焦褐环
 			draw_arc(c, R * 0.55, 0.0, TAU, 20, P_ENEMY_DARK, maxf(1.5, 0.16 * sc), true)
+		_draw_rim(c, R, w, RIM_ENEMY)   # P0 增强：内发光（混乱时分离相邻单位）
 		for i in n_spike:    # 外张尖刺扇（沿"朝核心"方向）
 			var a := out_dir + SPIKE_SPREAD * (float(i) - float(n_spike - 1) * 0.5)
 			var tip := c + _dir(a) * (R + spike_len * sc)

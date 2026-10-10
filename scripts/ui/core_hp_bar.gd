@@ -25,11 +25,17 @@ const SEG_H := 22.0
 const SEG_GAP := 3.0
 const BOTTOM_MARGIN := 28.0
 const PAD := 10.0
+# P1 增强（spec §C.2）：段碎裂演出时长（满→空时短促闪白再隐没）。
+const SHATTER_SEC := 0.18
 
 var _director: Node = null
 var _controller: Node = null   # 读 runtime.player.core_hp（单一数据源）
 var _hp: float = 1000.0
 var _hp_max: float = 1000.0
+## 🔴 P1 增强本地状态（纯演出）：段索引 → 剩余碎裂动画秒数；`_prev_filled` = 上一帧满段数。
+##   只驱动画面衰减，不回写数据源、不参与任何判定（与 monster_layer 的 `_revive_flash` 同性质）。
+var _prev_filled: int = -1
+var _shatter: Dictionary = {}
 
 
 func _ready() -> void:
@@ -63,13 +69,26 @@ func _on_run_changed() -> void:
 
 
 ## [接口] 直接设定（兼容后续 wave-spawner 的 WS-5 调用）。
+## 🟢 P1 增强：段数下降 → 逐段登记碎裂演出（本地计时器，只驱动画面）。
 func set_hp(hp: float, hp_max: float) -> void:
+	var prev_filled := _filled_count()
 	_hp = float(hp)
 	_hp_max = maxf(1.0, float(hp_max))
+	var now_filled := _filled_count()
+	if _prev_filled >= 0 and now_filled < _prev_filled:
+		for i in range(now_filled, _prev_filled):
+			_shatter[i] = SHATTER_SEC
+	_prev_filled = now_filled
 	queue_redraw()
 
 
-## 🟢 从 runtime.player 读核心 HP 单一数据源实时刷新（只读）。
+## 当前满段数（口径与 `_draw()` 逐位一致：ceil(frac × 20)）。
+func _filled_count() -> int:
+	var frac := clampf(_hp / maxf(1.0, _hp_max), 0.0, 1.0)
+	return int(ceil(frac * float(SEG_COUNT)))
+
+
+## 从 runtime.player 读核心 HP 单一数据源实时刷新（只读）。
 func _refresh_hp() -> void:
 	if _controller == null or _controller.runtime == null:
 		return
@@ -79,9 +98,17 @@ func _refresh_hp() -> void:
 	set_hp(float(p.core_hp), float(p.core_hp_max))
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
 	# 只读刷新（低开销；HP 变化也会经 run_changed 触发 set_hp）。
 	_refresh_hp()
+	# P1 增强：碎裂演出衰减（纯画面计时器）。
+	if not _shatter.is_empty():
+		for i in _shatter.keys():
+			var v := float(_shatter[i]) - float(delta)
+			if v <= 0.0:
+				_shatter.erase(i)
+			else:
+				_shatter[i] = v
 
 
 func _draw() -> void:
@@ -108,6 +135,17 @@ func _draw() -> void:
 			draw_rect(r, col)
 		else:
 			draw_rect(r, Color(col.r, col.g, col.b, 0.16))
+
+	# P1 增强：段碎裂演出 —— 由满→空的段短促闪白（#FFFFFF）再隐没（不参与玩法）。
+	for i in _shatter:
+		if i < 0 or i >= SEG_COUNT:
+			continue
+		var sp := clampf(float(_shatter[i]) / SHATTER_SEC, 0.0, 1.0)
+		var grow := (1.0 - sp) * SEG_GAP * 1.5
+		var sr := Rect2(x0 + float(i) * (SEG_W + SEG_GAP), y0, SEG_W, SEG_H)
+		draw_rect(Rect2(sr.position.x - grow, sr.position.y - grow,
+			sr.size.x + 2.0 * grow, sr.size.y + 2.0 * grow),
+			Color(1.0, 1.0, 1.0, 0.85 * sp))
 
 	# 数字（L0）：720 / 1000
 	var font := ThemeDB.fallback_font

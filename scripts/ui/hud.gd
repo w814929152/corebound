@@ -56,6 +56,19 @@ var _wave_progress: float = 0.0
 var _wave_elite: bool = false
 var _banner_end_ms: int = 0
 
+# ---- P1 增强：积分数字滚动 + 金色粒子（spec §5.2 / §C.2「增强」）----
+#   🔴 纯本地 easing：只把**新版数字**缓动显示出来；**不改数据源、不改玩法数值**。
+const SCORE_ROLL_SEC := 0.25         # 数字滚动时长（EASE_OUT）
+const SCORE_PULSE_DECAY := 6.0       # 缩放脉冲衰减速率（/s）
+const GOLD_ORIGIN := Vector2(64.0, 56.0)   # 硬币图标中心（粒子发射原点）
+var _score_display: float = 0.0      # 当前**显示**值（缓动中）
+var _score_from: float = 0.0
+var _score_to: float = 0.0
+var _score_t: float = 1.0            # >= SCORE_ROLL_SEC 表示动画已完成
+var _score_init: bool = false
+var _score_pulse: float = 0.0        # 缩放脉冲（1→0）
+var _gold_parts: Array = []          # 一次性金色小粒子（纯画面）
+
 
 func _ready() -> void:
 	_build()
@@ -275,7 +288,10 @@ func _style_button(b: Button) -> void:
 # ---------------------------------------------------------------------------
 #  每帧刷新（只读）
 # ---------------------------------------------------------------------------
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
+	# P1 增强：本地演出推进（数字缓动 + 金色粒子），与数据源无关。
+	_advance_score(float(delta))
+	_advance_particles(float(delta))
 	if director == null:
 		return
 	var s: Dictionary = director.snapshot()
@@ -289,10 +305,70 @@ func _process(_delta: float) -> void:
 	queue_redraw()
 
 
+## P1 增强：积分数字滚动（本地 easing）。读 `runtime.snapshot()["scrap"]` 只作**目标值**。
 func _refresh_score() -> void:
 	if controller == null or controller.runtime == null:
 		return
-	_score_label.text = _fmt_int(int(round(float(controller.runtime.snapshot().get("scrap", 0)))))
+	var target := float(controller.runtime.snapshot().get("scrap", 0))
+	if not _score_init:
+		_score_init = true
+		_score_display = target
+		_score_from = target
+		_score_to = target
+		_score_t = SCORE_ROLL_SEC
+		_score_label.text = _fmt_int(int(round(target)))
+		return
+	if absf(target - _score_to) > 0.0001:
+		_score_from = _score_display
+		_score_to = target
+		_score_t = 0.0
+		if target > _score_from:      # 仅增长时给弹性反馈（花分不闪）
+			_score_pulse = 1.0
+			_spawn_gold()
+
+
+## 数字缓动推进（0.25s · cubic EASE_OUT）。
+func _advance_score(delta: float) -> void:
+	if _score_t < SCORE_ROLL_SEC:
+		_score_t = minf(SCORE_ROLL_SEC, _score_t + delta)
+		var p := _score_t / SCORE_ROLL_SEC
+		var e := 1.0 - pow(1.0 - p, 3.0)
+		_score_display = _score_from + (_score_to - _score_from) * e
+		if _score_label != null:
+			_score_label.text = _fmt_int(int(round(_score_display)))
+	if _score_pulse > 0.0:
+		_score_pulse = maxf(0.0, _score_pulse - delta * SCORE_PULSE_DECAY)
+		if _score_label != null:
+			var k := 1.0 + 0.14 * _score_pulse
+			_score_label.pivot_offset = Vector2(0.0, _score_label.size.y * 0.5)
+			_score_label.scale = Vector2(k, k)
+
+
+## 一次性金色小粒子（积分增长时，从硬币图标喷出；纯画面）。
+func _spawn_gold() -> void:
+	for i in 6:
+		var a := -PI * 0.5 + randf_range(-0.9, 0.9)
+		_gold_parts.append({
+			"pos": GOLD_ORIGIN + Vector2(randf_range(-16.0, 16.0), randf_range(-10.0, 10.0)),
+			"vel": Vector2(cos(a), sin(a)) * randf_range(60.0, 150.0),
+			"life": 0.0,
+			"max": randf_range(0.35, 0.60),
+		})
+	if _gold_parts.size() > 48:
+		_gold_parts = _gold_parts.slice(_gold_parts.size() - 48)
+
+
+func _advance_particles(delta: float) -> void:
+	if _gold_parts.is_empty():
+		return
+	var keep: Array = []
+	for pt in _gold_parts:
+		pt["life"] = float(pt["life"]) + delta
+		if float(pt["life"]) < float(pt["max"]):
+			pt["pos"] = (pt["pos"] as Vector2) + (pt["vel"] as Vector2) * delta
+			pt["vel"] = (pt["vel"] as Vector2) * (1.0 - 2.5 * delta)
+			keep.append(pt)
+	_gold_parts = keep
 
 
 func _refresh_wave_progress() -> void:
@@ -413,10 +489,16 @@ func _draw() -> void:
 		return
 	var vs := vp.get_visible_rect().size
 	var cx := float(vs.x) * 0.5
-	# 硬币图标（左上 L0）
-	draw_circle(Vector2(64.0, 56.0), 32.0, C_GOLD)
-	draw_circle(Vector2(64.0, 56.0), 22.0, Color(0.97, 0.66, 0.16, 1.0))
-	draw_circle(Vector2(64.0, 56.0), 10.0, C_GOLD)
+	# 硬币图标（左上 L0）—— P1 增强：随积分脉冲轻微放大
+	var coin_k := 1.0 + 0.10 * _score_pulse
+	draw_circle(GOLD_ORIGIN, 32.0 * coin_k, C_GOLD)
+	draw_circle(GOLD_ORIGIN, 22.0 * coin_k, Color(0.97, 0.66, 0.16, 1.0))
+	draw_circle(GOLD_ORIGIN, 10.0 * coin_k, C_GOLD)
+	# P1 增强：一次性金色小粒子（积分增长喷出）
+	for pt in _gold_parts:
+		var p := clampf(float(pt["life"]) / float(pt["max"]), 0.0, 1.0)
+		draw_circle(pt["pos"], 1.0 + 4.0 * (1.0 - p),
+			Color(C_GOLD.r, C_GOLD.g, C_GOLD.b, (1.0 - p) * 0.9))
 	# 波次进度条（顶部中央，波次数字之下）
 	var bx := cx - WAVE_BAR_W * 0.5
 	var by := 84.0
