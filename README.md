@@ -1,0 +1,98 @@
+# 守核 Corebound
+
+[![CI](https://github.com/w814929152/corebound/actions/workflows/ci.yml/badge.svg)](https://github.com/w814929152/corebound/actions/workflows/ci.yml)
+
+> 肉鸽塔防 + 卡牌构筑 · PC / Steam · Godot 4.7.2-stable
+>
+> 玩家在**径向战场**上围绕核心布置防御塔，每波之间用安全窗买卡、装配、改装构筑；活过 20 波即通关。
+
+---
+
+## 玩法一句话
+
+怪物从**出生环**沿径向直插**核心**（径向核心围攻）。塔位分布在核心周围的暴露 / 安全环带上；玩家在波间安全窗内用**废料**买卡（建筑卡 / 单塔卡 / 全局卡）与刷新商店，构筑出一条能清场的防线。核心 HP 归零即失败，打完 W20 且核心未归零即通关。
+
+## 核心机制
+
+| 机制 | 说明 |
+|---|---|
+| **径向运动学** | `ρ = R_s · m_spd · clamp(t_remain/t_reach, 0, 1/m_spd)`；`t_remain` 为**唯一权威状态量**，出生角由黄金角派生的**确定性**序列给出（零 RNG） |
+| **三原型分化** | Rush（快 / 高移速）/ Swarm（基准）/ Tank（慢 / 高 HP）——由 `prototype_split_enabled` 控制 |
+| **精英波（Elite）** | 每 5 波（W5/10/15/20）出现精英单位（更高 HP + 品红环标识）；Sapper 精英锁塔增伤 |
+| **塔死亡与处置** | 仇恨锁定 → 塔可被打到 `Disabled` 中间态（断输出不断链）→ 修复 / 被动拆除 / 放置不管 |
+| **献祭（Salvage Rite）** | 安全窗内拆塔的第二个出口：返还 0%、卡全销毁，换取 `stackcap_bonus`（收益 ∝ 投入） |
+| **肉盾流（Bulwark）** | 涌现策略：暴露位塔先挨打、怪物锁定后停下不漏怪 → 用站位换来后排输出 |
+
+## 技术要点
+
+- **金标本（golden reference）逐位对齐**：玩法数值以一套 Python 对照实现为金标本，headless 测试逐位（`%.17g` / `%.17e`）比对，任何 ULP 级偏差都会翻红。
+- **浮点可移植性强制**（ADR-0002）：整数指数必须走 `FpPow.pow_int()`；移植 Python `sum()` 必须走 `FpSum.sum_py()`。
+- **双空间模型**：`SpaceModel` 支持 PATH（折线路径）与 RADIAL（径向）双模，默认 PATH、窗口模式注入 RADIAL，一行可回滚。
+- **渲染层只读**：UI 只读战斗快照（snapshot），零玩法写入、零新信号。
+
+## 本地运行与自测
+
+需要 Godot **4.7.2-stable**。
+
+```bash
+GODOT="<你的 Godot 可执行文件>"
+
+# 全量 headless 回归（切片 1–8 + T1 仇恨）
+"$GODOT" --headless --path . --script res://tests/run_tests.gd
+
+# 只跑某切片（参数必须以 slice 开头）
+"$GODOT" --headless --path . --script res://tests/run_tests.gd -- slice5
+
+# radial8 聚合闸门
+"$GODOT" --headless --path . --script res://tests/run_tests.gd -- radial8
+
+# 实机口径 MC（RADIAL + 三原型 + Elite；B 起飞率 ≥ 0.80 门禁）
+"$GODOT" --headless --path . --script res://tests/run_slice_proto_elite_mc.gd
+
+# 窗口模式直接玩（真实帧）
+"$GODOT" --path .
+```
+
+> ⚠️ `--headless --script` 路径下 Godot 没有 `global_script_class_cache`，因此工程内**一律 `preload`，不写 `class_name`**。
+
+## CI
+
+`.github/workflows/ci.yml` 在 push / PR 时自动跑：
+
+1. **默认回归** —— 切片 1–8 + T1 仇恨，九段汇总、退出码 0；
+2. **radial8 聚合闸门** —— geo8 / radial / geo8_smoke / geo8_golden / expo / bulwark8 / panorama8 / attrition8；
+3. **实机口径 MC** —— 三原型 + Elite，300 局，B 起飞率 ≥ 0.80。
+
+任一步非零退出 = CI 红。日志无论成败都会作为 artifact 上传。
+
+## 目录结构
+
+```
+scripts/
+  engine/    伤害引擎 / 战斗循环 / 金标本镜像（wave_sim、run_loop、shop_ai…）
+  gameplay/  刷怪调度（wave_director）、怪物实体、商店桥接
+  geo/       空间模型（径向 / 折线路径）与几何
+  data/      怪物与塔的数值表（SSOT）
+  ui/        战场渲染、HUD、商店覆盖层、启动场景
+tests/       headless 断言套件 + 各切片冒烟 + 数值扫描 / MC 脚本
+docs/
+  architecture/  工程控制清单（红线与口径冻结）、ADR、各切片架构
+  phase3/        各切片验收报告、质量门、径向迁移、体验层与玩法刀次规格
+design/      设计稿（GDD、数值模拟）
+```
+
+## 文档索引
+
+- **工程控制清单（总红线 + 口径冻结 + 提交前自检）**：`docs/architecture/control-manifest.md`
+- **径向迁移质量门**：`docs/phase3/quality-gate-radial-migration.md`
+- **各切片验收**：`docs/phase3/slice{1..8}-verify.md`
+- **浮点可移植性决策**：`docs/architecture/adr-0002-float-portability.md`
+
+---
+
+## 状态
+
+Phase 3 MVP：切片 1–8 已交付（伤害引擎 → 战斗循环 → 商店 → 径向核心围攻 → 塔死亡玩法 → 可玩胜负）；
+径向迁移收官（默认窗口即 RADIAL）；三原型 / 精英波已上线。
+
+> 🔴 数值口径为工程级冻结资产：`ATTRITION` / `κ_r` / `AGGRO_R` / 塔位 / `SPAWN_RADIUS` / 核心 HP / `hp_growth` / 三原型表等，改动一律走 ADR 并需拍板。
