@@ -1,0 +1,115 @@
+name: CI
+
+# 《守核 Corebound》回归保护网（质量门 R-1 遗留项「工程无 CI」落地）
+#
+# 覆盖：
+#   1) 默认 headless 回归（切片 1–8 + T1 仇恨，九段汇总，退出码 0）
+#   2) radial8 聚合闸门（geo8 / radial / geo8_smoke / geo8_golden / expo /
+#      bulwark8 / panorama8 / attrition8，统一退出码 0）
+#   3) 实机口径 MC（RADIAL + proto/elite ON）—— S5-D1 门禁 B 起飞率 ≥ 0.80
+#
+# 🔴 口径红线的守门人：CI 只跑既有判据，**不新增、不下调任何阈值**。
+#    任何一步非零退出 = 红（例如默认回归聚合读数漂移、radial8 任一项挂、MC 破线）。
+
+on:
+  push:
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
+      - '.workbuddy/**'
+  pull_request:
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
+      - '.workbuddy/**'
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # 🔴 与本地开发一致（control-manifest §7）；升级需同步 project.godot 的 config_version 与全量回归。
+  GODOT_VERSION: 4.7.2-stable
+
+jobs:
+  headless-regression:
+    name: Headless 回归（默认 + radial8 + 实机口径 MC）
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: 检出
+        uses: actions/checkout@v4
+
+      - name: 缓存 Godot 可执行文件
+        id: cache-godot
+        uses: actions/cache@v4
+        with:
+          path: ~/godot
+          key: godot-${{ env.GODOT_VERSION }}-linux-x86_64
+
+      - name: 下载 Godot ${{ env.GODOT_VERSION }}（Linux）
+        if: steps.cache-godot.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/godot"
+          url="https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}/Godot_v${GODOT_VERSION}_linux.x86_64.zip"
+          echo "下载 $url"
+          curl -fsSL -o /tmp/godot.zip "$url"
+          unzip -oq /tmp/godot.zip -d "$HOME/godot"
+          chmod +x "$HOME/godot/Godot_v${GODOT_VERSION}_linux.x86_64"
+
+      - name: 无头运行所需系统库
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq \
+            libfontconfig1 libgl1 libxcursor1 libxinerama1 libxrandr2 libxi6 libasound2t64 \
+            || sudo apt-get install -y -qq \
+            libfontconfig1 libgl1 libxcursor1 libxinerama1 libxrandr2 libxi6 libasound2
+
+      - name: 冒烟（二进制可运行）
+        run: |
+          set -euo pipefail
+          GODOT="$HOME/godot/Godot_v${GODOT_VERSION}_linux.x86_64"
+          "$GODOT" --headless --version
+
+      - name: 导入资源（生成 .godot/ 缓存）
+        run: |
+          set -euo pipefail
+          GODOT="$HOME/godot/Godot_v${GODOT_VERSION}_linux.x86_64"
+          mkdir -p ci-logs
+          "$GODOT" --headless --path . --import 2>&1 | tee ci-logs/import.log \
+            || "$GODOT" --headless --path . --editor --quit 2>&1 | tee -a ci-logs/import.log
+
+      - name: 默认回归（切片 1–8 + T1 仇恨）
+        run: |
+          set -euo pipefail
+          GODOT="$HOME/godot/Godot_v${GODOT_VERSION}_linux.x86_64"
+          mkdir -p ci-logs
+          "$GODOT" --headless --path . --script res://tests/run_tests.gd 2>&1 | tee ci-logs/default.log
+          echo "---- 九段汇总 ----"
+          grep -E "汇总：通过|合计：PASS" ci-logs/default.log || true
+
+      - name: radial8 聚合闸门
+        run: |
+          set -euo pipefail
+          GODOT="$HOME/godot/Godot_v${GODOT_VERSION}_linux.x86_64"
+          mkdir -p ci-logs
+          "$GODOT" --headless --path . --script res://tests/run_tests.gd -- radial8 2>&1 | tee ci-logs/radial8.log
+
+      - name: 实机口径 MC（proto/elite ON · B≥0.80 门禁）
+        run: |
+          set -euo pipefail
+          GODOT="$HOME/godot/Godot_v${GODOT_VERSION}_linux.x86_64"
+          mkdir -p ci-logs
+          "$GODOT" --headless --path . --script res://tests/run_slice_proto_elite_mc.gd 2>&1 | tee ci-logs/proto_elite_mc.log
+
+      - name: 上传日志（无论成败）
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-logs-${{ github.run_number }}
+          path: ci-logs/
+          if-no-files-found: ignore
+          retention-days: 14
