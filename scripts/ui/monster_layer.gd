@@ -62,6 +62,45 @@ const R_RUSH := 5.0
 const R_SWARM := 6.5
 const R_TANK := 10.0
 
+# ===========================================================================
+#  🔴 P0 战场可读性 · 正交俯视 2D 落地（blueprint = `docs/phase3/ux-p0p1-spec.md`）
+#  ---------------------------------------------------------------------------
+#  · 本区块**只在 RADIAL 模式生效**；PATH 模式仍走 `_draw_legacy()`（逐位不变）。
+#  · 只读 snapshot 渲染，零玩法写入、零新信号（spec §C.4 零扰动）。
+#  · 配色严格取 spec §A.1 表（精确 hex 已换算为 Color）。
+# ===========================================================================
+# ---- 阵营配色（spec §A.1，精确 hex）----
+const P_ALLY := Color(0.243, 0.816, 0.910)        # #3ED0E8 耀青（我方主体）
+const P_ALLY_DARK := Color(0.102, 0.420, 0.490)   # #1A6B7D 深青（我方阴影层）
+const P_ALLY_2 := Color(0.478, 0.361, 1.000)      # #7A5CFF 星紫（副色/主塔标记）
+const P_CORE_HI := Color(0.918, 0.984, 1.000)     # #EAFBFF 核心内芯高光
+const P_ENEMY := Color(1.000, 0.420, 0.239)       # #FF6B3D 熔橙（敌方主体）
+const P_ENEMY_DARK := Color(0.541, 0.184, 0.110)  # #8A2F1C 焦褐（敌方阴影层/尖刺）
+const P_ELITE := Color(0.910, 0.263, 0.498)       # #E8437F 噬品红（精英）
+const P_SLOT := Color(0.604, 0.647, 0.694)        # #9AA5B1 钢灰（塔位空槽）
+const P_GOLD := Color(1.000, 0.788, 0.290)        # #FFC94A 辉金（积分/合法宿主）
+const P_ALERT := Color(1.000, 0.180, 0.306)       # #FF2E4E 警报红（受创/临界）
+const P_FIELD := Color(0.137, 0.157, 0.220)       # #232838 场地圆填充
+const P_RING := Color(0.106, 0.125, 0.188)        # #1B2030 同心环/放射刻度
+const P_BG := Color(0.078, 0.090, 0.149)          # #141726 背景（雾底）
+const P_SPAWN_EDGE := Color(0.227, 0.259, 0.341)  # #3A4257 出生环描边
+const P_TOWER_EDGE := Color(0.055, 0.141, 0.188)  # #0E2430 塔描边（冷暗）
+const P_MON_EDGE := Color(0.180, 0.063, 0.031)    # #2E1008 怪描边（暖暗）
+
+# ---- 形状尺寸（世界单位 u；屏幕 px = u × sc，spec §A.5）----
+const U_TOWER := 1.70          # 塔：八边形外接圆
+const U_SLOT := 1.50           # 塔位空槽：八边形环
+const U_CORE := 1.90           # 核心：最外环
+const U_OUTLINE := 0.22        # 描边宽（恒定屏幕 2px @1080p）
+const BODY_RUSH := 0.65        # 怪：Rush 细长
+const BODY_SWARM := 0.85       # 怪：Swarm 中
+const BODY_TANK := 1.30        # 怪：Tank 宽扁
+const ELITE_SCALE := 1.35      # 精英体量修饰
+const SPIKE_SPREAD := 0.40     # 尖刺扇相邻夹角（rad；spec 未钉值，取定性观感值）
+const CONCENTRIC_U: Array = [15.0, 30.0, 45.0]     # 同心环半径 u（spec §A.7）
+# 确定性 12 边形扰动表（全员共享 → 帧间稳定，杜绝逐帧抖动；spec §A.2.2）
+const BLOB_R12: Array = [1.00, 0.88, 1.06, 0.92, 1.02, 0.86, 1.04, 0.95, 1.00, 0.90, 1.05, 0.93]
+
 
 var director: Node = null        # WaveDirector
 var time_director: Node = null   # TimeDirector（读抽屉宽，决定战场可视宽）
@@ -74,6 +113,9 @@ var _snap: Dictionary = {}
 ##   🔴 不是游戏状态（control-manifest §5 指的是玩法状态）：它只驱动画面衰减，
 ##      不回写任何玩法数据、不参与任何判定。
 var _revive_flash: Dictionary = {}
+## 🔴 P0：纯演出相位（驱动核心内芯呼吸等）。与 `_revive_flash` 同性质 ——
+##   只是画面计时器，不回写任何玩法数据、不参与任何判定（spec §C.4 第 3 条）。
+var _vfx_t: float = 0.0
 
 
 func _ready() -> void:
@@ -157,6 +199,8 @@ func _slots_arr() -> Array:
 
 
 func _process(delta: float) -> void:
+	# 🔴 P0：演出相位累加（只驱动画面，纯本地状态）。
+	_vfx_t += clampf(float(delta), 0.0, 0.1)
 	# 🔒 V-8：爬起动效计时衰减（纯画面）。🔴 夹住 delta：窗口失焦回来的巨大跳变
 	#   会让动效瞬间蒸发（也不会卡住 —— 上限 clamp 只影响观感，不影响任何玩法数值）。
 	if not _revive_flash.is_empty():
@@ -524,7 +568,15 @@ func _draw_under_attack(sc: float) -> void:
 func _draw() -> void:
 	var t := _xform()
 	var sc := float(t["sc"])
+	# 🔴 双模分派：RADIAL 走 P0 分层绘制；PATH 走旧口径（逐位不变）。
+	if _SpaceModel.mode == _SpaceModel.Mode.RADIAL:
+		_draw_radial(sc)
+		return
+	_draw_legacy(sc)
 
+
+## PATH 模式渲染 —— 🔴 与改前**逐位等价**（含路径/核心/塔位/暴露图标/被攻击环/塔/怪，一行未改）。
+func _draw_legacy(sc: float) -> void:
 	# ---- 路径 / 出生环 ----
 	if _SpaceModel.mode == _SpaceModel.Mode.RADIAL:
 		# 🔴 径向模式：路径消失（草案核心特征）。改画出生环（半径 R_s 的围攻圈），
@@ -594,3 +646,286 @@ func _draw() -> void:
 		draw_circle(sp, rad, col)
 		if bool(m["elite"]):
 			draw_arc(sp, rad + maxf(2.0, sc * 0.18), 0.0, TAU, 24, C_ELITE, maxf(1.5, sc * 0.16), true)
+
+
+# ===========================================================================
+#  P0 · RADIAL 分层绘制（spec §A.6 渲染顺序）
+#  ---------------------------------------------------------------------------
+#  层0/场地底由父节点 `Battlefield` 承担（bg #141726 + 场地圆 #232838，父先子后）。
+#  本层：层1 地面 decal → 层2 出生环 → 层3 全部影 → 层4 塔位层 → 层5 核心 →
+#        层6 塔 → 层7 怪 → 层8 投射物 → 层9 VFX。
+#  🔴 只读 `_snap` / `controller.runtime.snapshot()`；无任何玩法写入。
+# ===========================================================================
+func _draw_radial(sc: float) -> void:
+	_draw_radial_ground(sc)       # 层1 场地圆 + 同心环×3 + 放射刻度×8 + 层2 出生环
+	_draw_all_shadows(sc)         # 层3：先画全部影（避免脏影，spec §A.3/§A.6）
+	_draw_radial_slot_layer(sc)   # 层4：空槽八边形 + 威胁楔形 + 被攻击环 + 暴露图标
+	_draw_radial_core(sc)         # 层5：盘 + 8 刻齿（唯一轮廓）
+	_draw_radial_towers(sc)       # 层6：双层八边形塔
+	_draw_radial_monsters(sc)     # 层7：12 边不规则 + 朝核心尖刺扇
+	_draw_projectiles(sc)         # 层8：字段缺失 → 零绘制
+	_draw_revive_flash(sc)        # 层9：爬起扩散环（沿用既有）
+
+
+# ---- 纯函数工具（spec §A.9；无状态、无随机、帧间稳定）----
+func _dir(a: float) -> Vector2:
+	return Vector2(cos(a), sin(a))
+
+
+func _oct8(c: Vector2, r: float, rot: float) -> PackedVector2Array:
+	var pts := PackedVector2Array()
+	for k in 8:
+		pts.append(c + _dir(rot + TAU * float(k) / 8.0) * r)
+	return pts
+
+
+func _closed(pts: PackedVector2Array) -> PackedVector2Array:
+	if pts.is_empty():
+		return pts
+	var out := pts.duplicate()
+	out.append(pts[0])
+	return out
+
+
+## 12 边不规则主体（共享扰动表；`out_dir` 为径向，“长轴/短轴”按 rs/ts 压伸）。
+func _blob12(c: Vector2, r: float, out_dir: float, rs: float, ts: float) -> PackedVector2Array:
+	var pts := PackedVector2Array()
+	var co := cos(out_dir)
+	var si := sin(out_dir)
+	for k in 12:
+		var a := TAU * float(k) / 12.0
+		var v := _dir(a) * (r * float(BLOB_R12[k]))
+		var rad_c := (v.x * co + v.y * si) * rs
+		var tan_c := (-v.x * si + v.y * co) * ts
+		pts.append(c + Vector2(rad_c * co - tan_c * si, rad_c * si + tan_c * co))
+	return pts
+
+
+func _body_units(proto: String, elite: bool) -> float:
+	var r := BODY_SWARM
+	match proto:
+		"Rush":
+			r = BODY_RUSH
+		"Tank":
+			r = BODY_TANK
+		_:
+			r = BODY_SWARM
+	if elite:
+		r *= ELITE_SCALE
+	return r
+
+
+## 圆形 blob 软影（双层同心圆近似，spec §A.3；光来自左上 → 影落右下）。
+func _blob_shadow(c: Vector2, r: float, off: Vector2, a: float) -> void:
+	var p := c + off
+	draw_circle(p, r, Color(0.0, 0.0, 0.0, a * 0.35))
+	draw_circle(p, r * 0.7, Color(0.0, 0.0, 0.0, a))
+
+
+# ---- 层1/2：地面 decal + 出生环（spec §A.7）----
+func _draw_radial_ground(sc: float) -> void:
+	var c := _to_screen(_SpaceModel.RADIAL_CORE)
+	var rs := float(_SpaceModel.SPAWN_RADIUS) * sc
+	# 场地圆（地面基 A）—— 与父节点 Battlefield 幂等同色，保证本层自足
+	draw_circle(c, (float(_SpaceModel.SPAWN_RADIUS) + 2.0) * sc, P_FIELD)
+	# 同心环 ×3（距离刻度）
+	for ru in CONCENTRIC_U:
+		draw_arc(c, float(ru) * sc, 0.0, TAU, 128,
+			Color(P_RING.r, P_RING.g, P_RING.b, 0.5), maxf(1.0, 0.15 * sc), true)
+	# 放射刻度 ×8（方位锚）
+	for k in 8:
+		var a := TAU * float(k) / 8.0
+		draw_line(c, c + _dir(a) * rs,
+			Color(P_RING.r, P_RING.g, P_RING.b, 0.35), maxf(1.0, 0.12 * sc), true)
+	# 出生环（边界）+ 方位刻度
+	draw_arc(c, rs, 0.0, TAU, 160, P_SPAWN_EDGE, maxf(2.0, 0.28 * sc), true)
+	for k in 8:
+		var a2 := TAU * float(k) / 8.0
+		draw_line(c + _dir(a2) * (rs - 0.8 * sc), c + _dir(a2) * (rs + 0.8 * sc),
+			P_SPAWN_EDGE, maxf(1.5, 0.22 * sc), true)
+
+
+# ---- 层3：全单位投影（先画全部影，再画全部本体）----
+func _draw_all_shadows(sc: float) -> void:
+	# 核心影
+	_blob_shadow(_to_screen(_SpaceModel.core_pos()), 1.15 * U_CORE * sc,
+		Vector2(0.10, 0.16) * sc, 0.40)
+	# 塔影（越高影越远）
+	if controller != null and controller.runtime != null:
+		var slots: Array = _slots_arr()
+		var sn: Array = controller.runtime.snapshot().get("slots", [])
+		for tw in sn:
+			if bool(tw.get("empty", true)):
+				continue
+			var si := int(tw.get("slot", -1))
+			if si < 0 or si >= slots.size():
+				continue
+			_blob_shadow(_to_screen(slots[si]), 1.20 * U_TOWER * sc,
+				Vector2(0.26, 0.34) * sc, 0.36)
+	# 怪影（精英偏移更大 = 体量更高的线索）
+	var ms: Array = _snap.get("monsters", [])
+	for m in ms:
+		var pos: Vector2 = m["pos"]
+		var elite := bool(m.get("elite", false))
+		var ru := _body_units(String(m["proto"]), elite)
+		var off := Vector2(0.20, 0.28) * sc if elite else Vector2(0.14, 0.20) * sc
+		_blob_shadow(_to_screen(pos), 1.15 * ru * sc, off, 0.32 if elite else 0.28)
+
+
+# ---- 层4：塔位层 ----
+func _draw_radial_slot_layer(sc: float) -> void:
+	_draw_threat_wedges(sc)
+	var occupied: Dictionary = {}
+	if controller != null and controller.runtime != null:
+		for tw in controller.runtime.player.towers:
+			occupied[int(tw.slot)] = true
+	for row in _slot_rows:
+		var slot: int = int(row["slot"])
+		if occupied.has(slot):
+			continue
+		var sp := _to_screen(row["pos"])
+		draw_polyline(_closed(_oct8(sp, U_SLOT * sc, PI / 8.0)),
+			Color(P_SLOT.r, P_SLOT.g, P_SLOT.b, 0.85), maxf(1.0, 0.12 * sc), true)
+	_draw_under_attack(sc)
+	_draw_exposure_icons(sc)
+
+
+## 威胁方位楔形（spec §A.2.4）：只标"哪个方位有怪"这一事实（不标推荐，SR-R2）。
+func _draw_threat_wedges(sc: float) -> void:
+	var ms: Array = _snap.get("monsters", [])
+	if ms.is_empty():
+		return
+	var core := _SpaceModel.RADIAL_CORE
+	var c := _to_screen(core)
+	var rs := float(_SpaceModel.SPAWN_RADIUS) * sc
+	var col := Color(P_ENEMY.r, P_ENEMY.g, P_ENEMY.b, 0.45)
+	for m in ms:
+		var pos: Vector2 = m["pos"]
+		var a := atan2(pos.y - core.y, pos.x - core.x)
+		draw_arc(c, rs, a - deg_to_rad(6.0), a + deg_to_rad(6.0), 8, col,
+			maxf(2.0, 0.30 * sc), true)
+
+
+# ---- 层5：核心（盘 + 8 刻齿，全场唯一轮廓）----
+func _draw_radial_core(sc: float) -> void:
+	var c := _to_screen(_SpaceModel.core_pos())
+	var rc := U_CORE * sc
+	draw_arc(c, rc, 0.0, TAU, 48, P_ALLY_DARK, maxf(2.0, 0.55 * sc), true)   # 外环
+	draw_circle(c, rc * 0.72, P_ALLY)                                        # 中盘
+	for k in 8:                                                              # 刻齿
+		var a := TAU * float(k) / 8.0
+		draw_line(c + _dir(a) * (rc * 0.86), c + _dir(a) * (rc * 1.06),
+			P_ALLY_DARK, maxf(1.0, 0.18 * sc), true)
+	var breath := 1.0 + 0.06 * sin(_vfx_t * TAU / 1.6)                        # 呼吸内芯
+	draw_circle(c, rc * 0.32 * breath, P_CORE_HI)
+	draw_arc(c, rc + 0.11 * sc, 0.0, TAU, 48, P_TOWER_EDGE, maxf(1.5, 0.22 * sc), true)
+
+
+# ---- 层6：塔（双层八边形 + 中心圆 + 左上高光 + 外扩描边 + 层数刻度）----
+func _draw_radial_towers(sc: float) -> void:
+	if controller == null or controller.runtime == null:
+		return
+	var snap: Dictionary = controller.runtime.snapshot()
+	var towers: Array = snap.get("slots", [])
+	var selected: int = int(snap.get("selected_tower_slot", -1))
+	var core_slot: int = int(snap.get("core_tower_slot", -1))
+	var hosts: Array = _forced_select_hosts(snap)
+	var slots: Array = _slots_arr()
+	for tw in towers:
+		if bool(tw.get("empty", true)):
+			continue
+		var slot: int = int(tw.get("slot", -1))
+		if slot < 0 or slot >= slots.size():
+			continue
+		var c := _to_screen(slots[slot])
+		var R := U_TOWER * sc
+		if hosts.has(slot):   # 合法宿主高亮（底圈）
+			draw_arc(c, R + 0.5 * sc, 0.0, TAU, 32,
+				Color(P_GOLD.r, P_GOLD.g, P_GOLD.b, 0.9), maxf(2.0, 0.22 * sc), true)
+		draw_colored_polygon(_oct8(c, R, 0.0), P_ALLY_DARK)          # 底座（暗）
+		draw_colored_polygon(_oct8(c, R * 0.66, PI / 8.0), P_ALLY)   # 塔身（亮，旋转 22.5°）
+		draw_circle(c, R * 0.30, P_ALLY_DARK)                        # 中心圆
+		draw_circle(c + Vector2(-0.28 * R, -0.28 * R), R * 0.30, Color(1.0, 1.0, 1.0, 0.9))
+		draw_polyline(_closed(_oct8(c, R + 0.5 * U_OUTLINE * sc, 0.0)),
+			P_TOWER_EDGE, maxf(1.5, U_OUTLINE * sc), true)          # 外扩描边
+		if slot == core_slot:   # 主塔标记（星紫）
+			draw_arc(c, R + 0.5 * sc, 0.0, TAU, 28, P_ALLY_2, maxf(1.5, 0.16 * sc), true)
+		if slot == selected:    # 选中高亮（耀青）
+			draw_arc(c, R + 0.7 * sc, 0.0, TAU, 30, P_ALLY, maxf(2.0, 0.24 * sc), true)
+		if _revive_on() and _is_disabled(slot):   # 停机态（V-8，沿用既有口径）
+			draw_circle(c, R, Color(0.06, 0.07, 0.09, 0.62))
+			draw_arc(c, R, 0.0, TAU, 28, Color(0.55, 0.57, 0.62, 0.55), maxf(1.0, 0.10 * sc), true)
+		_draw_revive_charge(c, slot, R, sc)
+		var h: int = int(tw.get("h", 1))          # 层数刻度点（沿八边形顶点）
+		var n := mini(h, 8)
+		for k in range(n):
+			var ang := PI / 8.0 + TAU * float(k) / 8.0
+			draw_circle(c + _dir(ang) * (R * 0.60), maxf(1.2, 0.14 * sc),
+				Color(1.0, 1.0, 1.0, 0.9))
+
+
+# ---- 层7：怪（12 边不规则 + 朝核心尖刺扇 + 外扩描边）----
+func _draw_radial_monsters(sc: float) -> void:
+	var ms: Array = _snap.get("monsters", [])
+	if ms.is_empty():
+		return
+	var core := _SpaceModel.RADIAL_CORE
+	var w := maxf(1.5, U_OUTLINE * sc)
+	for m in ms:
+		var pos: Vector2 = m["pos"]
+		var c := _to_screen(pos)
+		var proto := String(m["proto"])
+		var elite := bool(m.get("elite", false))
+		var R := _body_units(proto, elite) * sc
+		var out_dir := atan2(pos.y - core.y, pos.x - core.x)
+		var rs := 1.0
+		var ts := 1.0
+		var n_spike := 5
+		var spike_len := 0.55
+		var spike_half := 0.26
+		match proto:
+			"Rush":
+				rs = 1.5; ts = 0.75; n_spike = 4; spike_len = 0.9; spike_half = 0.14
+			"Tank":
+				rs = 0.85; ts = 1.25; n_spike = 6; spike_len = 0.4; spike_half = 0.30
+			_:
+				rs = 1.0; ts = 1.0; n_spike = 5; spike_len = 0.55; spike_half = 0.26
+		if elite:
+			n_spike += 1
+			spike_len *= 1.3
+		draw_colored_polygon(_blob12(c, R, out_dir, rs, ts), P_ENEMY)   # 主体
+		if proto == "Tank":   # 内层焦褐环
+			draw_arc(c, R * 0.55, 0.0, TAU, 20, P_ENEMY_DARK, maxf(1.5, 0.16 * sc), true)
+		for i in n_spike:    # 外张尖刺扇（沿"朝核心"方向）
+			var a := out_dir + SPIKE_SPREAD * (float(i) - float(n_spike - 1) * 0.5)
+			var tip := c + _dir(a) * (R + spike_len * sc)
+			var bl := c + _dir(a - spike_half) * (R * 0.9)
+			var br := c + _dir(a + spike_half) * (R * 0.9)
+			draw_colored_polygon(PackedVector2Array([bl, tip, br]), P_ENEMY_DARK)
+		draw_polyline(_closed(_blob12(c, R + w * 0.5, out_dir, rs, ts)),
+			P_MON_EDGE, w, true)   # 外扩描边
+		if elite:   # 精英环（噬品红）
+			draw_arc(c, R + 0.28 * sc, 0.0, TAU, 24, P_ELITE, maxf(2.0, 0.18 * sc), true)
+
+
+# ---- 层8：投射物（spec §A.2.4；snapshot 无 `projectiles` 字段 → 零绘制）----
+func _draw_projectiles(sc: float) -> void:
+	var ps: Array = _snap.get("projectiles", [])
+	for pr in ps:
+		if not (pr is Dictionary):
+			continue
+		var d: Dictionary = pr
+		if not d.has("pos"):
+			continue
+		var sp := _to_screen(d["pos"])
+		if String(d.get("faction", "ally")) == "enemy":
+			draw_circle(sp, maxf(2.0, 0.60 * sc), P_ENEMY)
+		else:
+			var ang := 0.0
+			if d.has("vel"):
+				var vv: Vector2 = d["vel"]
+				ang = atan2(vv.y, vv.x)
+			draw_colored_polygon(PackedVector2Array([
+				sp + _dir(ang) * (0.8 * sc),
+				sp + _dir(ang + PI * 0.5) * (0.25 * sc),
+				sp + _dir(ang - PI * 0.5) * (0.25 * sc)]), P_ALLY)

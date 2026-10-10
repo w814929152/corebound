@@ -1,40 +1,54 @@
 extends Control
 ##
-## 🔴 穿透式核心 HP 条 —— CanvasLayer **130**（GDD §2.4 分层表 / 交接点 3）
+## 🔴 穿透式核心 HP 条 —— 底部中央 **20 段 × 50 点** 分段血条（CanvasLayer **130**）
 ##
-## 这是**唯一豁免遮挡规则的 UI 元素**：层号 130 > 商店层 100，
-## 所以抽屉展开时它**横跨整屏、压在抽屉之上**——骨架阶段故意让它盖住抽屉右上角，
-## 于是"穿透绘制"这件事在截图里一眼可验（GDD §10.1 断言 12）。
+## P1 重做（spec `docs/phase3/ux-p0p1-spec.md` §B.1a/§B.3）：
+##   · 位置：**屏幕底部中央**（spec §5.3 明定；原顶部右伸已迁走）。
+##   · 形态：20 段分段血条（段高 22 · 段宽 28 · 间距 3 → 总宽 616）。
+##   · 口径裁决（spec §B.1a / §D-4）：核心 HP=1000、漏怪伤害=50 →
+##     **每段 = 50 点 × 20 段 → 每碎一段 = 漏一只怪**，20 段见底 = 失败。因果直连、可读性最强。
+##   · 数据源：**只读** `runtime.player.core_hp`（单一数据源）。
 ##
-## 后续切片：接 `wave-spawner` 的 `core_hp_changed(hp, max_hp)`（契约 WS-5）。
+## 🔴 保留 **CanvasLayer 130**（唯一穿透 UI，横跨抽屉上方，GDD §10.1 断言 12 仍可验）。
+## 🔴 零玩法耦合：只读快照，不写任何状态、不发玩法信号（control-manifest §5）。
 ##
 
-const C_BG := Color(0.04, 0.05, 0.07, 0.92)
-const C_FILL := Color(0.24, 0.78, 0.83, 1.0)
-const C_FILL_LOW := Color(0.86, 0.20, 0.20, 1.0)   # 🟢 切片8续3：核心 HP ≤ 25% 告警红
-const C_TEXT := Color(1.0, 1.0, 1.0, 1.0)
+const C_BG := Color(0.078, 0.090, 0.149, 0.92)      # #141726 @92%
+const C_BORDER := Color(0.243, 0.816, 0.910)        # #3ED0E8 描边（§5.1）
+const C_FILL := Color(0.243, 0.816, 0.910)          # #3ED0E8 段填充
+const C_FILL_LOW := Color(1.000, 0.180, 0.306)      # #FF2E4E ≤25% 告警
+const C_TEXT := Color(0.784, 0.812, 0.855)          # #C8CFDA 数字（对比度 ≥4.5:1）
 
-const HP_MAX := 1000.0     # core-defense GDD v0.5：核心 HP 1000
-const HP_NOW := 720.0      # 骨架占位初值（接线后由 runtime 单一数据源覆盖）
+const SEG_COUNT := 20          # 20 段
+const SEG_W := 28.0
+const SEG_H := 22.0
+const SEG_GAP := 3.0
+const BOTTOM_MARGIN := 28.0
+const PAD := 10.0
 
-
-var _fill: ColorRect
-var _label: Label
 var _director: Node = null
-var _controller: Node = null   # 🟢 切片8续3：读 runtime.player.core_hp（单一数据源）
+var _controller: Node = null   # 读 runtime.player.core_hp（单一数据源）
+var _hp: float = 1000.0
+var _hp_max: float = 1000.0
 
 
 func _ready() -> void:
-	_build()
+	set_anchors_preset(Control.PRESET_FULL_RECT)
+	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	if get_tree() != null:
 		get_tree().root.size_changed.connect(_refresh_size)
+
+
+func _refresh_size() -> void:
+	set_anchors_preset(Control.PRESET_FULL_RECT)
+	queue_redraw()
 
 
 func bind_director(d: Node) -> void:
 	_director = d
 
 
-## 🟢 切片8续3（可玩 MVP）：注入 controller，读 runtime.player.core_hp 实时刷新。
+## 🟢 注入 controller，读 runtime.player.core_hp 实时刷新（只读）。
 func bind_controller(c: Node) -> void:
 	_controller = c
 	if c == null:
@@ -48,55 +62,58 @@ func _on_run_changed() -> void:
 	_refresh_hp()
 
 
-func _build() -> void:
-	set_anchors_preset(Control.PRESET_FULL_RECT)
-	mouse_filter = Control.MOUSE_FILTER_IGNORE
-
-	var bg := Panel.new()
-	bg.set_anchors_preset(Control.PRESET_TOP_WIDE)
-	bg.set_offset(SIDE_TOP, 8.0)
-	bg.set_offset(SIDE_BOTTOM, 46.0)
-	bg.set_offset(SIDE_LEFT, 320.0)
-	bg.set_offset(SIDE_RIGHT, -24.0)   # 🔴 故意伸到抽屉区域上方
-	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(bg)
-
-	_fill = ColorRect.new()
-	_fill.color = C_FILL
-	_fill.set_anchors_preset(Control.PRESET_FULL_RECT)
-	_fill.anchor_right = HP_NOW / HP_MAX
-	bg.add_child(_fill)
-
-	_label = Label.new()
-	_label.text = "核心 HP %d / %d（骨架占位 · 穿透层 130）" % [int(HP_NOW), int(HP_MAX)]
-	_label.set_anchors_preset(Control.PRESET_FULL_RECT)
-	_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	_label.add_theme_color_override("font_color", C_TEXT)
-	bg.add_child(_label)
-
-
-func _refresh_size() -> void:
-	set_anchors_preset(Control.PRESET_FULL_RECT)
-
-
+## [接口] 直接设定（兼容后续 wave-spawner 的 WS-5 调用）。
 func set_hp(hp: float, hp_max: float) -> void:
-	# [接口] 后续 `wave-spawner` 的 WS-5 直接调这里（骨架占位用；接线后走 _refresh_hp）
-	var r: float = clampf(hp / maxf(1.0, hp_max), 0.0, 1.0)
-	_fill.anchor_right = r
-	_label.text = "核心 HP %d / %d（穿透层 130）" % [int(hp), int(hp_max)]
+	_hp = float(hp)
+	_hp_max = maxf(1.0, float(hp_max))
+	queue_redraw()
 
 
-## 🟢 切片8续3（可玩 MVP）：从 runtime.player 读核心 HP 单一数据源实时刷新。
+## 🟢 从 runtime.player 读核心 HP 单一数据源实时刷新（只读）。
 func _refresh_hp() -> void:
 	if _controller == null or _controller.runtime == null:
 		return
 	var p = _controller.runtime.player
 	if p == null:
 		return
-	var hp: float = float(p.core_hp)
-	var hp_max: float = float(p.core_hp_max)
-	set_hp(hp, hp_max)
-	# 低血量告警红（≤ 25%）
-	var r: float = clampf(hp / maxf(1.0, hp_max), 0.0, 1.0)
-	_fill.color = C_FILL_LOW if r <= 0.25 else C_FILL
+	set_hp(float(p.core_hp), float(p.core_hp_max))
+
+
+func _process(_delta: float) -> void:
+	# 只读刷新（低开销；HP 变化也会经 run_changed 触发 set_hp）。
+	_refresh_hp()
+
+
+func _draw() -> void:
+	var vp := get_viewport()
+	if vp == null:
+		return
+	var vs := vp.get_visible_rect().size
+	var total_w := float(SEG_COUNT) * SEG_W + float(SEG_COUNT - 1) * SEG_GAP
+	var x0 := (float(vs.x) - total_w) * 0.5
+	var y0 := float(vs.y) - BOTTOM_MARGIN - SEG_H
+
+	# 底槽（深色 + 亮色描边，§5.1）
+	var slot := Rect2(x0 - PAD, y0 - PAD, total_w + 2.0 * PAD, SEG_H + 2.0 * PAD)
+	draw_rect(slot, C_BG)
+	draw_rect(slot, C_BORDER, false, 3.0, true)
+
+	# 分段
+	var frac := clampf(_hp / maxf(1.0, _hp_max), 0.0, 1.0)
+	var filled := int(ceil(frac * float(SEG_COUNT)))
+	var col := C_FILL_LOW if frac <= 0.25 else C_FILL
+	for i in SEG_COUNT:
+		var r := Rect2(x0 + float(i) * (SEG_W + SEG_GAP), y0, SEG_W, SEG_H)
+		if i < filled:
+			draw_rect(r, col)
+		else:
+			draw_rect(r, Color(col.r, col.g, col.b, 0.16))
+
+	# 数字（L0）：720 / 1000
+	var font := ThemeDB.fallback_font
+	if font != null:
+		var txt := "%d / %d" % [int(round(_hp)), int(round(_hp_max))]
+		var fs := 30
+		var tw: float = font.get_string_size(txt, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+		draw_string(font, Vector2((float(vs.x) - tw) * 0.5, y0 - 14.0),
+			txt, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, C_TEXT)
