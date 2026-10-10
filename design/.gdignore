@@ -1,0 +1,6 @@
+Godot ignores an entire directory when a .gdignore file exists in it.
+This directory holds design collateral (GDDs, numeric-sim scripts, reports,
+calibration CSV/PNG) that is never loaded at runtime. Without this file, Godot
+auto-imports everything under the project root — which mis-imported the sim
+data CSVs as translation tables and generated 100+ stray *.translation /
+*.import / *.uid artifacts. Presence of this file stops that at the source.
