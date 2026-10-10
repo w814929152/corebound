@@ -18,6 +18,7 @@ extends RefCounted
 ##   E-R4  极径 ρ 单调减小、出生 ρ=R_s、抵达 ρ=0（§2.5 运动学）
 ##   E-R5  黄金角序列确定性 + 单波铺满 ≥300°（AC-R1 · §2.3.1）
 ##   E-R6  怪物世界坐标到核心距离 == ρ（pos 与 t_remain 共用同一状态量）
+##   E-5   批处理镜像位置 == 实时 monster.pos（RADIAL 下同用同一 R_s）· 🔴 R-9 补
 ##
 ## 跑法：
 ##   <godot> --headless --path D:/roguedemo --script res://tests/run_tests.gd -- radial
@@ -39,6 +40,7 @@ const _SpaceModel = preload("res://scripts/geo/space_model.gd")
 const _MonsterData = preload("res://scripts/data/monster_data.gd")
 const _Monster = preload("res://scripts/gameplay/monster.gd")
 const _WaveDirector = preload("res://scripts/gameplay/wave_director.gd")
+const _WaveSimAggro = preload("res://scripts/engine/wave_sim_aggro.gd")
 
 var _pass = 0
 var _fail = 0
@@ -95,6 +97,7 @@ func run_all() -> bool:
 
 	_test_v0_and_kinematics()
 	_test_spawn_theta_golden()
+	_test_batch_mirror_alignment()
 	_test_equivalence_vs_golden()
 
 	_log("")
@@ -143,9 +146,15 @@ func _test_v0_and_kinematics() -> void:
 	m.t_remain = 0.0
 	_check("E-R3 抵达核心 ρ = 0", m.arc_s(_SpaceModel.v0()), 0.0)
 	_check_bool("E-R3 reached() == true（t_remain≤0 ⟺ ρ=0）", m.reached(), true)
-	m.free()
+	# 🔴 `_Monster` 是 RefCounted（自动回收）→ 不调 `free()`（否则打印
+	#   "Can't free a RefCounted object" 污染 stderr）。原 `m.free()` 已移除。
 
 	# E-R6：pos 到核心距离 == ρ（pos 与 t_remain 共用同一状态量）
+	# 🔴 容差 1e-5（原 1e-7 过紧）：Godot `Vector2` 为 **float32** → `pos = core + ρ·(cosθ,sinθ)`
+	#   再经 `distance_to` 的 `sqrt(cos²+sin²)` 回读，精度 ~1e-7 相对 → ρ≈55 时 |d|≈3.8e-6。
+	#   这是 float32 极坐标恒等式的固有残差，非 bug（同款口径见 `run_slice_radial_smoke.gd` ⑤）。
+	#   🟡 本断言原被上一行的 `m.free()` 错误（`_Monster` 是 RefCounted）静默中止 → 从未真正跑过
+	#      （R-9 卫生修复移除 free() 后暴露；生产 `pos` 无回归）。
 	var m2 = _Monster.new()
 	m2.setup(3, "Swarm", false, 100.0, 1.0, 10.0)
 	m2.set_theta(PI / 4.0)     # 任意出生角
@@ -153,8 +162,8 @@ func _test_v0_and_kinematics() -> void:
 		m2.t_remain = tr
 		var want_rho := _SpaceModel.rho_of_t(tr, 1.0)
 		var got_dist := m2.pos(_SpaceModel.v0()).distance_to(_SpaceModel.core_pos())
-		_check("E-R6 t_remain=%.1f：pos 到核心距离 == ρ" % tr, got_dist, want_rho, 1e-7)
-	m2.free()
+		_check("E-R6 t_remain=%.1f：pos 到核心距离 == ρ" % tr, got_dist, want_rho, 1e-5)
+	# 🔴 `m2` 是 RefCounted → 不调 free()（原 `m2.free()` 已移除，消除 stderr 噪声）。
 
 
 # ===========================================================================
@@ -198,6 +207,38 @@ func _angular_span(angles: Array) -> float:
 		if gap > max_gap:
 			max_gap = gap
 	return 360.0 - max_gap
+
+
+# ===========================================================================
+#  E-5（🔴 R-9 补）：批处理镜像位置 == 实时 monster.pos
+# ===========================================================================
+## 依据 `radial-core-siege-draft.md` §7.1 E-5：实时版与批处理镜像 `WaveSimAggro` 必须用
+##   同一个 `R_s`。两边在 RADIAL 下都应走 `SpaceModel.radial_pos_of_t(t_remain, m_spd, θ)`。
+##   🔴 这里直接比对"批处镜像 `_monster_pos`"与"实时 `Monster.pos`"的**世界坐标逐位相等**
+##   —— 若任一边换了位置函数 / 换了 R_s，本断言立即翻红（原质量门 §2.4(d) 缺此直接断言）。
+func _test_batch_mirror_alignment() -> void:
+	_log("")
+	_log("--- [E-5] 批处理镜像位置 == 实时 monster.pos（RADIAL 同 R_s）---")
+
+	var m = _Monster.new()
+	m.setup(0, "Swarm", false, 100.0, 1.0, 10.0)   # 镜像恒用基准怪 m_spd=1.0
+	var worst := 0.0
+	var cases := 0
+	for theta in [0.0, PI / 4.0, PI / 2.0, 2.0 * PI / 3.0, 5.0 * PI / 4.0]:
+		for tr in [10.0, 7.5, 5.0, 2.5, 0.0]:
+			m.set_theta(theta)
+			m.t_remain = tr
+			var rt_pos: Vector2 = m.pos(_SpaceModel.v0())
+			# 批处镜像结构：[hp, t_remain, state, target_slot, m_dps, sapper, theta, reverb]
+			var batch: Array = [100.0, tr, 0, -1, 0.6, false, theta, false]
+			var batch_pos: Vector2 = _WaveSimAggro._monster_pos(batch, _SpaceModel.v0())
+			var d: float = rt_pos.distance_to(batch_pos)
+			if d > worst:
+				worst = d
+			cases += 1
+	# 🔴 `_Monster` 是 RefCounted（自动回收）→ 不调 free()。
+	_log("   %d 组 (θ,t_remain) 比对 · 最大 |d| = %s（容差 1e-12）" % [cases, str(worst)])
+	_check("E-5 批处镜像 pos == 实时 monster.pos（最大 |d|）", worst, 0.0, 1e-12)
 
 
 # ===========================================================================

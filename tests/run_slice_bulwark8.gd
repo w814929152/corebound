@@ -11,6 +11,11 @@ extends SceneTree
 ##   B-G8-2  bulwark=true 时主力塔被移到安全位（非高暴露位）
 ##   B-G8-3  移动后主力塔 expo_frac < 0.15（确实在安全位）
 ##
+## 🔴 R-7（质量门 QG-RADIAL-01 §3.3-⑨）：本探针原带一份**内联影子副本** `_relocate()`，
+##    只实现 RADIAL 单分支 → 断言打的是副本不是生产真身。现改为**直接调用生产真身**
+##    `WaveSimAggro._relocate_carry_to_safe(player, geo)`（该函数已是 `static func`，
+##    无需生产改动）→ 真身一旦漂移，本断言立即翻红。
+##
 ## 跑法：
 ##   <godot> --headless --path D:/roguedemo --script tests/run_slice_bulwark8.gd
 ##
@@ -21,7 +26,7 @@ const _PS = preload("res://scripts/engine/player_state.gd")
 const _Geo8 = preload("res://scripts/geo/geo8.gd")
 const _PathGeometry = preload("res://scripts/geo/path_geometry.gd")
 const _SpaceModel = preload("res://scripts/geo/space_model.gd")
-const _MonsterData = preload("res://scripts/data/monster_data.gd")
+const _WaveSimAggro = preload("res://scripts/engine/wave_sim_aggro.gd")
 
 const R := 9.0
 const CORE := Vector2(28.0, 28.0)
@@ -71,8 +76,9 @@ func _initialize() -> void:
 	print("   移动前：主力塔在 S1 · expo_frac=%.4f（高暴露）" % before_frac)
 	_ok("B-G8-2 移动前主力塔在高暴露位 S1", before_frac >= _PathGeometry.EXPO_SAFE_MAX)
 
-	# 调用与 _relocate_carry_to_safe 等价的逻辑（内联，避免依赖 aggro 波次上下文）
-	_relocate(player, geo8)
+	# 🔴 R-7：直接调用生产真身 `WaveSimAggro._relocate_carry_to_safe`（static func），
+	#   不再用内联影子副本 —— 断言真正打到生产函数上（真身漂移即翻红）。
+	_WaveSimAggro._relocate_carry_to_safe(player, geo8)
 
 	# 移动后：主力塔应在安全位
 	var carry_slot: int = -1
@@ -91,43 +97,3 @@ func _initialize() -> void:
 	print("径向肉盾塔端到端验证汇总：失败 %d 项" % _fail)
 	print("===================================================================")
 	quit(0 if _fail == 0 else 1)
-
-
-## 内联版 _relocate_carry_to_safe（与 wave_sim_aggro.gd 同逻辑，径向口径）。
-func _relocate(player, geo) -> void:
-	var slots: Array = []
-	for p in geo.slots:
-		slots.append(p)
-	var carry_idx := -1
-	var carry_h := -1
-	for i in range(player.towers.size()):
-		var t = player.towers[i]
-		if bool(t.disabled):
-			continue
-		if int(t.h) > carry_h:
-			carry_h = int(t.h)
-			carry_idx = i
-	if carry_idx < 0:
-		return
-	var carry_slot := int(player.towers[carry_idx].slot)
-	var rows: Array = _PathGeometry.slot_exposure_radial(
-		slots, _MonsterData.AGGRO_R, CORE, _PathGeometry.EXPO_SAFE_MAX)
-	var safe_slots: Array = []
-	for r in rows:
-		if not bool(r["is_exposed"]):
-			safe_slots.append(int(r["slot"]))
-	if safe_slots.has(carry_slot):
-		return
-	var target_safe := -1
-	for s in safe_slots:
-		var has := false
-		for t in player.towers:
-			if int(t.slot) == s:
-				has = true
-				break
-		if not has:
-			target_safe = s
-			break
-	if target_safe < 0:
-		target_safe = int(safe_slots[0])
-	player.towers[carry_idx].slot = target_safe
