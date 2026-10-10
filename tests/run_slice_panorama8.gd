@@ -11,11 +11,14 @@ extends SceneTree
 ##   P-G8-2  出生环半径 R_s == 55.0 且 span == 58.0（对照定稿几何常量）
 ##   P-G8-3  核心 == (28,28)（对照径向核心定稿常量）
 ##   P-G8-4  全景缩放 sc ∈ [8.0, 9.0]（对照合理区间常量；原"sc>0"恒真）
-##   P-G8-5  🔴 R-10：三原型出生极径 R_s×m_spd × 包围盒校验（按 proto 开关分档，见下）
+##   P-G8-5  🔴 R-10：三原型出生极径 × 包围盒校验（生产镜像式 · proto OFF/ON 两档真闸门，见下）
 ##
-## 🔴 R-10：`rho_of_t` 出生极径 = R_s×m_spd。Rush m_spd=4/3 → 出生 ρ=73.3 远超 span=58。
-##    MVP `prototype_split_enabled` 默认 false → 未激活；proto 一旦开启，Rush 会出生在
-##    相机包围盒外。本探针登记该待办（proto 开启前须钳制出生 ρ 或扩大 span）。
+## 🔴 R-10 口径更正（第四刀 proto-elite-golive §1.2/§5.2/§8.5）：
+##   出生极径 ρ₀ = R_s · m_spd · clampf(t_remain/t_reach, 0, 1/m_spd)，生产 `_spawn_one` 传
+##   `t_remain = t_reach/m_spd` → ρ₀ = R_s · m_spd · clampf(1.0/m_spd, 0, 1) →
+##   Rush/Swarm/Tank 全部 = 55.0 ≤ span 58.0（**无屏外出生**）。
+##   🟡 旧注释曾断言 `R_s × max_m_spd = 73.33 > 58`（**错误口径**：等价误取 t_remain=t_reach），
+##      与同文件单测 E-R4（Tank 用 t_remain=15）自相矛盾 → 该待办**已证伪并更正**。
 ##
 ## 跑法：
 ##   <godot> --headless --path D:/roguedemo --script tests/run_slice_panorama8.gd
@@ -104,39 +107,41 @@ func _initialize() -> void:
 	print("   视口 1920×1080 · 战场世界尺寸 %.0f×%.0f · sc=%.3f" % [ww, wh, sc])
 	print("   屏高覆盖世界单位 = vh/sc ≈ %.1f（原 984 = wh×sc 为像素数，文案已修正）" % (vh / sc))
 
-	# ---- P-G8-5 R-10 三原型出生极径 × 相机包围盒校验 ----
-	# 出生极径 ρ_0 = R_s × m_spd（SpaceModel.rho_of_t(t_reach, m_spd)）。
-	#   基准怪 m_spd=1 → ρ_0 = 55（盒内）；Rush m_spd=4/3 → ρ_0 = 73.3 > span=58
-	#   （轴向来袭出生在包围盒外 → 相机看不到）。
-	# 🔴 三原型分化由 WaveDirector.prototype_split_enabled 控制，MVP 默认 **false**
-	#   → 影响未激活。本断言按该生产默认分档（读真身，非影子常量）：
-	#     · proto 关 → 断言"当前生效出生 ρ（基准怪 m_spd=1）在盒内"，并打印待办登记；
-	#     · proto 开 → 断言"三原型最大出生 ρ 在盒内"（真实闸门；几何未钳制前必红）。
-	print("\n---- [P-G8-5] 三原型出生极径 × 相机包围盒（R-10）----")
-	var max_m_spd := 0.0
+	# ---- P-G8-5 R-10 三原型出生极径 × 相机包围盒校验（🔴 口径更正）----
+	# 🔴 R-10 口径更正（第四刀 · proto-elite-golive §1.2/§5.2/§8.5）：
+	#   生产出生极径**不是** `R_s × m_spd`（那等价于"误取 t_remain = t_reach"，即假设全体 m_spd=1）。
+	#   生产 `_spawn_one`(wave_director.gd:722) 传 `tr := t_reach / m_spd`，`setup` 把它赋给 `t_remain`；
+	#   叠加 `rho_of_t` 修正后的上钳 = 1/m_spd → 出生 ρ₀ = R_s · m_spd · clampf(1.0/m_spd, 0, 1)：
+	#     · Rush(4/3) → 55·(4/3)·clamp(0.75)       = 55.0
+	#     · Swarm(1)  → 55·1·clamp(1.0)            = 55.0
+	#     · Tank(2/3) → 55·(2/3)·clamp(1.5)        = 55.0（归环）
+	#   → **max 出生 ρ = 55.0 ≤ span 58.0**，无任何原型出生在屏外。本探针为**真闸门**（proto OFF/ON 两档）。
+	#   🟡 原式登记（**错误口径，已废弃**）：`spawn_rho_max := R_s × max_m_spd`（=73.33）等价误取
+	#      `t_remain = t_reach`，与同文件单测 E-R4（Tank 用 t_remain=15）自相矛盾（原 R-10 的假红来源）。
+	print("\n---- [P-G8-5] 三原型出生极径 × 相机包围盒（R-10 · 口径更正）----")
+	# 生产镜像式：ρ₀(proto) = R_s · m_spd · clampf(1.0/m_spd, 0.0, 1.0) ← 镜像 _spawn_one 的 tr:=t_reach/m_spd
+	var spawn_rho_max := 0.0
 	for k in _MonsterData.M_SPD:
-		max_m_spd = maxf(max_m_spd, float(_MonsterData.M_SPD[k]))
-	var spawn_rho_max := float(_SpaceModel.SPAWN_RADIUS) * max_m_spd
+		var ms := float(_MonsterData.M_SPD[k])
+		spawn_rho_max = maxf(spawn_rho_max, float(_SpaceModel.SPAWN_RADIUS) * ms * clampf(1.0 / ms, 0.0, 1.0))
+	# 三原型 m_spd 真值断言（数据被误改即红 · 证伪网保留）
 	_check("Rush m_spd == 4/3", float(_MonsterData.M_SPD["Rush"]), 4.0 / 3.0, 1e-12)
 	_check("Swarm m_spd == 1", float(_MonsterData.M_SPD["Swarm"]), 1.0, 1e-12)
 	_check("Tank m_spd == 2/3", float(_MonsterData.M_SPD["Tank"]), 2.0 / 3.0, 1e-12)
 	var _probe = _WaveDirector.new()
 	var proto_on := bool(_probe.prototype_split_enabled)
 	_probe.free()
-	print("   最大 m_spd=%.4f（Rush）→ 三原型最大出生极径 R_s×m_spd=%.2f · 包围盒内切半径 span=%.2f"
-		% [max_m_spd, spawn_rho_max, span])
+	print("   最大出生极径（生产镜像式）= %.2f · 包围盒内切半径 span=%.2f" % [spawn_rho_max, span])
 	print("   prototype_split_enabled（生产默认）= %s" % str(proto_on))
+	# proto OFF / ON **两档都转真闸门**（几何本就满足 → 均 PASS）
 	if proto_on:
-		_ok("P-G8-5 (proto ON) 三原型出生极径 %.2f ≤ span %.2f" % [spawn_rho_max, span],
+		_ok("P-G8-5 (proto ON) 三原型最大出生极径 %.2f ≤ span %.2f" % [spawn_rho_max, span],
 			spawn_rho_max <= span)
 	else:
-		_ok("P-G8-5 (proto OFF) 生效出生极径 R_s=%.0f ≤ span=%.0f（仅基准怪 m_spd=1）"
-			% [float(_SpaceModel.SPAWN_RADIUS), span],
-			float(_SpaceModel.SPAWN_RADIUS) <= span)
-		print("   [TODO-R10] 三原型开启后 Rush 出生极径 = %.1f > span = %.1f"
-			% [spawn_rho_max, span])
-		print("              → proto 开启前必须钳制出生 ρ（≤ %.1f）或扩大 span（≥ %.1f）"
-			% [span, spawn_rho_max])
+		_ok("P-G8-5 (proto OFF) 最大出生极径 %.2f ≤ span %.2f（全原型口径）" % [spawn_rho_max, span],
+			spawn_rho_max <= span)
+	print("   [R-10-CLOSED] 最大出生 ρ = %.2f ≤ span %.2f（口径更正：t_remain=t_reach/m_spd）"
+		% [spawn_rho_max, span])
 
 	print("\n===================================================================")
 	print("八槽全景几何自洽汇总：失败 %d 项" % _fail)

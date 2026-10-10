@@ -134,9 +134,11 @@ func _test_v0_and_kinematics() -> void:
 	#   t_remain = 0（抵达核心）→ ρ = 0
 	_check("E-R4 t_remain=0 → ρ = 0（抵达核心）",
 		_SpaceModel.rho_of_t(0.0, 1.0), 0.0)
-	#   Tank（m_spd=2/3）出生 → ρ = 55×2/3
-	_check("E-R4 Tank(m_spd=2/3) 出生 ρ = 55×2/3",
-		_SpaceModel.rho_of_t(15.0, 2.0 / 3.0), 55.0 * 2.0 / 3.0)
+	#   Tank（m_spd=2/3）出生 t_remain=15 → 上钳参照 1/m_spd=1.5 → frac=1.5 → ρ = R_s = 55.0（归环）
+	#   🔴 第四刀 proto-elite-golive 裁决 #1：旧式上钳 1.0 误把 Tank 钳到 36.67（环内侧 + 静止 5s）；
+	#      修 `space_model.rho_of_t` 上钳为 1/m_spd 后，Tank 正确出生在出生环上。
+	_check("E-R4 Tank(m_spd=2/3) 出生 ρ = 55.0（Tank 归环）",
+		_SpaceModel.rho_of_t(15.0, 2.0 / 3.0), 55.0)
 
 	# E-R3：单怪从出生到抵达核心 = t_reach = 10.0s（ρ 从 R_s 线性减到 0）
 	var m = _Monster.new()

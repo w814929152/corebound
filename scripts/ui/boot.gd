@@ -32,7 +32,18 @@ func _ready() -> void:
 		#        （后者根本不装载 main.tscn）→ 金标本零扰动。
 		#    回滚：把下面这行删掉 / 改回 `Mode.PATH` 即可（一行回退，双模设计本就为此）。
 		SpaceModel.mode = SpaceModel.Mode.RADIAL
-		add_child(BattleShop.instantiate())
+		# 🔴 第四刀：原型 / 精英波**上线**（`docs/phase3/proto-elite-golive-spec.md` §2.2 / 附录 C-1）。
+		#    注入点必须在 `add_child(bs)` **之后**（battle_shop._ready() 同步建好 wave_director，
+		#    见 battle_shop.gd:50）、`controller.call_deferred("start_run", 1)` **之前**（deferred →
+		#    下一帧才开波，见 battle_shop.gd:91）→ 此处设开关安全、早于首局。
+		#    🔴 headless 分支与 `tests/run_tests.gd` 路径**永不进入**本分支 → 金标本零扰动。
+		#    🔴 tower_aggro_enabled 保持 false（本轮只上原型 / 精英，aggro 属 T1 批次）。
+		#    回滚：删掉下面三行（或把两个开关设回 false）即可一行回退。
+		var bs = BattleShop.instantiate()
+		add_child(bs)
+		bs.wave_director.prototype_split_enabled = true
+		bs.wave_director.elite_waves_enabled = true
+		print("[boot] proto/elite ON（RADIAL 实机口径）")
 		print("[boot] SpaceModel.mode = RADIAL（径向核心围攻 · 实机默认）")
 		print("[boot] Corebound MVP · 切片4（实时商店覆盖层 + 完整商店逻辑接线）")
 		print("[boot] Tab 开关抽屉 · Esc 关闭/取消 · R 刷新 · 1/2/3 选中即买 · Space 锁定焦点位")

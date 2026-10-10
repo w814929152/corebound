@@ -110,8 +110,17 @@ static func spawn_theta(index: int, w: int) -> float:
 ##   ρ = R_s × (m_spd × t_remain / t_reach)
 ## 🔴 `t_remain` 递减 → ρ 单调减小 → 直插核心；`t_remain ≤ 0` ⟺ `ρ = 0`（抵达核心）。
 ##    与路径模型 `s = L − v₀·m_spd·t_remain` 逐字同构（只是方向与零点不同）。
+## 🔴 上钳参照 = `t_remain_max / t_reach = 1.0 / m_spd`（**不是**常数 `1.0`）：
+##   · 出生 `t_remain = t_reach / m_spd`（`wave_director._spawn_one:722`）→ 归一上限 `1/m_spd`；
+##   · `m_spd == 1.0` 时 `1.0/m_spd ≡ 1.0` → 与旧式 `clampf(...,0,1.0)` **逐位恒等**
+##     （PATH / 默认口径全 Swarm m_spd=1 → 金标本零扰动）；
+##   · `m_spd < 1`（如 Tank 2/3）→ 旧上钳 1.0 会把出生瞬间的 `frac` 误钳到 1 →
+##     Tank 出生在出生环**内侧**且 `t_remain∈(t_reach, t_reach/m_spd]` 期间**原地静止**
+##     （第四刀 proto-elite-golive 裁决 #1 定位的几何异常）。新上钳让 Tank 归环、匀速内插。
+##   · 防除零：`m_spd` 极端小时 `maxf(m_spd, 1e-9)`；`m_spd ≥ 2/3` 时逐位不变。
 static func rho_of_t(t_remain: float, m_spd: float, t_reach: float = T_REACH) -> float:
-	var frac: float = clampf(float(t_remain) / t_reach, 0.0, 1.0)
+	var denom: float = maxf(m_spd, 1e-9)
+	var frac: float = clampf(float(t_remain) / t_reach, 0.0, 1.0 / denom)
 	return SPAWN_RADIUS * m_spd * frac
 
 

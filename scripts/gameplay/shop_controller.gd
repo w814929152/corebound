@@ -15,12 +15,12 @@ extends Node
 ## 🔴 依赖方向（control-manifest §5 / SR-5）：UI 只发意图，不写玩法状态；
 ##    玩法状态只在 `ShopRuntime` / `WaveDirector` 里；本节点是二者之间**唯一**的桥。
 ##
-## 🔴 收入口径（切片5 不动，见 `docs/phase3/slice5-verify.md` §5 S5-D1）：
+## 🔴 收入口径（第四刀 proto-elite-golive 裁决 #2 · 改接实时结果）：
 ##    `_pending_result` 仍由金标本 `WaveSim.simulate_wave()` 在**波首**结算（R1：
-##    本波打的是上波买出来的构筑）。在「金标本等价口径」下（`prototype_split_enabled`
-##    == false 且 `elite_waves_enabled` == false）实时结果与金标本**逐位相同**，
-##    此时直接授予**实时结果**（它是真实战斗的产出）；否则回落到金标本，
-##    并打一行 `[WARN]`（口径分歧待主理人拍板）。🔴 MC 判据链不受影响（它走 `RunLoop`）。
+##    本波打的是上波买出来的构筑）—— 但 `_on_wave_ended` 现**直接授予实时结果**
+##    （`last_realtime_result`，与实机战斗同源），仅当实时结果缺失/波次不匹配才回落
+##    `_pending_result`。三原型/Elite 开启时不再回落金标本、不再打印 `[WARN]`
+##    → 「打的」与「算钱的」一致。🔴 MC 判据链不受影响（它走 `RunLoop`）。
 ##
 ## ⚠️ G6：headless 无 `global_script_class_cache` → 本文件**不写 `class_name`**，一律 preload。
 ##
@@ -359,11 +359,11 @@ func _on_wave_ended(w: int) -> void:
 		return
 	var res := _pending_result
 	var rt := last_realtime_result
-	if int(rt.get("w", -1)) == w and _realtime_is_golden_equivalent():
+	# 🔴 第四刀（proto-elite-golive 裁决 #2）：收入**直接接实时结果**（与实机战斗产出一致）。
+	#    去回落、去 WARN —— 三原型/Elite 开启时不再把收入回落金标本口径。仅当实时结果为空
+	#    或波次不匹配（异常路径：本波实时结算缺失）才回落 `_pending_result`（波首金标本结算）。
+	if int(rt.get("w", -1)) == w:
 		res = rt
-	elif not rt.is_empty() and int(rt.get("w", -1)) == w:
-		print("[shop_controller][WARN] W%d 实时结果与金标本口径不一致（三原型/Elite 已开）"
-			% w + " → 收入回落金标本（S5-D1 待拍板）")
 	runtime.grant_wave_result(res)   # R3：击杀收入 × (1 + income_mult)
 	# 🔴 切片8续3：核心 HP 单一数据源 → 读 player.core_hp（实时战斗已在漏怪当刻扣好）。
 	#   失败判定主路由是 WaveDirector.run_lost → _on_run_lost（E-W3 实时）；此处仅作兜底。
@@ -374,8 +374,9 @@ func _on_wave_ended(w: int) -> void:
 	_emit_run()
 
 
-## 🔴 只有在「金标本等价口径」下才允许用实时结果入账：
-##    三原型分化 / Elite 任一开启 → 实时结果与 `WaveSim` 不等价（S5-D1）。
+## 🟡 金标本等价口径判定（**保留作参考谓词，不再作为收入闸门**）。
+##    第四刀（proto-elite-golive 裁决 #2）后，`_on_wave_ended` 已改为**直接接实时结果**
+##    → 本函数不再是入账路径的一部分；保留仅为「实时结果是否与 `WaveSim` 逐位等价」的诊断用途。
 func _realtime_is_golden_equivalent() -> bool:
 	if wave_director == null:
 		return false
