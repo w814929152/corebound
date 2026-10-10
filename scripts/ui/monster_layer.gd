@@ -27,6 +27,10 @@ const _TSM := preload("res://scripts/engine/time_state_machine.gd")
 const _SpaceModel := preload("res://scripts/geo/space_model.gd")
 const _MonsterData := preload("res://scripts/data/monster_data.gd")
 const _WD := preload("res://scripts/gameplay/wave_director.gd")   # 仅取 MState 枚举（AGGRO_TOWER）
+## 🔴 P0（spec §A.6）：环境换装共享色表（纯静态助手，与 `Battlefield` 共用同款 preload）。
+const _EnvPalette := preload("res://scripts/ui/env_palette.gd")
+## 档间过渡时长（spec §A.5 / art-bible §2.4：3.0s 缓动，不得突变）。
+const ENV_FADE_SEC := 3.0
 
 const MARGIN := 48.0
 const C_PATH := Color(0.34, 0.30, 0.22, 1.0)
@@ -118,6 +122,19 @@ const TOWER_FLASH_SEC := 0.15     # 塔受击一瞬白闪时长（本地演出�
 # 塔升级「形态」递进 —— 护角长度上限 0.30u（红线：不超 R + 0.30u，不侵占相邻塔位）。
 const TOWER_CORNER_MAX_U := 0.30
 
+# ===========================================================================
+#  🔴 体验层第三刀 · 视觉氛围刀（blueprint = `docs/phase3/ux-p0p1c-spec.md`）
+#  ---------------------------------------------------------------------------
+#  同架构、零扰动：仍**只读** snapshot；新增本地状态**仅**纯演出计时器
+#  `_env_tier/_env_prev/_env_t`（环境换装过渡）。核心呼吸**复用既有 `_vfx_t`**、
+#  怪摆动**纯由 `pos` 派生** → 均**零新增状态**。零玩法写入、零新信号（spec §C.4）。
+# ===========================================================================
+# ---- §B.3 怪 squash&stretch 摆动：空间频率（rad/unit，spec §B.3.3）----
+const SWAY_K_RHO := 0.50
+# ---- §B.2 核心呼吸：幅度 / 周期（盘级；内芯保留其原有更快一层，spec §B.2.2）----
+const CORE_BREATH_AMP := 0.025
+const CORE_BREATH_SEC := 2.4
+
 
 var director: Node = null        # WaveDirector
 var time_director: Node = null   # TimeDirector（读抽屉宽，决定战场可视宽）
@@ -140,6 +157,12 @@ var _core_hp_prev: float = -1.0
 var _core_flash: float = 0.0
 var _tower_hp_prev: Dictionary = {}
 var _tower_flash: Dictionary = {}
+## 🔴 P0（spec §A.5/§A.6）：环境换装过渡计时器（**纯演出本地状态**，与 `_vfx_t` 同性质）。
+##   `_env_tier` = 当前目标档；`_env_prev` = 过渡起点档；`_env_t` ∈ [0,1]（1 = 过渡完成）。
+##   `-1` = 尚未落位（首帧直接落位，无过渡）。**不回写玩法、不参与任何判定。**
+var _env_tier: int = -1
+var _env_prev: int = -1
+var _env_t: float = 1.0
 
 
 func _ready() -> void:
@@ -252,6 +275,8 @@ func _process(delta: float) -> void:
 	if director == null:
 		return
 	_snap = director.snapshot()
+	# 🔴 P0（spec §A.5）：环境换装档位推进（纯演出；只读 `_snap["w"]`）。
+	_update_env(dt)
 	_detect_hits()
 	queue_redraw()
 
@@ -774,6 +799,73 @@ func _body_units(proto: String, elite: bool) -> float:
 	return r
 
 
+## 🔴 P0（spec §A.5 伪码）：环境换装档位推进。跨档边界触发 3s 过渡；首次直接落位（无过渡）。
+##   `_snap["w"]` 是本刀**唯一**换装读数来源（只读；无其它字段）。
+func _update_env(dt: float) -> void:
+	var ti := _EnvPalette.tier_of(int(_snap.get("w", 0)))
+	if _env_tier < 0:
+		_env_tier = ti
+		_env_prev = ti
+		_env_t = 1.0
+	elif ti != _env_tier:
+		_env_prev = _env_tier
+		_env_tier = ti
+		_env_t = 0.0
+	if _env_t < 1.0:
+		_env_t = minf(1.0, _env_t + clampf(dt, 0.0, 0.1) / ENV_FADE_SEC)
+
+
+## 🔴 P0（spec §A.5）：档间过渡取色 —— smoothstep `e(t)=t²(3−2t)` + 线性 RGB `Color.lerp`。
+##   `key ∈ {"bg","field","ring"}`；`alpha` 由调用方施加（同心环 0.5 / 放射刻度 0.35）。
+func _env_col(key: String, alpha: float) -> Color:
+	var a: Color = _EnvPalette.get_color(_env_prev, key)
+	var b: Color = _EnvPalette.get_color(_env_tier, key)
+	var e := _env_t * _env_t * (3.0 - 2.0 * _env_t)
+	var c := a.lerp(b, e)
+	return Color(c.r, c.g, c.b, alpha)
+
+
+## 🔴 P0（spec §B.2.2）：核心**盘级**极小幅呼吸（±2.5% @2.4s）。
+##   内芯保留其原有更快一层（±6% @1.6s，见 `_draw_radial_core`）→ 两层不同频叠出有机感。
+##   纯 `sin`，零新增状态（复用 `_vfx_t`）。
+func _core_breath() -> float:
+	return 1.0 + CORE_BREATH_AMP * sin(_vfx_t * TAU / CORE_BREATH_SEC)
+
+
+# ---- §B.3 怪 squash&stretch 摆动（相位纯由 `pos` 派生 → 帧间稳定、零新增状态）----
+## 径向拉伸幅度 A（spec §B.3.3：大原型阻尼递减，小怪更"活蹦"）。
+func _sway_amp(proto: String) -> float:
+	match proto:
+		"Rush":
+			return 0.10
+		"Tank":
+			return 0.04
+		_:
+			return 0.06      # Swarm（及回退）
+
+
+## 原型相位偏移 φ_proto（spec §B.3.3：原型间错开，不同类型不同步）。
+func _sway_phase(proto: String) -> float:
+	match proto:
+		"Rush":
+			return 0.000
+		"Tank":
+			return 4.189     # 4π/3
+		_:
+			return 2.094     # 2π/3（Swarm）
+
+
+## 体摆动幅 rot_amp（rad；spec §B.3.3）。
+func _sway_rot(proto: String) -> float:
+	match proto:
+		"Rush":
+			return 0.18
+		"Tank":
+			return 0.08
+		_:
+			return 0.12      # Swarm
+
+
 ## 圆形 blob 软影（双层同心圆近似，spec §A.3；光来自左上 → 影落右下）。
 func _blob_shadow(c: Vector2, r: float, off: Vector2, a: float) -> void:
 	var p := c + off
@@ -823,22 +915,24 @@ func _draw_tower_form(c: Vector2, R: float, h: int, sc: float) -> void:
 		draw_arc(c, R + 0.16 * sc, 0.0, TAU, 32, P_ALLY_2, maxf(2.0, 0.20 * sc), true)
 
 
-# ---- 层1/2：地面 decal + 出生环（spec §A.7）----
+# ---- 层1/2：地面 decal + 出生环（spec §A.7；换装见 §A.6）----
 func _draw_radial_ground(sc: float) -> void:
 	var c := _to_screen(_SpaceModel.RADIAL_CORE)
 	var rs := float(_SpaceModel.SPAWN_RADIUS) * sc
+	# 🔴 P0（spec §A.6）：场地 / 同心环 / 放射刻度**按档取色 + 3s 过渡**（同 `env_palette.gd`）。
+	var col_field := _env_col("field", 1.0)
+	var col_ring := _env_col("ring", 0.5)     # 同心环 α=0.5（沿用现状，只换 RGB 基底）
+	var col_spoke := _env_col("ring", 0.35)   # 放射刻度 α=0.35（同档 ring RGB）
 	# 场地圆（地面基 A）—— 与父节点 Battlefield 幂等同色，保证本层自足
-	draw_circle(c, (float(_SpaceModel.SPAWN_RADIUS) + 2.0) * sc, P_FIELD)
+	draw_circle(c, (float(_SpaceModel.SPAWN_RADIUS) + 2.0) * sc, col_field)
 	# 同心环 ×3（距离刻度）
 	for ru in CONCENTRIC_U:
-		draw_arc(c, float(ru) * sc, 0.0, TAU, 128,
-			Color(P_RING.r, P_RING.g, P_RING.b, 0.5), maxf(1.0, 0.15 * sc), true)
+		draw_arc(c, float(ru) * sc, 0.0, TAU, 128, col_ring, maxf(1.0, 0.15 * sc), true)
 	# 放射刻度 ×8（方位锚）
 	for k in 8:
 		var a := TAU * float(k) / 8.0
-		draw_line(c, c + _dir(a) * rs,
-			Color(P_RING.r, P_RING.g, P_RING.b, 0.35), maxf(1.0, 0.12 * sc), true)
-	# 出生环（边界）+ 方位刻度
+		draw_line(c, c + _dir(a) * rs, col_spoke, maxf(1.0, 0.12 * sc), true)
+	# 出生环（边界）+ 方位刻度 —— 🔴 **固定不换色**（spec §A.3 / 用户拍板②）
 	draw_arc(c, rs, 0.0, TAU, 160, P_SPAWN_EDGE, maxf(2.0, 0.28 * sc), true)
 	for k in 8:
 		var a2 := TAU * float(k) / 8.0
@@ -848,8 +942,8 @@ func _draw_radial_ground(sc: float) -> void:
 
 # ---- 层3：全单位投影（先画全部影，再画全部本体）----
 func _draw_all_shadows(sc: float) -> void:
-	# 核心影
-	_blob_shadow(_to_screen(_SpaceModel.core_pos()), 1.15 * U_CORE * sc,
+	# 核心影（🔴 P0 §B.2.3：半径随盘呼吸**同步缩放** → 避免"影浮于盘外"）
+	_blob_shadow(_to_screen(_SpaceModel.core_pos()), 1.15 * U_CORE * sc * _core_breath(),
 		Vector2(0.10, 0.16) * sc, 0.40)
 	# 塔影（越高影越远）
 	if controller != null and controller.runtime != null:
@@ -891,7 +985,10 @@ func _draw_radial_slot_layer(sc: float) -> void:
 	_draw_exposure_icons(sc)
 
 
-## 威胁方位楔形（spec §A.2.4）：只标"哪个方位有怪"这一事实（不标推荐，SR-R2）。
+## 威胁方位楔形（spec §A.2.4 / **§B.1.3 扇区去重版**）：只标"哪个方位有怪"这一事实
+##   （不标推荐，SR-R2）。把 N 只怪的方位**吸附到 8 个 45° 扇区**，每扇区只画 1 段弧，
+##   α 随该扇区怪数递增（怪越多越亮，"这方位压力大"余光可读）→ 修掉"糊成一片" + **净减** draw call。
+##   🔴 **≤ 8 段 `draw_arc`**（由 ≤N 降为 ≤8）；只用现有 `monsters[].pos`，无需新字段。
 func _draw_threat_wedges(sc: float) -> void:
 	var ms: Array = _snap.get("monsters", [])
 	if ms.is_empty():
@@ -899,24 +996,31 @@ func _draw_threat_wedges(sc: float) -> void:
 	var core := _SpaceModel.RADIAL_CORE
 	var c := _to_screen(core)
 	var rs := float(_SpaceModel.SPAWN_RADIUS) * sc
-	var col := Color(P_ENEMY.r, P_ENEMY.g, P_ENEMY.b, 0.45)
+	var sect: Dictionary = {}                      # idx(0..7) -> count
 	for m in ms:
 		var pos: Vector2 = m["pos"]
 		var a := atan2(pos.y - core.y, pos.x - core.x)
-		draw_arc(c, rs, a - deg_to_rad(6.0), a + deg_to_rad(6.0), 8, col,
-			maxf(2.0, 0.30 * sc), true)
+		var idx := int(floor(fposmod(a, TAU) / (TAU / 8.0)))
+		sect[idx] = int(sect.get(idx, 0)) + 1
+	for idx in sect:
+		var ac := TAU * float(idx) / 8.0 + TAU / 16.0     # 扇区中心
+		var alpha := minf(0.60, 0.35 + 0.05 * float(mini(int(sect[idx]), 5)))
+		draw_arc(c, rs, ac - deg_to_rad(11.0), ac + deg_to_rad(11.0), 8,
+			Color(P_ENEMY.r, P_ENEMY.g, P_ENEMY.b, alpha), maxf(2.0, 0.30 * sc), true)
 
 
 # ---- 层5：核心（盘 + 8 刻齿，全场唯一轮廓）----
 func _draw_radial_core(sc: float) -> void:
 	var c := _to_screen(_SpaceModel.core_pos())
-	var rc := U_CORE * sc
+	# 🔴 P0（spec §B.2.2）：**盘级**呼吸 ±2.5% @2.4s —— 外环/中盘/刻齿/描边/受击闪整体随缩。
+	var rc := U_CORE * sc * _core_breath()
 	draw_arc(c, rc, 0.0, TAU, 48, P_ALLY_DARK, maxf(2.0, 0.55 * sc), true)   # 外环
 	draw_circle(c, rc * 0.72, P_ALLY)                                        # 中盘
 	for k in 8:                                                              # 刻齿
 		var a := TAU * float(k) / 8.0
 		draw_line(c + _dir(a) * (rc * 0.86), c + _dir(a) * (rc * 1.06),
 			P_ALLY_DARK, maxf(1.0, 0.18 * sc), true)
+	# 🔴 内芯保留其**原有更快一层**（±6% @1.6s，spec §B.2.2）→ 两层不同频叠出"心跳/有机感"。
 	var breath := 1.0 + 0.06 * sin(_vfx_t * TAU / 1.6)                        # 呼吸内芯
 	draw_circle(c, rc * 0.32 * breath, P_CORE_HI)
 	draw_arc(c, rc + 0.11 * sc, 0.0, TAU, 48, P_TOWER_EDGE, maxf(1.5, 0.22 * sc), true)
@@ -1002,17 +1106,29 @@ func _draw_radial_monsters(sc: float) -> void:
 		if elite:
 			n_spike += 1
 			spike_len *= 1.3
-		draw_colored_polygon(_blob12(c, R, out_dir, rs, ts), P_ENEMY)   # 主体
+		# 🔴 P0（spec §B.3）：squash&stretch + 摆动 —— 相位**纯由 `pos` 派生**（零新增状态、帧间稳定）。
+		#   ph = θ + (−ρ)·k_ρ + φ_proto；sw = sin(ph)。
+		#   θ(=out_dir，方位) 天然给每只怪不同相位偏移；−ρ·k_ρ 随接近核心平滑推进 = "在走"。
+		var rho := pos.distance_to(core)
+		var ph := out_dir + (-rho) * SWAY_K_RHO + _sway_phase(proto)
+		var sw := sin(ph)
+		var amp := _sway_amp(proto)
+		var rs2 := rs * (1.0 + amp * sw)     # 径向拉伸（朝核心轴）
+		var ts2 := ts * (1.0 - amp * sw)     # 切向压扁（体积近似守恒）
+		var rot2 := _sway_rot(proto) * cos(ph)   # 体摆动（绕中心小角度）
+		draw_colored_polygon(_blob12(c, R, out_dir + rot2, rs2, ts2), P_ENEMY)   # 主体（随摆）
 		if proto == "Tank":   # 内层焦褐环
 			draw_arc(c, R * 0.55, 0.0, TAU, 20, P_ENEMY_DARK, maxf(1.5, 0.16 * sc), true)
 		_draw_rim(c, R, w, RIM_ENEMY)   # P0 增强：内发光（混乱时分离相邻单位）
+		# 🔴 尖刺扇仍沿 `out_dir`（**朝核心，不随摆**）—— 尖刺语义 = "扑向核心"（spec §B.3.4）。
 		for i in n_spike:    # 外张尖刺扇（沿"朝核心"方向）
 			var a := out_dir + SPIKE_SPREAD * (float(i) - float(n_spike - 1) * 0.5)
 			var tip := c + _dir(a) * (R + spike_len * sc)
 			var bl := c + _dir(a - spike_half) * (R * 0.9)
 			var br := c + _dir(a + spike_half) * (R * 0.9)
 			draw_colored_polygon(PackedVector2Array([bl, tip, br]), P_ENEMY_DARK)
-		draw_polyline(_closed(_blob12(c, R + w * 0.5, out_dir, rs, ts)),
+		# 🔴 外扩描边**必须与主体同参数**（`out_dir+rot2, rs2, ts2`），否则"描边错位"（spec §B.3.4）。
+		draw_polyline(_closed(_blob12(c, R + w * 0.5, out_dir + rot2, rs2, ts2)),
 			P_MON_EDGE, w, true)   # 外扩描边
 		if elite:   # 精英环（噬品红）
 			draw_arc(c, R + 0.28 * sc, 0.0, TAU, 24, P_ELITE, maxf(2.0, 0.18 * sc), true)
