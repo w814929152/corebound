@@ -409,3 +409,47 @@ EXIT=0
 | 5 | 双模可回滚 | ✅ `boot.gd` 加回一行即回退；B-2 转回硬门禁删 `continue-on-error` 一行 |
 | 6 | 临时脚本收尾删除 | ✅ `tests/_tmp_b4_check.gd` 已删（`**/_tmp_*` 零命中） |
 | 7 | 不改 Disabled 塔视觉解耦 | ✅ 用户选「不做」，未动 |
+
+## 8. C 轮（2026-10-10）· 上线（用户裁决「上线 + CI 转硬门禁」）
+
+### 8.1 触发与依据
+
+- B 轮补全「玩家安全窗修复」口径后，实机全开 MC **PRICED（最接近产品）多塔 B@6 = 0.850 ≥ 0.80 达标**
+  （FREE 上界 0.877 / OFF 下界 0.677；见 §7.4）。主理人独立复核**逐位复现**后呈请用户。
+- **用户 2026-10-10 拍板（D8）：上线 + CI 转回硬门禁。**
+
+### 8.2 改动清单（C-1 ~ C-2）
+
+| 工单 | 文件 | 改动 | 回滚 |
+|---|---|---|---|
+| **C-1** | `scripts/ui/boot.gd` | 窗口分支加回 `bs.wave_director.tower_aggro_enabled = true`（一行）→ 实机**全开**（RADIAL + 三原型 + Elite + 仇恨）；注释块改为「第五刀上线口径」；`print` 改为 `[boot] proto/elite/aggro 全 ON（第五刀上线 · RADIAL 实机口径）`。 | 删该一行 `tower_aggro_enabled = true` 即回第四刀口径。 |
+| **C-2** | `.github/workflows/ci.yml` | 「实机全开 MC（proto/elite/aggro 全 ON）」步**删除** `continue-on-error: true` → 由诊断**转回硬门禁（阻断）**；头部注释同步（移除「例外 = 诊断步」说明，第 5 条改为「PRICED 多塔 B@6 ≥ 0.80 · 已转硬门禁」）。 | 加回 `continue-on-error: true` 一行即回诊断。 |
+
+### 8.3 验收证据（C 轮独立复核）
+
+- **boot.gd 语法**：`--check-only` EXIT=0，无报错。
+- **实机开关注入核对**：`prototype_split_enabled` / `elite_waves_enabled` / `tower_aggro_enabled` 三行均 `= true`。
+- **默认回归**：EXIT=0，九段聚合 `222/2228/142/123/302/41/31/92/216` **逐位一致**（窗口分支与 headless
+  路径不相交 → 上线注入对金标本零扰动）。
+- **`-- aggro_golive`**：EXIT=0，**56 通过 / 0 失败**（含守护⑤ repair=0 零扰动）。
+- **`-- radial8`**：EXIT=0，`radial8 结论：PASS`。
+- **实机全开 MC**：`B@6 = 0.850 ≥ 0.80`（口径补全后 · 已转硬门禁；CI 首次上跑即以此为准）。
+
+### 8.4 红线核对（C 轮）
+
+| # | 红线 | 声明 |
+|---|---|---|
+| 1 | 零定稿数值改动 | ✅ 未动任何定稿数值 / 门禁阈值 0.80 |
+| 2 | 金标本零扰动 | ✅ 默认回归九段逐位一致；headless 路径永不进窗口分支 |
+| 3 | 双模可回滚 | ✅ boot.gd 删一行、ci.yml 加回一行，两处独立回滚 |
+| 4 | 不改判据、不挑口径 | ✅ 上线依据 = D7 已定主判（PRICED B@6），无新口径 |
+
+### 8.5 遗留（不随本刀关闭）
+
+- 🟡 **方向性偏差**：PRICED 的 `repair_cost` 用 AI 侧 `invested_est = 12h + 9L`（偏低）→ 上线后应关注
+  真实玩家修复成本；若线上数据显示低于 0.80 余量不足，按 C-1 一行回滚即可。
+- 🔴 **债务**：`wave_sim_aggro.gd:189` ② 相位 no-op（丢弃返回值）→ 待后续 ADR 修为 assign + 重扫旧 T1
+  aggro 定稿读数（§4-1 / spec §3.4）。
+- 🔴 **债务**：Disabled 塔战场视觉与 `revive_ui` 耦合（`repair_on_disable=0` 下视觉与正常塔一致）→
+  用户已选「不做」；如后续要做需单独立项解耦。
+
