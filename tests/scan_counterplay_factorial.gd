@@ -23,10 +23,12 @@ extends SceneTree
 ##   · 八槽 RADIAL × elite 全开 × B+bulwark → 应复现 **C-9 T2 = 0.680**
 ##   （C-9 同为 proto/elite/aggro 全开 · RADIAL 八槽 · seed 20261002 · N=300）
 ##
-## 判据（三选一 · 逐对比报 Δ/SE/z）：
-##   · 反向在 **两种几何 × 两种 elite 设置下都成立** → 🟢 **结构成因坐实**；
-##   · 反向**仅在 elite 全开时出现**（两种几何） → 🟡 **Sapper×bulwark 交互**（config 驱动）；
-##   · 反向**仅在一侧几何出现** → 🟡 **几何成因**。
+## 判据（**纯符号方向提示** · 逐对比另报 Δ/SE/z）：
+##   · 反向在 **两种几何 × 两种 elite 设置下都成立（4/4 负）** → 🟡 **方向一致 · 倾向结构成因（未达显著）**；
+##   · 反向**仅在 elite 全开时出现**（两种几何） → 🟡 **Sapper×bulwark 交互方向提示**（config 驱动 · 未达显著）；
+##   · 反向**仅在一侧几何出现** → 🟡 **几何方向提示**（未达显著）。
+##   🔴 本判据只做**符号方向**分类；**显著性一律以每格 Δ/SE/z 与 95%CI 为准**
+##      （勿把"方向一致（4/4 负）"读作"结构成因坐实 / 方向确凿"）。
 ##
 ## 🔴 纯测量 · 零生产代码改动（仅 tests/ + 本测量文档）· 诊断件恒 quit(0)。
 ##
@@ -58,6 +60,15 @@ const ELITES := [
 	{"key": "off", "label": "elite/Sapper 全关", "on": false},
 ]
 
+# 独立-seed 变体（T-CP-08 追加 · 消除共-seed 非独立）：
+#   4 格各用**不同 seed**（**格内** floor vs bulwark 同 seed = 配对；**格间**独立）。
+const INDEP_SEEDS := {
+	"PATH6|on": 20261002,
+	"PATH6|off": 20261003,
+	"RADIAL8|on": 20261004,
+	"RADIAL8|off": 20261005,
+}
+
 
 func _fmt(v: float, nd: int = 3) -> String:
 	var m := 1.0
@@ -67,12 +78,13 @@ func _fmt(v: float, nd: int = 3) -> String:
 
 
 ## 跑一个单元（几何 × elite × 臂）。返回 {rate, surv, n_takeoff, n_surv, n, med}。
-func _cell(n_slots: int, radial: bool, elite_on: bool, bulwark: bool, runs: int) -> Dictionary:
+##   seed_value 缺省 SEED（主读共用 seed）；独立-seed 变体传入各格专属 seed。
+func _cell(n_slots: int, radial: bool, elite_on: bool, bulwark: bool, runs: int, seed_value: int = SEED) -> Dictionary:
 	var cfg := _Cfg.cfg_of("B")
 	cfg["n_slots"] = n_slots
 	cfg["max_actions"] = ACTIONS
 	cfg["repair_on_disable"] = 0          # 诊断枚举恒 OFF（本扫描只看 bulwark，不看复活）
-	var rng := _PyRandom.new(SEED)        # 🔴 每臂独立 fresh rng（与 C-9 同纪律）
+	var rng := _PyRandom.new(seed_value)  # 🔴 每臂独立 fresh rng（与 C-9 同纪律）
 	var prev_mode = _SpaceModel.mode
 	_SpaceModel.mode = _SpaceModel.Mode.RADIAL if radial else _SpaceModel.Mode.PATH
 	var takeoffs := 0
@@ -136,6 +148,58 @@ func _report_combo(geo: Dictionary, el: Dictionary, floor: Dictionary, bulwark: 
 	push_error("[Factorial] %s x %s : floor=%s bulwark=%s d=%s z=%s"
 		% [String(geo["key"]), String(el["key"]), _fmt(pf), _fmt(pb), _fmt(d), _fmt(z)])
 	return d
+
+
+## 独立-seed 复现（T-CP-08 追加）：4 格各用不同 seed（格内配对 · 格间独立）。
+##   报：4 格 Δ/SE/z/95%CI + **是否仍 4/4 负** + **合并 z**（4 独立对比 → Σz/√4）。
+func _independent_seed(runs: int) -> void:
+	print("")
+	print("===============================================================")
+	print("  §独立-seed 复现（T-CP-08 · 4 格各不同 seed · 格内 floor/bulwark 同 seed 配对）")
+	print("     seeds: PATH6|on=%d · PATH6|off=%d · RADIAL8|on=%d · RADIAL8|off=%d"
+		% [INDEP_SEEDS["PATH6|on"], INDEP_SEEDS["PATH6|off"], INDEP_SEEDS["RADIAL8|on"], INDEP_SEEDS["RADIAL8|off"]])
+	print("     口径不变：runner=run_loop_proto_aggro · proto/aggro 恒开 · N=%d · W_MAX=%d · warmup=%d"
+		% [runs, W_MAX, WARMUP])
+	print("===============================================================")
+	var zs: Array = []
+	var neg_count := 0
+	var cells := 0
+	print("  %-16s %-14s %8s %10s %8s %8s  %-24s" % ["几何", "elite/Sapper", "seed", "Δ", "SE_diff", "z", "95% CI"])
+	for geo in GEOMETRIES:
+		for el in ELITES:
+			var key := "%s|%s" % [geo["key"], el["key"]]
+			var sd := int(INDEP_SEEDS[key])
+			var floor := _cell(int(geo["n_slots"]), bool(geo["radial"]), bool(el["on"]), false, runs, sd)
+			var bul := _cell(int(geo["n_slots"]), bool(geo["radial"]), bool(el["on"]), true, runs, sd)
+			var pf := float(floor["rate"])
+			var pb := float(bul["rate"])
+			var n := int(floor["n"])
+			var d := pb - pf
+			var se := _se_diff(pb, n, pf, n)
+			var z := d / se if se > 0.0 else 0.0
+			var lo := d - 1.96 * se
+			var hi := d + 1.96 * se
+			zs.append(z)
+			cells += 1
+			if d < 0.0:
+				neg_count += 1
+			print("  %-16s %-14s %8d %10s %8s %8s  [%s, %s]"
+				% [String(geo["label"]), String(el["label"]), sd, _fmt(d), _fmt(se), _fmt(z), _fmt(lo), _fmt(hi)])
+			push_error("[IndepSeed] %s : floor=%s bulwark=%s d=%s z=%s"
+				% [key, _fmt(pf), _fmt(pb), _fmt(d), _fmt(z)])
+	# 合并 z：4 个**独立**对比 → Σz/√4（格内配对、格间独立）
+	var sum_z := 0.0
+	for z in zs:
+		sum_z += float(z)
+	var combined_z := sum_z / sqrt(float(zs.size()))
+	print("")
+	print("  ▶ 独立-seed 汇总：")
+	print("     负向格数 = %d/%d  %s" % [neg_count, cells,
+		"（仍 4/4 负 ✅）" if neg_count == cells else "（⚠ 出现非负 → 方向不齐）"])
+	print("     合并 z（Σz/√%d） = %s  %s" % [zs.size(), _fmt(combined_z),
+		"（|z|≥1.96 → 4 独立对比合并显著）" if absf(combined_z) >= 1.96 else "（|z|<1.96 → 合并亦未达显著）"])
+	print("     🔴 判读以合并 z 为准；措辞升级/保持 = team-lead 拍板，本扫描只测量。")
+	print("===============================================================")
 
 
 func _initialize() -> void:
@@ -209,15 +273,20 @@ func _initialize() -> void:
 		or (d_r_on < 0.0 and d_r_off < 0.0 and (d_p_on >= 0.0 or d_p_off >= 0.0))
 
 	print("")
-	print("  ▶ 结论：")
+	print("  ▶ 结论（🟡 纯符号**方向提示** · 非显著性结论）：")
 	if all_neg:
-		print("     🟢 **结构成因坐实** —— 反向在 2 几何 × 2 elite 设置下**全部成立**（几何/config 无关）。")
+		print("     🟡 **方向一致（4/4 负）· 倾向结构成因（未达显著）** —— 反向在 2 几何 × 2 elite 下符号全负（方向提示；显著性见逐格 SE/z）。")
 	elif elite_only:
-		print("     🟡 **Sapper×bulwark 交互** —— 反向**仅在 elite/Sapper 全开**时出现（config 驱动），非纯结构。")
+		print("     🟡 **Sapper×bulwark 交互（方向提示）** —— 反向**仅在 elite/Sapper 全开**时出现，非纯结构（未达显著）。")
 	elif geom_only:
-		print("     🟡 **几何成因** —— 反向**仅在一侧几何**出现（槽位相关）。")
+		print("     🟡 **几何成因（方向提示）** —— 反向**仅在一侧几何**出现（槽位相关 · 未达显著）。")
 	else:
 		print("     🟠 **混合/不整齐** —— 反向的成立模式不落在三档纯型（见矩阵，逐格 Δ/SE/z）→ 如实上报。")
-	print("     （N=%d 纪律：判读以 Δ 的 SE/z 为准，勿只看点估计。）" % runs)
+	print("     （N=%d 纪律：判读以 Δ 的 SE/z 为准，勿只看点估计；" % runs)
+	print("      本自动判据为**符号方向规则**，未经显著性检验 —— 只作方向提示。）")
 	print("===============================================================")
+
+	# ---- 独立-seed 复现（T-CP-08）----
+	_independent_seed(runs)
+
 	quit(0)
