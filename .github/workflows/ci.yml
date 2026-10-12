@@ -17,6 +17,9 @@ name: CI
 #      repair_on_disable ∈ {0 OFF,1 FREE,2 PRICED,9 REVIVE=M-1}）—— T-CP 上线门禁
 #      REVIVE(9) 多塔 B@6 起飞率 ≥ 0.80（实测 0.840 ≥ 0.80）+ 自检 OFF B@6==203/300=0.677
 #      （revive 接线零扰动）。🔴 仅纳入 C-8；C-9 保持独立诊断件，不进 CI。
+#   7) 反制窗口 **实时版** MC（R-1 · 真身 WaveDirector · 产品开关 `combat_revive_enabled`）——
+#      全 run（20 波 × shop AI）× 300 局 · 产品代码路径。守门 OFF B@6 == 203/300=0.677
+#      （实时↔批处理零分岔）+ 主判 PRODUCT B@6 ≥ 0.80（实测 0.840）。脚本 quit(0/1) = 硬门禁。
 #
 # 🔴 口径红线的守门人：CI 只跑既有判据，**不新增、不下调任何阈值**。
 #    任何一步非零退出 = 红（例如默认回归聚合读数漂移、radial8 任一项挂、MC 破线）。
@@ -145,6 +148,17 @@ jobs:
           GODOT="$HOME/godot/Godot_v${GODOT_VERSION}_linux.x86_64"
           mkdir -p ci-logs
           "$GODOT" --headless --path . --script res://tests/run_counterplay_mc.gd 2>&1 | tee ci-logs/counterplay_mc.log
+
+      # 🔴 反制窗口**实时版** MC（R-1 · 2026-10-12 用户默认放行 · 硬门禁无 continue-on-error）：
+      #    · 真身 `WaveDirector` 直读产品开关 `combat_revive_enabled`（= 产品实机路径）
+      #    · 守门：OFF B@6 == 203/300（实时↔批处理零分岔）· 主判：PRODUCT B@6 ≥ 0.80（实测 0.840）
+      #    脚本 quit(0/1) 即门禁语义 → 任一破线 = 该步非零退出 = 红。
+      - name: 反制窗口 实时版 MC（R-1 · 产品开关 combat_revive_enabled · 硬门禁）
+        run: |
+          set -euo pipefail
+          GODOT="$HOME/godot/Godot_v${GODOT_VERSION}_linux.x86_64"
+          mkdir -p ci-logs
+          "$GODOT" --headless --path . --script res://tests/run_realtime_counterplay_mc.gd 2>&1 | tee ci-logs/realtime_counterplay_mc.log
 
       - name: 上传日志（无论成败）
         if: always()
