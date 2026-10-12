@@ -46,7 +46,10 @@ jobs:
   headless-regression:
     name: Headless 回归（默认 + radial8 + 实机口径 MC）
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # 🔴 2026-10-12（用户批准 · T-CP-06）：30 → 45。纳入 C-8 步后 job 墙钟 ~33min
+    #    （基线 run #4 = 25m11s + C-8 约 8~11min）> 30min → 上一步被超时卡断。
+    #    🟢 纯墙钟上调：**不动任何阈值、不加 continue-on-error、不放宽门禁**。
+    timeout-minutes: 45
 
     steps:
       - name: 检出
