@@ -13,6 +13,10 @@ name: CI
 #   5) 实机**全开** MC + 口径矩阵（RADIAL + proto/elite/aggro 全 ON ·
 #      repair_on_disable ∈ {0 OFF,1 FREE,2 PRICED}）—— 第五刀上线门禁
 #      PRICED 多塔 B@6 起飞率 ≥ 0.80（口径补全后实测 0.850 ≥ 0.80 · 已转硬门禁）。
+#   6) 反制窗口 M-1 上线门禁 MC（C-8 · RADIAL + proto/elite/aggro 全 ON ·
+#      repair_on_disable ∈ {0 OFF,1 FREE,2 PRICED,9 REVIVE=M-1}）—— T-CP 上线门禁
+#      REVIVE(9) 多塔 B@6 起飞率 ≥ 0.80（实测 0.840 ≥ 0.80）+ 自检 OFF B@6==203/300=0.677
+#      （revive 接线零扰动）。🔴 仅纳入 C-8；C-9 保持独立诊断件，不进 CI。
 #
 # 🔴 口径红线的守门人：CI 只跑既有判据，**不新增、不下调任何阈值**。
 #    任何一步非零退出 = 红（例如默认回归聚合读数漂移、radial8 任一项挂、MC 破线）。
@@ -126,6 +130,18 @@ jobs:
           GODOT="$HOME/godot/Godot_v${GODOT_VERSION}_linux.x86_64"
           mkdir -p ci-logs
           "$GODOT" --headless --path . --script res://tests/run_slice_aggro_golive_mc.gd 2>&1 | tee ci-logs/aggro_golive_mc.log
+
+      # 🔴 反制窗口 M-1 上线门禁（2026-10-12 用户裁决「仅纳入 C-8」· 硬门禁无 continue-on-error）：
+      #    · 主判：REVIVE(9) 多塔 B@6 起飞率 ≥ 0.80（口径补全后实测 0.840 ≥ 0.80）
+      #    · 自检：OFF(0) 臂 B@6 必须复现基线 203/300=0.677（M-1 接线零扰动证据）
+      #    脚本 quit(0/1) 即门禁语义 → 任一破线 = 该步非零退出 = 红。
+      #    🔴 C-9 保持独立诊断件（run_slice_aggro_golive_mc.gd 之外的玩家臂件），**不进** CI。
+      - name: 反制窗口 M-1 上线门禁 MC（C-8 · REVIVE(9) B@6 ≥ 0.80）
+        run: |
+          set -euo pipefail
+          GODOT="$HOME/godot/Godot_v${GODOT_VERSION}_linux.x86_64"
+          mkdir -p ci-logs
+          "$GODOT" --headless --path . --script res://tests/run_counterplay_mc.gd 2>&1 | tee ci-logs/counterplay_mc.log
 
       - name: 上传日志（无论成败）
         if: always()
