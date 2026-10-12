@@ -422,8 +422,8 @@ SE = sqrt( p_arm(1−p_arm)/n_arm + p_base(1−p_base)/n_base )   # 独立两比
 
 | 下游 | 影响 | 状态 |
 |---|---|---|
-| 实时版 `wave_director.gd` | 需与批处对称实现 | 🔴 **欠账**（§12-6） |
-| `monster_layer.gd` | 塔体重启动效 + `K` 充能点亮 | 🔴 **欠账**（§12-7） |
+| 实时版 `wave_director.gd` | 需与批处对称实现 | ✅ **已实现**（§12-6 · 2026-10-12 反制窗口落地） |
+| `monster_layer.gd` | 塔体重启动效 + `K` 充能点亮 | ✅ **已实现**（§12-7 · 2026-10-12 反制窗口落地） |
 | `mechanics-tower-life-death` §3 玩法②（肉盾塔）定性 | 🟡 是否升级（Q-B7）→ 🔴 **现在一字不改**，等 T1 试玩 | v3 D-4 |
 
 ---
@@ -467,7 +467,7 @@ SE = sqrt( p_arm(1−p_arm)/n_arm + p_base(1−p_base)/n_base )   # 独立两比
 |---|---|---|
 | AC-17 | 🔴 **默认回归**：全部开关 off 时 **3188 断言全绿**、逐位不变 | PASS |
 | AC-18 | 🔴 **口径纪律**：bulwark 口径读数**不得**与金标本口径 0.5770 相减（Δ 分母用同批 B0/C0） | 遵守 |
-| AC-19 | 🟢 **批处 / 实时对称**：同一开关语义，实时版 `tower_aggro_enabled=false` 时零扰动 | 待实现（§12-6） |
+| AC-19 | 🟢 **批处 / 实时对称**：同一开关语义，实时版 `tower_aggro_enabled=false` 时零扰动 | ✅ 已实现（§12-6 · 2026-10-12） |
 
 ### 8.5 判据地位（🔴 防止误用）
 
@@ -594,8 +594,8 @@ SE = sqrt( p_arm(1−p_arm)/n_arm + p_base(1−p_base)/n_base )   # 独立两比
 | **3** | **`mvp_config` 扩档** | `scripts/engine/mvp_config.gd :: repair_on_disable` | `9` = 战斗内即时（N=`revive_n_seconds`，K=`revive_k_per_wave`）/ `11` = 波首（对照，`N→∞`）/ 🔴 `10` 标 **reserved/未用**（与 9 + N=2.0 功能等价，不单列）；新增 `revive_n_seconds=0.5` / `revive_k_per_wave=1`；🔴 既有 0/1/2 语义一字不改，默认恒 0 | ✅ **已实现** |
 | **4** | **`snap` / `rest` 序列化 6 字段** | `scripts/engine/sim_player.gd` | `revive_t_disabled` / `revive_used_w` / `revived_ever` / `death_exposed` / `death_carry` / `death_valid` 必须跨 `snap→rest` 守恒（`rest()` 用 `make_tower` **重建**对象 → 漏序列化会被静默清回初值 → 波首档退化空臂；**同类坑第二次**）。🟡 **建议补回归断言 `restoral_roundtrip`** | ✅ **已实现** / 🟡 **断言待确认** |
 | **5** | **残响代码处置** | `mvp_config :: reverb_enabled` / `reverb_radius` / `reverb_slow` + `wave_sim_aggro.gd` 残响段（约 23 处引用） | 🔴 **保持默认 `false` 且不得启用**（V-8b 判不采纳）。🟡 **建议**：在 `mvp_config` 注释里明确标注「V-8b 判无正向胜率边际 → 不采纳，勿启用；保留仅供验证史追溯」，避免后续评审误当作待启用功能。是否物理清理由程基岩判断（保留 = 可复现 V-8/V-8b；清理 = 减少歧义面） | 🟡 **待决策** |
-| **6** | 🔴 **实时版对称实现** | `scripts/gameplay/wave_director.gd` | 🟢 与批处**同一开关语义**（mode 9/11、`N`、`K`、资格快照、每波重置）；塔死亡/重启事件走既有 `TowerState` 薄记；🔴 `tower_aggro_enabled=false` 时零扰动；🔴 实时/批处逐位对齐是既有纪律 | 🔴 **欠账**（当前无 revive 相关代码） |
-| **7** | 🔴 **UI 可读性** | `scripts/ui/monster_layer.gd`（及塔体渲染） | ① **塔体重启动效**（运动 + 亮度，复用现有停机/恢复演出）；② **塔底"重启充能"点亮**（`K` 未用 = 亮，用尽 = 灭）；🔴 **零数字、零倒计时、零进度条**（T-C2 / Q-B15）；🟢 复用现有橙环 `_draw_under_attack`；🟢 零新增美术资产 | 🔴 **欠账** |
+| **6** | 🔴 **实时版对称实现** | `scripts/gameplay/wave_director.gd` | 🟢 与批处**同一开关语义**（mode 9/11、`N`、`K`、资格快照、每波重置）；塔死亡/重启事件走既有 `TowerState` 薄记；🔴 `tower_aggro_enabled=false` 时零扰动；🔴 实时/批处逐位对齐是既有纪律 | ✅ **已实现**（2026-10-12 · 复位 `:239` / 死亡快照 `:533` / tick `:592` 三处**同读 `_revive_mode()`**；🟢 产品开关 `combat_revive_enabled` 与诊断枚举 `repair_on_disable` 解耦） |
+| **7** | 🔴 **UI 可读性** | `scripts/ui/monster_layer.gd`（及塔体渲染） | ① **塔体重启动效**（运动 + 亮度，复用现有停机/恢复演出）；② **塔底"重启充能"点亮**（`K` 未用 = 亮，用尽 = 灭）；🔴 **零数字、零倒计时、零进度条**（T-C2 / Q-B15）；🟢 复用现有橙环 `_draw_under_attack`；🟢 零新增美术资产 | ✅ **已实现**（2026-10-12 · `_draw_revive_flash` 爬起动效 + `_draw_revive_charge` 充能点亮；🟢 停机压暗门控由 `revive_ui` 改挂 `_aggro_ui()`「挨打事实层」，与复活档位解耦） |
 | **8** | **扫描器保留为回归资产** | `tests/scan_bulwark_cycle.gd` | 保留 V-8（6 臂）/ V-8b（4 臂）两套配置作为**回归与复现**资产；🔴 `RUNS` 默认仍 300，加跑用 `RUNS=1480` 覆盖；🔴 默认回归不跑 | ✅ **已实现** |
 | **9** | **默认回归保障** | `tests/run_tests.gd` | 全部开关 off 时 **3188 断言全绿**、off 路径逐位不变（加跑前后各跑一次） | ✅ **已实现**（V-8/V-8b 均 PASS） |
 | **10** | 🟢 **T-C1 定向豁免登记** | `mechanics-tower-life-death` **§2.2.1**（条款 `T-E1`）+ §5 **Q-T14** | ✅ **已登记**（2026-10-09 用户拍板）。战斗内被动复活不触碰 T-C1 的依据**已写成明文豁免条款**：豁免范围 = 系统发起 ∧ 死亡时刻「暴露位 & 非 carry」∧ 零择时提示；🔴 **carry 不适用** · **任何需玩家战斗内操作/择时的复活不豁免** · **只豁免 T-C1 一条**。🟢 本 GDD 是 `T-E1` 的**唯一引用方**；后续新增豁免须另登记 `T-E*`，**不得默示扩权** | ✅ **已登记**（🟢 **无代码改动**，纯文档条款） |

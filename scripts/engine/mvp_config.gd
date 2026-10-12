@@ -174,7 +174,10 @@ static func cfg_of(
 		#     2 = PRICED —— 经济探针：修复作为 shop_ai 候选动作，按 ceil(0.30·invested_est) 定价、
 		#                    与 build/up/reinf 竞争同一预算（挂 shop_ai，开关守卫内）。
 		#   🔴 与 SpaceModel.mode / elite_waves_enabled 同款哲学：默认 off = 逐位不变；仅显式扫参启用。
-		#   🔴 这是诊断工具不是 T1 功能；只在 V-7 三臂扫描（scan_repair_on_disable.gd）里被设非 0。
+		#   🔴 这是**诊断/扫描**开关，不是产品开关 —— 只在 V-7 三臂扫描（scan_repair_on_disable.gd）
+		#     与 V-8 扫描臂里被设非 0。🟢 **产品 M-1 不占用它**（2026-10-12 反制窗口解耦）：
+		#     产品战斗内复活由 `wave_director.combat_revive_enabled`（同族产品 bool）表达 ——
+		#     打开即 `_revive_mode()` 视同档 9；本枚举在产品/默认口径恒 0。
 		#   🔒 V-8 扩档（`corebound-bulwark-death-cycle-v3` §10-1，🔴 0/1/2 语义一字不改）：
 		#     9  = 战斗内即时重启（波内 `revive_n_seconds` 秒后自动 `_clear_disabled`，K=`revive_k_per_wave`）
 		#     11 = 波首复活（B3 对照臂 = `N → ∞` 极限档，波首清 disabled）
