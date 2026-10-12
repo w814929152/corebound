@@ -461,8 +461,9 @@ func _draw_towers(sc: float) -> void:
 			draw_arc(sp, rad + maxf(4.0, sc * 0.6), 0.0, TAU, 30, C_SELECT, maxf(2.5, sc * 0.24), true)
 		# 🔒 V-8 停机态：塔身压暗（"倒下了"）→ 爬起时由 `_draw_revive_flash` 重新点亮，
 		#   形成「压暗 → 高亮扩散环 → 恢复常亮」的**运动 + 亮度**演出（T-C2 / §6.1）。
-		#   🔴 只在 revive 功能生效时画（默认 off → 默认画面逐像素不变）。
-		if _revive_on() and _is_disabled(slot):
+		#   🟢 T1 反制窗口解耦：门控改挂 `_aggro_ui()`（"挨打事实层"）—— 塔因仇恨停机就压暗，
+		#      与"复活档位是否开"无关。🔴 aggro off → 逐像素不变（金标本回归零扰动）。
+		if _aggro_ui() and _is_disabled(slot):
 			draw_circle(sp, rad, Color(0.06, 0.07, 0.09, 0.62))
 			draw_arc(sp, rad, 0.0, TAU, 28, Color(0.55, 0.57, 0.62, 0.55),
 				maxf(1.0, sc * 0.10), true)
@@ -505,6 +506,14 @@ func _draw_revive_charge(sp: Vector2, slot: int, rad: float, sc: float) -> void:
 ##      默认画面与改前**逐像素相同**（金标本回归零扰动）。
 func _revive_on() -> bool:
 	return bool(_snap.get("revive_ui", false))
+
+
+## 🟢 T1 反制窗口解耦：停机压暗 = "挨打模式开"这一**事实**的表达，与"复活档位开"解耦。
+##   —— 塔因仇恨倒下就该看见它倒下（第五刀 C 轮已上线 aggro；本解耦修复产品可见性缺口：
+##      原口径把"停机压暗"绑在 `revive_ui` 上 → aggro 开而复活关时，停机塔与活塔视觉无差别）。
+##   🔴 只标事实（这座塔停机了），**不含任何择时读数**（T-E1③ / T-C2）。
+func _aggro_ui() -> bool:
+	return bool(_snap.get("aggro_ui", false))
 
 
 ## 塔位 → 本波「还能不能再爬一次」（布尔）。数据源 = 导演 snapshot 的每塔
@@ -569,26 +578,26 @@ func _forced_select_hosts(snap: Dictionary) -> Array:
 #    "会/不会挨打"，不回答"该不该放"。
 #  显示时机：**决策期**（抽屉展开 = 商店/放置/安全窗，state != COMBAT）；战斗中不显示。
 #  图标语义：暴露位（d_path ≤ 9.0）= 红 X「会挨打」；安全位 = 绿盾「安全」。
-#  🔴 只标**空塔位**（已建塔的暴露度由塔身 + 红环已表达，避免叠图干扰）。
+#  🟢 T1 反制窗口：**空塔位 + 占用塔位**都标（塔信息复用 ⚔/🛡）——占用塔位抬高 + 缩小避免叠图。
 func _draw_exposure_icons(sc: float) -> void:
 	if time_director == null or time_director.sm == null:
 		return
 	# 仅决策期（非战斗）显示；战斗中（COMBAT）保持观赏清爽
 	if int(time_director.sm.state) == _TSM.State.COMBAT:
 		return
-	# 已建塔塔位不叠加图标（塔身 + 红环已表达暴露事实）
+	# 占用塔位：**也画**暴露度图标（🟢 T1 反制窗口：塔信息复用 ⚔/🛡，帮助玩家理解
+	#   "这座塔为什么上次起来了"）；但偏移塔体上方 + 缩小尺寸，避免与塔身叠图。
 	var occupied: Dictionary = {}
 	if controller != null and controller.runtime != null:
 		for tw in controller.runtime.player.towers:
 			occupied[int(tw.slot)] = true
-	var icon_r := maxf(5.0, sc * 0.62)
 	for row in _slot_rows:
 		var slot: int = int(row["slot"])
-		if occupied.has(slot):
-			continue
 		var sp: Vector2 = _to_screen(row["pos"])
-		# 图标画在塔位上方（避开塔位圆环）
-		var ip := Vector2(sp.x, sp.y - maxf(11.0, sc * 1.5))
+		var occ := occupied.has(slot)
+		# 🔴 空塔位：原偏移/尺寸**逐像素不变**；占用塔位：抬高 + 缩小（避免叠塔身）。
+		var icon_r := (maxf(5.0, sc * 0.62) * 0.8) if occ else maxf(5.0, sc * 0.62)
+		var ip := Vector2(sp.x, sp.y - (maxf(18.0, sc * 2.4) if occ else maxf(11.0, sc * 1.5)))
 		if bool(row["is_exposed"]):
 			_draw_cross(ip, icon_r, C_EXPOSE_ICON)     # 暴露 = 红 X（会挨打）
 		else:
@@ -1065,7 +1074,7 @@ func _draw_radial_towers(sc: float) -> void:
 			draw_arc(c, R + 0.5 * sc, 0.0, TAU, 28, P_ALLY_2, maxf(1.5, 0.16 * sc), true)
 		if slot == selected:    # 选中高亮（耀青）
 			draw_arc(c, R + 0.7 * sc, 0.0, TAU, 30, P_ALLY, maxf(2.0, 0.24 * sc), true)
-		if _revive_on() and _is_disabled(slot):   # 停机态（V-8，沿用既有口径）
+		if _aggro_ui() and _is_disabled(slot):   # 停机态（🟢 反制窗口：门控挂 aggro 事实层，与复活解耦）
 			draw_circle(c, R, Color(0.06, 0.07, 0.09, 0.62))
 			draw_arc(c, R, 0.0, TAU, 28, Color(0.55, 0.57, 0.62, 0.55), maxf(1.0, 0.10 * sc), true)
 		_draw_revive_charge(c, slot, R, sc)

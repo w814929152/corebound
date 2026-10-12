@@ -16,6 +16,7 @@ extends Control
 
 const _ShopLayout := preload("res://scripts/ui/shop_layout.gd")
 const _TSM := preload("res://scripts/engine/time_state_machine.gd")
+const _MonsterData := preload("res://scripts/data/monster_data.gd")
 
 const C_GOLD := Color(1.000, 0.788, 0.290)      # #FFC94A 辉金
 const C_ALERT := Color(1.000, 0.180, 0.306)     # #FF2E4E 警报红
@@ -54,6 +55,7 @@ var _layout_label: Label
 var _debug_visible: bool = false
 var _wave_progress: float = 0.0
 var _wave_elite: bool = false
+var _wave_in_combat: bool = false  # 🟢 反制窗口：波次条精英标记「分态取源」用（战斗 vs 决策期）
 var _banner_end_ms: int = 0
 
 # ---- P1 增强：积分数字滚动 + 金色粒子（spec §5.2 / §C.2「增强」）----
@@ -151,7 +153,13 @@ func _on_run_changed() -> void:
 func _on_wave_started(w: int) -> void:
 	if _banner == null:
 		return
-	if _wave_elite:
+	# 🔴 反制窗口 C-6：横幅用**入参 w** 判当前波精英态（不读上一帧残留 `_wave_elite`
+	#   → 无刷新时序窗口）。`elite_waves_enabled` 取自 snapshot（只读，与 w 无关 → 无竞态）。
+	var is_elite := false
+	if controller != null and controller.wave_director != null:
+		var ws: Dictionary = controller.wave_director.snapshot()
+		is_elite = bool(ws.get("elite_waves_enabled", false)) and _MonsterData.is_elite_wave(w)
+	if is_elite:
 		_banner.text = "精英波 %d" % w
 		_banner.add_theme_color_override("font_outline_color", C_ALERT)
 	else:
@@ -377,7 +385,14 @@ func _refresh_wave_progress() -> void:
 	var s: Dictionary = controller.wave_director.snapshot()
 	var n := int(s.get("n", 0))
 	_wave_progress = (float(s.get("spawned", 0)) / float(n)) if n > 0 else 0.0
-	_wave_elite = bool(s.get("is_elite_wave", false))
+	# 🟢 反制窗口 C-6「分态取源」：波次条**永远表达"玩家当下该准备的那一波"** ——
+	#   战斗态(SPAWNING=1 / FIGHTING=2)用**当前波** `is_elite_wave`；安全窗 / IDLE(决策期)用
+	#   **下一波** `next_is_elite_wave`。🔴 修 stale 隐患：`w` 在 `start_wave` 才自增 →
+	#   安全窗期间若直接读 `is_elite_wave` 会显示**刚打完那波**的精英旗（residual）。
+	var st := int(s.get("state", 0))
+	_wave_in_combat = (st == 1 or st == 2)
+	_wave_elite = (bool(s.get("is_elite_wave", false)) if _wave_in_combat
+		else bool(s.get("next_is_elite_wave", false)))
 
 
 func _refresh_debug(s: Dictionary) -> void:
@@ -507,9 +522,12 @@ func _draw() -> void:
 		draw_rect(Rect2(bx - 6.0, by - 6.0, WAVE_BAR_W + 12.0, WAVE_BAR_H + 12.0),
 			Color(C_ALERT.r, C_ALERT.g, C_ALERT.b, 0.2))
 	draw_rect(Rect2(bx, by, WAVE_BAR_W * clampf(_wave_progress, 0.0, 1.0), WAVE_BAR_H), C_ENEMY)
+	# 🟢 T1 反制窗口（玩法②）：精英标记**分态取源**（战斗=当前波 / 决策期=下一波预告）。
+	#   🔴 决策期文案 = "下一波：精英波"（预告，仅决策期）；战斗态 = "精英波"（当前状态）。
+	#   无数字、无倒计时、无进度条（T-E1③ / E-B12 零择时读数）。
 	var font := ThemeDB.fallback_font
 	if font != null and _wave_elite:
-		draw_string(font, Vector2(bx, by - 8.0), "精英波",
+		draw_string(font, Vector2(bx, by - 8.0), ("精英波" if _wave_in_combat else "下一波：精英波"),
 			HORIZONTAL_ALIGNMENT_LEFT, -1, 18, C_ALERT)
 
 

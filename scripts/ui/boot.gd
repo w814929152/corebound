@@ -43,7 +43,9 @@ func _ready() -> void:
 		#    见 battle_shop.gd:50）、`controller.call_deferred("start_run", 1)` **之前**（deferred →
 		#    下一帧才开波，见 battle_shop.gd:91）→ 此处设开关安全、早于首局。
 		#    🔴 headless 分支与 `tests/run_tests.gd` 路径**永不进入**本分支 → 金标本零扰动。
-		#    🔴 repair_on_disable 保持 0（诊断开关，非产品功能）；塔死亡产品路径 = 安全窗三选一弹窗。
+		#    🔴 反制窗口 M-1 上线（阶段 B）：塔死亡产品路径 = **战斗中即时被动复活**
+		#       （`combat_revive_enabled`，见下行新增代码）；`repair_on_disable` 仍保持 0
+		#       （诊断枚举不占用，扫描/测试路径保持纯净）。
 		#    一行回滚（关闭 aggro）：删掉下面 `tower_aggro_enabled = true` 那一行即可
 		#    → 回到第四刀口径（RADIAL + 三原型 + Elite，仇恨关闭 / 塔不可受损 / 无 Disabled）。
 		var bs = BattleShop.instantiate()
@@ -51,7 +53,10 @@ func _ready() -> void:
 		bs.wave_director.prototype_split_enabled = true
 		bs.wave_director.elite_waves_enabled = true
 		bs.wave_director.tower_aggro_enabled = true
-		print("[boot] proto/elite/aggro 全 ON（第五刀上线 · RADIAL 实机口径）")
+		# 🔒 反制窗口 M-1（产品开关 · 与上面三开关同族）：战斗中即时被动复活。
+		#    🔴 一行回滚：删掉下一行即退回默认（塔死亡只走安全窗三选一）。
+		bs.wave_director.combat_revive_enabled = true
+		print("[boot] proto/elite/aggro/revive 全 ON（反制窗口落地 · RADIAL 实机口径）")
 		print("[boot] SpaceModel.mode = RADIAL（径向核心围攻 · 实机默认）")
 		print("[boot] Corebound MVP · 切片4（实时商店覆盖层 + 完整商店逻辑接线）")
 		print("[boot] Tab 开关抽屉 · Esc 关闭/取消 · R 刷新 · 1/2/3 选中即买 · Space 锁定焦点位")

@@ -100,6 +100,14 @@ signal run_won(w: int)
 # ---------------------------------------------------------------------------
 ## 🔒 T1：Q-T3 机会型仇恨（AGGRO_R = 9.0）。MVP 恒 false → 怪物恒 MARCHING。
 var tower_aggro_enabled: bool = false
+## 🔒 T1 反制窗口 M-1：战斗内即时被动复活（**产品开关**，与 proto/elite/aggro 同族）。
+##   MVP 默认 false → `_revive_mode()` 读 cfg（默认 0）→ off 路径逐位不变（金标本零扰动）。
+##   🟢 与 `repair_on_disable` 解耦：那个枚举的 0/1/2 是 V-7 诊断臂、9/11 是 V-8 扫描档；
+##      产品口径**不占用**它（保持扫描路径纯净），改由本成员表达。
+##   🟢 打开时 `_revive_mode()` 视同档 9（战斗内即时复活 · N=0.5s / K=1）——
+##      🔴 复位(:231) / 死亡快照(:525) / tick(:580) 三处**同读 `_revive_mode()`** → 自动一致。
+##   一行回滚：删掉 `boot.gd` 里 `combat_revive_enabled = true` 即退回默认。
+var combat_revive_enabled: bool = false
 ## 🔒 T1 V-1 扫参：ATTRITION 覆盖值。默认 -1 = 读定稿常量（金标本零改动）；
 ##   >= 0 时覆盖 `_damage_tower` 的对塔 DPS 复合比（供扫参脚本与实时↔批处理一致性
 ##   在扫参值下守护）。扫参定稿后回写 `MonsterData.ATTRITION`，此成员退回默认。
@@ -571,7 +579,11 @@ func _tower_pos(t) -> Vector2:
 
 ## 复活开关档位（`mvp_config :: repair_on_disable`）：0=OFF / 1=FREE / 2=PRICED
 ##   （既有三档语义一字不改）/ 9=战斗内即时 / 11=波首（对照臂）。🔴 默认恒 0。
+## 🔒 T1 反制窗口：产品开关 `combat_revive_enabled` 优先 —— 打开时视同档 9。
+##   🟢 解耦点：产品开 M-1 **不再**等于"把诊断枚举设成 9"；扫描/测试仍走 cfg（不受影响）。
 func _revive_mode() -> int:
+	if combat_revive_enabled:
+		return 9
 	return int(cfg.get("repair_on_disable", 0))
 
 
@@ -879,6 +891,12 @@ func snapshot() -> Dictionary:
 		"elite_waves_enabled": elite_waves_enabled,
 		"tower_aggro_enabled": tower_aggro_enabled,
 		"is_elite_wave": is_elite_wave(),
+		# 🔒 T1 反制窗口 UI 数据源（🔴 只**增**只读键，不改既有键语义）：
+		#   `aggro_ui` = "塔会挨打"这一**事实层总闸**（= 仇恨开关本身，与复活档位解耦）→
+		#                供渲染层门控"停机压暗"（塔因仇恨倒下就该看见它倒下）。
+		#   `next_is_elite_wave` = **下一波**是否精英波（供 HUD 安全窗"预告"，区别于"当前波"）。
+		"aggro_ui": tower_aggro_enabled,
+		"next_is_elite_wave": elite_waves_enabled and _MonsterData.is_elite_wave(w + 1),
 	}
 
 

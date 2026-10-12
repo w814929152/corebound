@@ -1351,6 +1351,72 @@ func _test_mirror_fidelity_guard() -> void:
 			% ("+Sapper" if sap else ""), _guard_runset_diff(a, b), 0)
 
 
+# ===========================================================================
+#  AC-CP-1 · 🟢 反制窗口 M-1 产品开关解耦（`combat_revive_enabled`）
+#  ---------------------------------------------------------------------------
+#  目标（T-CP-02 · C-7）：钉死三件事 ——
+#    ① 默认 off：`_revive_mode()`==0、snapshot 新键恒 false（默认回归零扰动）；
+#    ② 开关开：`_revive_mode()`==9（视同档 9，实时复活发生且 `revive_misq≡0`）；
+#    ③ 数据源一致：`aggro_ui`==`tower_aggro_enabled`；`next_is_elite_wave`==`elite ∧ is_elite(w+1)`。
+# ===========================================================================
+func _test_counterplay_product_switch() -> void:
+	_log("")
+	_log("--- [AC-CP-1] 反制窗口产品开关 combat_revive_enabled 解耦（默认 off 零扰动 / 开则视同档9）---")
+	var cfg0 := _Cfg.cfg_of("B")           # repair_on_disable=0（默认）
+	var geo0 = _Geo6.build()
+	# ---- ① 默认 off ----
+	var wd0 = _WaveDirector.new()
+	wd0.tower_aggro_enabled = true
+	wd0.warmup_waves = 0
+	wd0.setup(_mk_player_bulwark_and_carry(1, 2), cfg0, geo0)
+	_check_int("默认 combat_revive_enabled=false → _revive_mode()==0", int(wd0._revive_mode()), 0)
+	var s0: Dictionary = wd0.snapshot()
+	_check_bool("默认 off：snapshot aggro_ui == tower_aggro_enabled(true)",
+		bool(s0.get("aggro_ui", false)), true)
+	_check_bool("默认 off：snapshot next_is_elite_wave == false（elite 未开）",
+		bool(s0.get("next_is_elite_wave", true)), false)
+	_check_bool("默认 off：snapshot revive_ui == false",
+		bool(s0.get("revive_ui", true)), false)
+	# ---- ② 产品开：_revive_mode()=9 ----
+	var wd1 = _WaveDirector.new()
+	wd1.tower_aggro_enabled = true
+	wd1.warmup_waves = 0
+	wd1.combat_revive_enabled = true
+	wd1.setup(_mk_player_bulwark_and_carry(1, 2), cfg0, geo0)
+	_check_int("combat_revive_enabled=true → _revive_mode()==9", int(wd1._revive_mode()), 9)
+	_check_bool("产品开：snapshot revive_ui == true（aggro ∧ ≥9）",
+		bool(wd1.snapshot().get("revive_ui", false)), true)
+	# ---- ③ aggro_ui 跟随 tower_aggro_enabled ----
+	wd1.tower_aggro_enabled = false
+	_check_bool("aggro_ui 跟随 tower_aggro_enabled（off 组合）",
+		bool(wd1.snapshot().get("aggro_ui", true)), false)
+	wd1.tower_aggro_enabled = true
+	# ---- ④ next_is_elite_wave == elite_waves_enabled ∧ is_elite_wave(w+1) ----
+	#   ELITE_EVERY=5 → 精英波 = {5,10,15,20}；故 w=4 预告 W5=精英，w=5 预告 W6=非精英。
+	for pair in [[4, true], [5, false], [9, true], [10, false]]:
+		var wv := int(pair[0])
+		var want := bool(pair[1])
+		var wdw = _WaveDirector.new()
+		wdw.elite_waves_enabled = true
+		wdw.setup(_mk_player_bulwark_and_carry(1, 2), cfg0, geo0)
+		wdw.start_wave(wv)
+		_check_bool("next_is_elite_wave：w=%d 预告 w+1=%d → 期望 %s" % [wv, wv + 1, str(want)],
+			bool(wdw.snapshot().get("next_is_elite_wave", not want)), want)
+	# ---- ⑤ boot 探针：产品口径确实注入 combat_revive_enabled=true ----
+	var boot_src := FileAccess.get_file_as_string("res://scripts/ui/boot.gd")
+	_check_bool("boot 探针：boot.gd 代码行含 `combat_revive_enabled = true`",
+		_src_has_code_token(boot_src, "combat_revive_enabled = true"), true)
+	# ---- ⑥ 产品开（cfg 档 0，仅靠开关）→ 实时复活确发生且硬断言恒 0 ----
+	var wd2 = _mk_director_revive(_mk_player_bulwark_and_carry(1, 2), _mk_cfg_revive(0), 0)
+	wd2.combat_revive_enabled = true
+	wd2.start_wave(1)
+	wd2.run_to_end()
+	var d2: Dictionary = (wd2.last_result as Dictionary).get("v8_diag", {})
+	_check_bool("产品开（cfg 档 0）：revive_fired ≥ 1（M-1 确发生）",
+		float(d2.get("revive_fired", 0.0)) >= 1.0, true)
+	_check("产品开：revive_misq ≡ 0（硬断言不破）", float(d2.get("revive_misq", -1.0)), 0.0)
+
+
 func run_all() -> bool:
 	_test_tower_hp_derivation()
 	_test_aggro_constants()
@@ -1376,6 +1442,7 @@ func run_all() -> bool:
 	_test_revive_snap_rest_roundtrip()
 	_test_revive_default_off_noop()
 	_test_te1_compliance()
+	_test_counterplay_product_switch()
 	_test_mirror_fidelity_guard()
 	_log("")
 	_log("T1 仇恨 汇总：通过 %d 项 / 失败 %d 项" % [_pass, _fail])
