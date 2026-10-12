@@ -18,9 +18,11 @@ extends RefCounted
 ##   · ⑤ 复活 = `wave_sim_aggro._tick_revive`（默认 `repair_on_disable=0` → no-op）。
 ##
 ## 🔴🔴🔴 ② 相位 = **恒大 assign**（忠实真身 `_substep` · 主理人 2026-10-10 裁定）：
-##   既有两镜像在共享相位 ② 上口径不一致（实测可观测，非理论分歧）：
+##   修复前两镜像在共享相位 ② 上口径不一致（实测可观测，非理论分歧）—— 🔴 **2026-10-12 已统一**：
 ##     · `wave_sim_proto` : `monsters = _stable_sort_by_time(monsters)`（**赋值** → 真排序 = 真身）
-##     · `wave_sim_aggro` : `_stable_sort_by_time(monsters)`（**丢弃返回值** → 恒 no-op = **既有缺陷**）
+##     · `wave_sim_aggro` : 🔴 **2026-10-12 已修复**（原 `_stable_sort_by_time(monsters)` 丢弃返回值 = no-op）
+##       → 现为 `monsters = _stable_sort_by_time(monsters)`（**assign** = 真身语义）。
+##       依据/证据：`docs/phase3/aggro-mirror-fidelity-impl.md`（本文件 ② 恒 assign 与之一致）。
 ##     · 真身 `_substep`   : `_stable_sort_by_remain()`（**原地排序** = assign 语义）
 ##   🔴 裁定（统一语义优先于凑守护）：本镜像 ② **恒 assign**，与真身 / `wave_sim_proto` 一致。
 ##     **不**按轴条件归约 —— 那会让 `proto_enabled=false` 配置下**静默复现** aggro 镜像的

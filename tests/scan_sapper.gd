@@ -24,6 +24,14 @@ extends SceneTree
 ##   · 若 Δ 剧烈（< -0.30）→ Sapper 对金标本 AI 过猛，需下调 ×3 倍率或加反制窗口（对接 V-4）。
 ##   · 对比 A vs B 的 Δ：多塔流更能扛 Sapper（肉盾/冗余塔吸收），单核流更脆 → 印证"多塔流是
 ##     肉盾主场"（与玩法②肉盾塔结论联动）。
+##     🔴 **勘误（2026-10-12 · T-DEBT-01）**：本句旧洞察——『多塔流更扛 Sapper / 肉盾主场』——在**忠实镜像**下
+##     **已翻转**：忠实读数 N=300 `ΔA=−0.007 vs ΔB=−0.077` → 实为『**A 更扛**』。
+##     见 `docs/phase3/sapper-balance-review.md` §3.3 / §6 D-5。旧 `−0.027` 口径不可与现值相减。
+##
+## 🔴 几何口径（2026-10-12 统一标注）：本脚本**不设 `SpaceModel.mode` / 不设 `n_slots` / 不传 `geo`**
+##   → 走默认 = `SpaceModel.mode = PATH` + `mvp_config.cfg_of` 默认 `n_slots = 6` + `Geo6`
+##   → **六槽 PATH**（**非** RADIAL 八槽 / 非实机几何）。若需实机几何下的 Sapper Δ，须另接 geo8/RADIAL 臂。
+##   （依据 `docs/phase3/sapper-balance-review.md` §1.3；本工具读数请一律标注为「六槽 PATH」。）
 ##
 ## 跑法：
 ##   <godot> --headless --path D:/roguedemo --script res://tests/scan_sapper.gd [runs]

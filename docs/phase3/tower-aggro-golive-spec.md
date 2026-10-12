@@ -156,7 +156,7 @@ bs.wave_director.tower_aggro_enabled = true
 | 口径 | A | B |
 |---|---|---|
 | M-1 之前扫描（`scan_bulwark` / `scan_protect_core`，aggro ON、proto/elite OFF） | A 无保护 **0.393** / A 保主力塔 **0.583** / A 理想肉盾 **0.623** | **0.883** |
-| Sapper 对照（`scan_sapper`） | A 无 0.393 / A 有 0.400（Δ+0.007） | B 无 0.883 / B 有 0.857（Δ−0.027） |
+| Sapper 对照（`scan_sapper` · **六槽 PATH**）〔🔴 2026-10-12 勘误：右列读数为 `snap/rest` 修复前 + 镜像保真度修复前口径；权威口径 = 忠实镜头 N=300 `ΔB=−0.077`（温和档），见 `sapper-balance-review.md` v2〕 | A 无 0.393 / A 有 0.400（Δ+0.007） | B 无 0.883 / B 有 0.857（Δ−0.027） |
 
 → Sapper 惩罚温和（Δ 在 MC 噪声内）；但**因旧镜像口径不忠实，上述数值与上线实际行为可能有系统性偏差**（尤其 B 路径 / Sapper 开）。**本轮三轴合并后必须以新读数重新定论。**
 
