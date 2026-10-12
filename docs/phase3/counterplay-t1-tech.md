@@ -46,7 +46,7 @@
 | 实时版死亡快照 | `wave_director.gd:525` | `if _revive_mode() >= 9: _death_snapshot(t)` | 在 `disabled=true` **之前**取资格快照 |
 | 批处理镜像（无原型） | `wave_sim_aggro.gd:74,77-85,258-259,830-834` | `int(cfg.get("repair_on_disable",0))` 内联 `>=9` | MC 重扫口径 |
 | 批处理镜像（原型+Elite） | `wave_sim_proto_aggro.gd:79-87,198-200` | 同上 | 实机口径 MC 重扫 |
-| UI 总闸 | `wave_director.snapshot()["revive_ui"]` = `tower_aggro_enabled and _revive_mode() >= 9`（`:877`）→ `monster_layer._revive_on()`（`:506`） | 渲染层只读 | 门控压暗 / 充能点 / 爬起动效 |
+| UI 总闸 | `wave_director.snapshot()["revive_ui"]` = `tower_aggro_enabled and _revive_mode() >= 9`（`:877`）→ `monster_layer._revive_on()`（`:506`） | 渲染层只读 | 门控**充能点**（`_revive_on()`）；**压暗**改挂 `_aggro_ui()`；**爬起环**为**事件驱动**（订阅 `tower_revived` · 不挂 `_revive_on()`） |
 
 `_revive_mode()` 定义：`wave_director.gd:574` = `int(cfg.get("repair_on_disable", 0))`。
 
@@ -129,7 +129,7 @@
 ### 2.3 Disabled 中间态视觉现状 —— 与 `revive_ui` 耦合的既有缺陷 + 解耦评估
 
 **现状（🔴 确认是既有缺陷）**：
-- 塔身"压暗（倒下了）"仅在两处画，且**都门控在 `_revive_on()`**：
+- 塔身"压暗（倒下了）"仅在两处画，且**都门控在 `_revive_on()`**（🟢 本评估**时点的现状**；**已由 C-4 落地改为 `_aggro_ui()`** —— 见 §C-4 / 提交 `098c89d`）：
   - 实时 `_draw_radial_towers`（`:1068`）：`if _revive_on() and _is_disabled(slot): draw 压暗`
   - PATH 版 `_draw_towers`（`:465`）：同款
 - `_revive_on()`（`:506`）= `snapshot()["revive_ui"]` = `tower_aggro_enabled and _revive_mode() >= 9`。
@@ -147,7 +147,7 @@
 
 **若决定解耦（推荐"顺手"做，成本极低）**：
 - 数据面：`snapshot()` 增只读布尔 `"aggro_ui": tower_aggro_enabled`（或 `disabled_ui`）。
-- 渲染面：`monster_layer` 把**压暗**从 `_revive_on()` 改挂 `_aggro_ui()`；**充能点 + 爬起环**仍挂 `_revive_on()`（语义分层：压暗 = "它停机了"（aggro 范畴）；充能点 = "它还能不能爬"（revive 范畴））。
+- 渲染面：`monster_layer` 把**压暗**从 `_revive_on()` 改挂 `_aggro_ui()`；**充能点**（`_draw_revive_charge`）仍挂 `_revive_on()`；**爬起环**（`_draw_revive_flash`）为**事件字典驱动** —— 订阅 `tower_revived`（`_on_tower_revived` 写 `_revive_flash`），**从不挂 `_revive_on()`**（语义分层：压暗 = "它停机了"（aggro 范畴）；充能点 = "它还能不能爬"（revive 范畴）；爬起环 = "它刚爬起来了"（事件范畴））。
 - 🔴 **默认回归零扰动**：aggro OFF（金标本路径）→ 两标志皆 false → 画面逐像素不变 ✅。
 - 🔴 **红线**：压暗是"**只标事实**（这座塔停机了）"，**不得**编码倒计时/进度（T-C2）。
 
@@ -195,7 +195,7 @@
 | **C-1** | **M-1 产品开关解耦**：`wave_director` 新增 `combat_revive_enabled: bool=false`；`_revive_mode()` 改判（成员优先，否则 cfg） | `scripts/gameplay/wave_director.gd` | — | 🟢 低。默认 false → 逐位不变。🔴 守住：复位（`:231`）/快照（`:525`）/tick（`:580`）三处**同读 `_revive_mode()`**（现已如此）；`revive_misq≡0` 一行不动 |
 | **C-2** | **产品口径接线**：窗口模式 `combat_revive_enabled = true` + 一行回滚注释 | `scripts/ui/boot.gd` | C-1 | 🟢 低。仅窗口分支；headless/`run_tests.gd` 永不进入 → 金标本零扰动 |
 | **C-3** | **UI 数据源扩展**：`snapshot()` 增 `aggro_ui`（=`tower_aggro_enabled`）与 `next_is_elite_wave`（`elite_waves_enabled ∧ is_elite_wave(w+1)`） | `scripts/gameplay/wave_director.gd` | — | 🟢 低。纯只读派生字段；默认口径下恒 false |
-| **C-4** | **Disabled 中间态视觉解耦**：压暗从 `_revive_on()` 改挂 `_aggro_ui()`；充能点/爬起环仍挂 `_revive_on()`（两处绘制） | `scripts/ui/monster_layer.gd`（`:465`、`:1068`） | C-3 | 🟢 低。aggro OFF → 逐像素不变。🔴 只标事实、禁倒计时（T-C2） |
+| **C-4** | **Disabled 中间态视觉解耦**：压暗从 `_revive_on()` 改挂 `_aggro_ui()`；**充能点**仍挂 `_revive_on()`；**爬起环**事件驱动（不挂 `_revive_on()`） | `scripts/ui/monster_layer.gd`（`:466`、`:1077`） | C-3 | 🟢 低。aggro OFF → 逐像素不变。🔴 只标事实、禁倒计时（T-C2） |
 | **C-5** | **暴露度图标扩展到塔信息**：占用塔位也画 ⚔/🛡（决策期，避让塔体） | `scripts/ui/monster_layer.gd`（`:573` `_draw_exposure_icons`） | C-3（若读 `aggro_ui`，否则可独立） | 🟢 低。复用既有图标函数，零新数据。🔴 SR-R2 只标事实 |
 | **C-6** | **Elite 波预告**：snapshot 供数（C-3 已含）+ HUD 安全窗"下一波：精英" | `scripts/ui/hud.gd`（`:55/:374/_draw`） | C-3 | 🟢 低。仅 HUD 呈现。🔴 T-C2 禁倒计时 |
 | **C-7** | **回归 / 断言补充**：① 默认 off 零扰动（`aggro=false ∧ combat_revive=false` 与改前逐位同）② `restoral_roundtrip`（6 字段 snap→rest 守恒，GDD §12-4 建议项）③ UI 数据源断言（`revive_ui`/`aggro_ui`/`next_is_elite_wave` 取值）④ boot 产品口径探针 | `tests/test_suite_t1_aggro.gd`（+ 如需 `tests/run_slice8_scene_smoke.gd`） | C-1..C-6 | 🟢 低。纯测试新增 |

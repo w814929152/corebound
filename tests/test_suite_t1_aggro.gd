@@ -1352,16 +1352,18 @@ func _test_mirror_fidelity_guard() -> void:
 
 
 # ===========================================================================
-#  AC-CP-1 · 🟢 反制窗口 M-1 产品开关解耦（`combat_revive_enabled`）
+#  AC-CP-1 / AC-CP-2 / AC-CP-3 · 🟢 反制窗口 M-1 产品开关解耦（`combat_revive_enabled`）
 #  ---------------------------------------------------------------------------
-#  目标（T-CP-02 · C-7）：钉死三件事 ——
-#    ① 默认 off：`_revive_mode()`==0、snapshot 新键恒 false（默认回归零扰动）；
-#    ② 开关开：`_revive_mode()`==9（视同档 9，实时复活发生且 `revive_misq≡0`）；
-#    ③ 数据源一致：`aggro_ui`==`tower_aggro_enabled`；`next_is_elite_wave`==`elite ∧ is_elite(w+1)`。
+#  🔴 守护 ID 对齐设计 spec §5.1（T-CP-06 MINOR-1 订正；断言总数不变，仅按 spec 拆分命名）：
+#    · AC-CP-1 = **默认回归零扰动**（off → `_revive_mode()`==0 · snapshot 新键恒 false）；
+#    · AC-CP-2 = **产品开**：`snapshot["revive_ui"]==true` + 数据源一致
+#                 （`aggro_ui`==`tower_aggro_enabled`；`next_is_elite_wave`==`elite ∧ is_elite(w+1)`）
+#                 + boot 探针（产品口径确注入开关）；
+#    · AC-CP-3 = **硬断言**：M-1 确发生（`revive_fired≥1`）且 `revive_misq ≡ 0`。
 # ===========================================================================
 func _test_counterplay_product_switch() -> void:
 	_log("")
-	_log("--- [AC-CP-1] 反制窗口产品开关 combat_revive_enabled 解耦（默认 off 零扰动 / 开则视同档9）---")
+	_log("--- [AC-CP-1] 默认回归零扰动（off → _revive_mode()==0 · snapshot 新键恒 false）---")
 	var cfg0 := _Cfg.cfg_of("B")           # repair_on_disable=0（默认）
 	var geo0 = _Geo6.build()
 	# ---- ① 默认 off ----
@@ -1378,6 +1380,7 @@ func _test_counterplay_product_switch() -> void:
 	_check_bool("默认 off：snapshot revive_ui == false",
 		bool(s0.get("revive_ui", true)), false)
 	# ---- ② 产品开：_revive_mode()=9 ----
+	_log("--- [AC-CP-2] 产品开 revive_ui==true · 数据源一致（aggro_ui / next_is_elite_wave）---")
 	var wd1 = _WaveDirector.new()
 	wd1.tower_aggro_enabled = true
 	wd1.warmup_waves = 0
@@ -1407,6 +1410,7 @@ func _test_counterplay_product_switch() -> void:
 	_check_bool("boot 探针：boot.gd 代码行含 `combat_revive_enabled = true`",
 		_src_has_code_token(boot_src, "combat_revive_enabled = true"), true)
 	# ---- ⑥ 产品开（cfg 档 0，仅靠开关）→ 实时复活确发生且硬断言恒 0 ----
+	_log("--- [AC-CP-3] 硬断言：M-1 确发生（revive_fired≥1）· revive_misq≡0 ---")
 	var wd2 = _mk_director_revive(_mk_player_bulwark_and_carry(1, 2), _mk_cfg_revive(0), 0)
 	wd2.combat_revive_enabled = true
 	wd2.start_wave(1)
