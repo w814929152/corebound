@@ -18,6 +18,12 @@ extends SceneTree
 ##   · A 理想肉盾    （protect_core=false, bulwark=true） → 主力塔放安全位（本诊断核心）
 ##   · B 无保护      （protect_core=false, bulwark=false）→ 复现起飞率 B 0.817（通过）
 ##
+## 🔒 第五组（T-CP-05 定因实验 · 2026-10-12 新增）：
+##   · B 理想肉盾    （protect_core=false, bulwark=true） → 隔离**几何变量**：对比 C-9 八槽
+##     RADIAL 的 `B+bulwark`（0.680 < 地板 0.747）。本脚本 = 六槽 PATH 同口径。
+##     🔴 判读：六槽 `B+bulwark` ≤ B 地板 → 反向是**结构(build)**成因（与几何无关）；
+##       六槽 `B+bulwark` > B 地板 → 是**几何(槽位)**成因（八槽特定）。
+##
 ## 🔴 口径自证（防跨口径串味，见 a-side-balance-adjudication.md §1.4/§4）：
 ##   本脚本 = 六槽 PATH（cfg_of 默认 n_slots=6 · SpaceModel.mode=PATH），**非**八槽 RADIAL。
 ##   其输出与「八槽 survive_rate 0.60 红线」**不可直接比**（红线归属 = A 起飞率 × 六槽定稿）。
@@ -52,7 +58,7 @@ func _initialize() -> void:
 	print("===============================================================")
 	print("  T1 肉盾塔 Bulwark 有效性诊断（玩法② 涌现策略 + ①理想肉盾建模）")
 	print("  每点 %d 局 MC · ATTRITION=%.1f · 起手保护 W1–%d" % [runs, ATTRITION, WARMUP])
-	print("  四组对照：A无保护 / A主力塔隐身 / A理想肉盾 / B无保护")
+	print("  五组对照：A无保护 / A主力塔隐身 / A理想肉盾 / B无保护 / B理想肉盾(T-CP-05定因)")
 	print("===============================================================")
 	print("")
 
@@ -76,6 +82,11 @@ func _initialize() -> void:
 	print("  B 无保护        ：起飞率 = %s  存活 = %s" % [_fmt(rB["rate"]), _fmt(rB["surv"])])
 	push_error("[Bulwark] B 无保护 rate=%s surv=%s" % [_fmt(rB["rate"]), _fmt(rB["surv"])])
 
+	# 🔒 T-CP-05 定因实验（2026-10-12）：B + bulwark —— 隔离几何变量（六槽 PATH vs C-9 八槽 RADIAL）。
+	var rBb := _run_path("B", false, true, runs)
+	print("  B 理想肉盾      ：起飞率 = %s  存活 = %s" % [_fmt(rBb["rate"]), _fmt(rBb["surv"])])
+	push_error("[Bulwark] B 理想肉盾 rate=%s surv=%s" % [_fmt(rBb["rate"]), _fmt(rBb["surv"])])
+
 	print("")
 	print("  ▶ 判读：")
 	print("     · A 破线复现：%s（预期 ≈0.28 < 0.60）" % ("✅" if float(rA["rate"]) < 0.60 else "❌"))
@@ -94,6 +105,15 @@ func _initialize() -> void:
 	var delta := float(rAb["rate"]) - float(rAp["rate"])
 	print("     · 理想肉盾 vs 隐身：Δ起飞率 = %s（%s → 真放安全位的 DPS 代价%s）"
 		% [_fmt(delta), ("隐身更高" if delta < 0 else "肉盾更高"), ("明显" if absf(delta) > 0.05 else "有限")])
+	# 🔒 T-CP-05 定因实验判读：B 的 bulwark 反向 = 结构(build) 还是 几何(槽位)？
+	var dBb := float(rBb["rate"]) - float(rB["rate"])
+	print("")
+	print("  ▶ [T-CP-05 定因] B 无保护 = %s ／ B 理想肉盾 = %s ／ Δ = %s"
+		% [_fmt(rB["rate"]), _fmt(rBb["rate"]), _fmt(dBb)])
+	if dBb <= 0.0:
+		print("     · 六槽 B+bulwark ≤ B 地板 → 反向是 **结构(build)** 成因（与几何无关）✓")
+	else:
+		print("     · 六槽 B+bulwark > B 地板 → 反向是 **几何(槽位)** 成因（八槽特定）")
 	print("")
 	quit(0)
 
