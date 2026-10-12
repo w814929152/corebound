@@ -9,7 +9,9 @@ extends RefCounted
 ##     ③ 三轴全 OFF                         → 与金标本 `run_loop` 逐位一致
 ##     ④ 全开（proto+elite+aggro）          → 与**真身**逐位一致（上线门禁可信度地基）
 ##   另加交叉断言：Sapper（elite 驱动）轴、aggro 确有杀伤。
-##   另登记（INFO·**不判等**）：旧镜像 `wave_sim_aggro` ② 为 no-op（既有缺陷）→ 与真身已知偏差。
+##   另登记（INFO·**不判等**）：旧镜像 `wave_sim_aggro` ② 原为 no-op（既有缺陷）→
+##   **已于 2026-10-12 保真度修复**（`monsters = _stable_sort_by_time(monsters)` = assign）
+##   → 现与真身逐位一致（见下方 §登记 · 修复前 B 路径整局 4 格分歧 → 修复后 0）。
 ##
 ## 🔴 守护②/④「对标真身」方法（主理人 2026-10-10 裁定 · 取代原「② == run_loop_aggro」）：
 ##   用**小场景逐波**比对 —— 以同一确定性初值造**同一 player**，一次喂 `WaveDirector`（真身，
@@ -179,7 +181,7 @@ func _mg_wave(path: String, geo, w: int, proto: bool, elite: bool, aggro: bool) 
 		EXP, ATTRITION, WARMUP, false, false)
 
 
-## 旧 aggro 镜像单波（② no-op 既有缺陷；**仅登记 INFO 用**，不判等）。
+## 旧 aggro 镜像单波（② 原 no-op 缺陷 · **2026-10-12 已修复 assign**；仅登记 INFO 用，不判等）。
 func _old_aggro_wave(path: String, geo, w: int, sapper: bool) -> Dictionary:
 	var cfg := _Cfg.cfg_of(path)
 	cfg["core_hp"] = BIG_CORE
@@ -377,11 +379,12 @@ func _check_aggro_exercised() -> void:
 
 
 # ---------------------------------------------------------------------------
-#  登记（INFO·不判等）· 旧镜像 `wave_sim_aggro` ② 为 no-op 的既有缺陷
+#  登记（INFO·不判等）· 旧镜像 `wave_sim_aggro` ② 保真度（2026-10-12 已修复 assign）
 # ---------------------------------------------------------------------------
 func _info_registry_old_mirror() -> void:
 	_log("")
-	_log("--- [登记·INFO] 旧镜像 ② 为 no-op 的既有缺陷（🔴 不判等 · 供 impl 记录登记）---")
+	_log("--- [登记·INFO] 旧镜像 `wave_sim_aggro` ② 保真度：2026-10-12 修复（assign）· 登记 ---")
+	_log("    🔴 修复前 B 路径整局 4 格 / B+Sapper 4 格分歧；修复后全 0（逐位 == 真身）。")
 	var prev: int = _SpaceModel.mode
 	_SpaceModel.mode = _SpaceModel.Mode.PATH
 	for path in ["A", "B"]:
@@ -390,23 +393,23 @@ func _info_registry_old_mirror() -> void:
 			var rt := _rt_wave(path, geo, w, false, false, true)
 			var mg := _mg_wave(path, geo, w, false, false, true)
 			var old := _old_aggro_wave(path, geo, w, false)
-			_log("   %s geo6 W%d（普通）：真身↔合并(恒 assign) 差异键=%d（期望 0）；真身↔旧 aggro 差异键=%d（既有缺陷）"
+			_log("   %s geo6 W%d（普通）：真身↔合并(恒 assign) 差异键=%d（期望 0）；真身↔旧 aggro 差异键=%d（修复后应为 0）"
 				% [path, w, _count_wave_diffs(rt, mg), _count_wave_diffs(rt, old)])
 		for w2 in [5, 10]:
 			var rt2 := _rt_wave(path, geo, w2, false, true, true)
 			var old2 := _old_aggro_wave(path, geo, w2, true)
-			_log("   %s geo6 W%d（Sapper 开）：真身↔旧 aggro(sapper) 差异键=%d（既有缺陷）"
+			_log("   %s geo6 W%d（Sapper 开）：真身↔旧 aggro(sapper) 差异键=%d（修复后应为 0）"
 				% [path, w2, _count_wave_diffs(rt2, old2)])
 	_SpaceModel.mode = prev
 	# 整局 run-loop 层对拍（旧 aggro vs 合并 · 同配置 proto/elite OFF + aggro ON）
-	_log("   -- 整局 run-loop 层：旧 run_loop_aggro(②no-op) vs 合并 run_loop_proto_aggro(②assign) --")
+	_log("   -- 整局 run-loop 层：run_loop_aggro(已修复 assign) vs 合并 run_loop_proto_aggro(②assign) --")
 	for path in ["A", "B"]:
 		var a := _collect(3, path, RUNS, false, false, true, false, WARMUP)
 		var b := _collect(2, path, RUNS, false, false, true, false, WARMUP)
-		_log("      %s：%d 局 × ≤%d 波，逐位差异格数=%d" % [path, RUNS, W_MAX, _count_runset_diffs(a, b)])
+		_log("      %s：%d 局 × ≤%d 波，逐位差异格数=%d（修复前 A=0 / B=4）" % [path, RUNS, W_MAX, _count_runset_diffs(a, b)])
 	var aS := _collect(3, "B", RUNS, false, true, true, false, WARMUP)
 	var bS := _collect(2, "B", RUNS, false, false, true, true, WARMUP)
-	_log("      B（Sapper 开）：逐位差异格数=%d" % _count_runset_diffs(aS, bS))
+	_log("      B（Sapper 开）：逐位差异格数=%d（修复前 4）" % _count_runset_diffs(aS, bS))
 
 
 func run_all() -> bool:

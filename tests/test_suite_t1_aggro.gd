@@ -31,12 +31,18 @@ const _WaveSimAggro := preload("res://scripts/engine/wave_sim_aggro.gd")
 const _MonsterData := preload("res://scripts/data/monster_data.gd")
 const _SimPlayer := preload("res://scripts/engine/sim_player.gd")
 const _Geo6 := preload("res://scripts/geo/geo6.gd")
+const _Geo8 := preload("res://scripts/geo/geo8.gd")
+const _SpaceModel := preload("res://scripts/geo/space_model.gd")
 const _Cfg := preload("res://scripts/engine/mvp_config.gd")
 const _PS := preload("res://scripts/engine/player_state.gd")
 const _Monster := preload("res://scripts/gameplay/monster.gd")
 const _PathGeometry := preload("res://scripts/geo/path_geometry.gd")
 const _ShopRuntime := preload("res://scripts/gameplay/shop_runtime.gd")
 const _DE := preload("res://scripts/engine/damage_engine.gd")
+# 🔒 2026-10-12 ② 相位保真度守护（AC-T1-25）用：run-loop 双镜像 + 确定性 RNG。
+const _RunLoopAggro := preload("res://scripts/engine/run_loop_aggro.gd")
+const _RunLoopPA := preload("res://scripts/engine/run_loop_proto_aggro.gd")
+const _PyRandom := preload("res://scripts/engine/py_random.gd")
 
 var _pass = 0
 var _fail = 0
@@ -1222,6 +1228,129 @@ func _test_te1_compliance() -> void:
 		wd.has_signal("tower_revived"), true)
 
 
+# ===========================================================================
+#  AC-T1-25 · 🔴 ② 相位「保真度自证」守护（→ 2026-10-12 保真度修复）
+#  ---------------------------------------------------------------------------
+#  背景：`wave_sim_aggro.gd:189` 原写 `_stable_sort_by_time(monsters)`——**丢弃返回值** →
+#    恒 no-op；而真身 `_substep:365 _stable_sort_by_remain()` 是**原地排序**（= assign 语义）。
+#    → ② 相位「距核心最近优先」从未生效，镜像**不忠实真身**（B 路径整局可见分歧）。
+#    2026-10-12 修为 `monsters = _stable_sort_by_time(monsters)`（assign = 真身语义）。
+#
+#  本守护 = 修复后 `wave_sim_aggro` 逐位忠实真身 `WaveDirector._substep`（对标 `-- aggro_golive`
+#    的「真身 vs 合并镜像逐波逐位」写法，此处**对标 wave_sim_aggro**）：
+#    (A) **逐波**（wave-level · 恒等不变式）：同确定性初值造同一 player，一次喂真身、一次喂镜像 →
+#        逐位比 kills/leaked/scrap_earned/dps/towers_disabled。
+#        🟡 单波层面修复前后**恒为 0**（实测：100+ 场景扫描无单波分歧）→ 锁死"② 语义正确"不变式。
+#    (B) **整局**（run-level · 🔴 判别性闸门）：同 seed 跑 N 局，`run_loop_aggro`（消费本镜像）
+#        逐波逐位 == `run_loop_proto_aggro`（proto/elite OFF · ② 恒 assign，且已由 `-- aggro_golive`
+#        守护② 证 == 真身）。🔴 ② no-op 缺陷**只在整局演化 build 下显形**（单波不显）→ 判别性在此。
+#        修复前：B 路径 4 格 / B+Sapper 4 格 → **FAIL**；修复后：0 格 → **PASS**。
+# ---------------------------------------------------------------------------
+const _GUARD_RT_KEYS: Array = ["kills", "leaked", "scrap_earned", "dps", "towers_disabled"]
+const _GUARD_CMP_KEYS: Array = ["kills", "leaked", "core_hp_raw", "eff_dps_raw", "ratio_raw",
+	"total_hp_raw", "income_raw", "hp_each_raw", "n"]
+const _GUARD_BIG_CORE := 1.0e9
+const _GUARD_RUNS := 40
+const _GUARD_SEED := 20260930
+
+
+## 真身单波：headless 驱动真实 `WaveDirector`（run_to_end 逐子步，无跳步）。
+## 🔴 `core_hp=1e9`：真身「核心归零即中断本波」与批处理「跑满本波」在破局波有 run_loop 层
+##    固有口径差 → 抬高核心让两口径都跑满本波，直测**战斗口径**（与 aggro_golive 同法）。
+func _guard_rt_wave(path: String, geo, w: int, sapper: bool) -> Dictionary:
+	var cfg := _Cfg.cfg_of(path)
+	cfg["core_hp"] = _GUARD_BIG_CORE
+	var p = _SimPlayer.new_player(path, cfg, geo)
+	var wd = _WaveDirector.new()
+	wd.tower_aggro_enabled = true
+	wd.elite_waves_enabled = sapper
+	wd.warmup_waves = 0
+	wd.setup(p, cfg, geo)
+	wd.start_wave(w)
+	return wd.run_to_end()
+
+
+## 镜像单波（同一 player 初值 → 与真身逐位可对）。
+func _guard_mg_wave(path: String, geo, w: int, sapper: bool) -> Dictionary:
+	var cfg := _Cfg.cfg_of(path)
+	cfg["core_hp"] = _GUARD_BIG_CORE
+	var p = _SimPlayer.new_player(path, cfg, geo)
+	return _WaveSimAggro.simulate_wave_aggro(p, w, cfg, geo, true, 0.6, -1.0, 0,
+		false, false, sapper)
+
+
+func _guard_wave_diff(a: Dictionary, b: Dictionary) -> int:
+	var d := 0
+	for k in _GUARD_RT_KEYS:
+		if float(a.get(k, 0.0)) != float(b.get(k, 0.0)):
+			d += 1
+	return d
+
+
+## 整局采集：runner 2 = `run_loop_aggro`（消费本镜像 · sapper 用参数）；3 = `run_loop_proto_aggro`
+##   （proto/elite OFF · elite 参数即 Sapper 轴）。rng 跨局连续消费（同 seed，两 runner 同序）。
+func _guard_collect(runner: int, path: String, runs: int, elite: bool, sapper: bool) -> Array:
+	var cfg := _Cfg.cfg_of(path)
+	var rng := _PyRandom.new(_GUARD_SEED)
+	var out: Array = []
+	for _i in range(runs):
+		var c: Dictionary = cfg.duplicate(true)
+		c["max_actions"] = 12
+		var o: Dictionary
+		if runner == 2:
+			o = _RunLoopAggro.run(path, c, 20, null, rng, true, 0.6, 1.5, 2, false, false, sapper)
+		else:
+			o = _RunLoopPA.run(path, c, 20, null, rng, false, elite, true, 0.6, 1.5, 2, false, false)
+		out.append(o["rows"])
+	return out
+
+
+func _guard_runset_diff(a: Array, b: Array) -> int:
+	var d := 0
+	for ri in range(mini(a.size(), b.size())):
+		var ra: Array = a[ri]
+		var rb: Array = b[ri]
+		if ra.size() != rb.size():
+			d += 1
+		for i in range(mini(ra.size(), rb.size())):
+			for k in _GUARD_CMP_KEYS:
+				if float(ra[i].get(k, 0.0)) != float(rb[i].get(k, 0.0)):
+					d += 1
+	return d
+
+
+func _test_mirror_fidelity_guard() -> void:
+	_log("")
+	_log("--- [AC-T1-25] ② 相位保真度自证（2026-10-12 修复 · 对标真身 _substep）---")
+	# ---- (A) 逐波：真身 vs wave_sim_aggro ----
+	var prev: int = _SpaceModel.mode
+	var wave_diff := 0
+	var aggro_fired := false
+	for scen in [["PATH", "6"], ["RADIAL", "8"]]:
+		var mode := String(scen[0])
+		var geo_tag := String(scen[1])
+		_SpaceModel.mode = _SpaceModel.Mode.RADIAL if mode == "RADIAL" else _SpaceModel.Mode.PATH
+		var geo = _Geo8.build8() if geo_tag == "8" else _Geo6.build()
+		for path in ["A", "B"]:
+			for w in [5, 8]:
+				for sapper in [false, true]:
+					var rt := _guard_rt_wave(path, geo, w, sapper)
+					var mg := _guard_mg_wave(path, geo, w, sapper)
+					wave_diff += _guard_wave_diff(rt, mg)
+					if int(rt.get("towers_disabled", 0)) > 0:
+						aggro_fired = true
+	_SpaceModel.mode = prev
+	_check_int("AC-T1-25A 逐波 真身↔镜像 差异（kills/leaked/scrap/dps/towers_disabled）", wave_diff, 0)
+	_check_bool("AC-T1-25A 场景有效性：确曾触发 aggro 杀伤（towers_disabled>0，非空转）",
+		aggro_fired, true)
+	# ---- (B) 整局（判别性）：run_loop_aggro vs run_loop_proto_aggro(proto/elite OFF) ----
+	for sap in [false, true]:
+		var a := _guard_collect(2, "B", _GUARD_RUNS, false, sap)
+		var b := _guard_collect(3, "B", _GUARD_RUNS, sap, sap)
+		_check_int("AC-T1-25B 整局 B%s 逐波逐位差异格数（aggro vs proto_aggro proto/elite OFF）"
+			% ("+Sapper" if sap else ""), _guard_runset_diff(a, b), 0)
+
+
 func run_all() -> bool:
 	_test_tower_hp_derivation()
 	_test_aggro_constants()
@@ -1247,6 +1376,7 @@ func run_all() -> bool:
 	_test_revive_snap_rest_roundtrip()
 	_test_revive_default_off_noop()
 	_test_te1_compliance()
+	_test_mirror_fidelity_guard()
 	_log("")
 	_log("T1 仇恨 汇总：通过 %d 项 / 失败 %d 项" % [_pass, _fail])
 	return _fail == 0

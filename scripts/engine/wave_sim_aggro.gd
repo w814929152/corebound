@@ -186,7 +186,11 @@ static func simulate_wave_aggro(player, w: int, cfg: Dictionary, geo,
 					D8["ticks_a"] += 1.0
 
 		# ---- ② 集火（按 t_remain 升序 = 距核心最近优先；金标本口径恒正序）----
-		_stable_sort_by_time(monsters)
+		# 🔴 2026-10-12 保真度修复：`_stable_sort_by_time` 返回**新数组**（非原地）→ 必须 assign，
+		#   否则丢弃返回值 = 恒 no-op，② 相位「距核心最近优先」从未生效，镜像**不忠实真身**
+		#   `_substep:365 _stable_sort_by_remain()`（原地排序 = assign 语义）。对齐 `wave_sim.gd:155`
+		#   / `wave_sim_proto.gd:89` / `wave_sim_proto_aggro.gd:162` 既有正确写法。
+		monsters = _stable_sort_by_time(monsters)
 		var dmg := float(dps_box[0]) * DT
 		for m in monsters:
 			if dmg <= 0.0:
