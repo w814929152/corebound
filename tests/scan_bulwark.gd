@@ -21,7 +21,9 @@ extends SceneTree
 ## 🔒 第五组（T-CP-05 定因实验 · 2026-10-12 新增）：
 ##   · B 理想肉盾    （protect_core=false, bulwark=true） → 隔离**几何变量**：对比 C-9 八槽
 ##     RADIAL 的 `B+bulwark`（0.680 < 地板 0.747）。本脚本 = 六槽 PATH 同口径。
-##     🔴 判读：六槽 `B+bulwark` ≤ B 地板 → 反向是**结构(build)**成因（与几何无关）；
+##     🟡 判读（降级 · T-CP-06 · 见 counterplay-player-arm.md v3.2）：六槽 `B+bulwark` ≤ B 地板
+##        → **倾向**结构(build)成因（点估计同向 · n.s. · 幅度受几何/config 调制；runner/elite/Sapper 未隔离，
+##          欲确证需单变量对照——仅改措辞，分支逻辑不动）；
 ##       六槽 `B+bulwark` > B 地板 → 是**几何(槽位)**成因（八槽特定）。
 ##
 ## 🔴 口径自证（防跨口径串味，见 a-side-balance-adjudication.md §1.4/§4）：
@@ -111,7 +113,7 @@ func _initialize() -> void:
 	print("  ▶ [T-CP-05 定因] B 无保护 = %s ／ B 理想肉盾 = %s ／ Δ = %s"
 		% [_fmt(rB["rate"]), _fmt(rBb["rate"]), _fmt(dBb)])
 	if dBb <= 0.0:
-		print("     · 六槽 B+bulwark ≤ B 地板 → 反向是 **结构(build)** 成因（与几何无关）✓")
+		print("     · 六槽 B+bulwark ≤ B 地板 → 🟡 倾向 **结构(build)** 成因（点估计同向 · n.s. · 幅度受几何/config 调制）")
 	else:
 		print("     · 六槽 B+bulwark > B 地板 → 反向是 **几何(槽位)** 成因（八槽特定）")
 	print("")
