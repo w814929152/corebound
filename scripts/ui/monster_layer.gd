@@ -1153,6 +1153,14 @@ func _draw_radial_towers(sc: float) -> void:
 ##   仅在**内芯**叠一个**居中徽记**，按**边数**区分原型（形状冗余，非色相，兼合 §9.2①）：
 ##     Arrow=三角(3) / Cannon=菱形(4) / Frost=六边形(6)。
 ##   🔴 只读 `ctype`（`runtime.snapshot().slots` 已含）→ **零新增 snapshot 字段、零新信号**。
+##   🟠 T-P6-07 微调（选项 A · art-director `s2-s5-visual-review.md` §2）：徽记半径 **0.26R → 0.31R**
+##     （+19%，落在 art-director 建议的 +15~20% 带内）——解 **Frost 六边形在 ~10px 下偏圆** 的可辨性
+##     不足。🔴 配套红线（art-bible §3.1 v0.2 新登记）逐条遵守：
+##       · **不改外框顶点数**（仍 3/4/6；本改仅动半径，`_ngon` 的 `n`/`rot` 一字未动）；
+##       · **不突破塔位半径**（0.31R = 0.53u ≪ R = 1.70u，且 < h≥2 内层细环 0.46R → 不越内芯、不撞内环）；
+##       · **与原型色冗余而非替代**（徽记仍为**形状**第二通道，色相语言未动）；
+##       · 仍居中、仍严格 ≤ R → **外轮廓 8 重对称不受影响**（不改剪影）。
+##   🚫 本轮**不采纳选项 C**（高光外移/减淡）——避免动到已确认的静态可读性成果（team-lead 裁定）。
 func _draw_radial_tower_glyph(c: Vector2, R: float, ctype: String, sc: float) -> void:
 	var n := 3
 	var rot := -PI * 0.5          # 三角：顶点朝上
@@ -1164,7 +1172,8 @@ func _draw_radial_tower_glyph(c: Vector2, R: float, ctype: String, sc: float) ->
 			n = 6
 			rot = 0.0             # 六边形
 	# 亮内形 + 极深描边（自带边界，抗左上高光干扰）。纯几何、无随机、帧间稳定。
-	var pts := _ngon(c, R * 0.26, n, rot)
+	# 🟠 0.31R（≈+19% vs 改前 0.26R）——见上「选项 A」说明。
+	var pts := _ngon(c, R * 0.31, n, rot)
 	draw_colored_polygon(pts, Color(0.97, 0.99, 1.0, 0.95))
 	draw_polyline(_closed(pts), P_TOWER_EDGE, maxf(1.0, 0.06 * sc), true)
 
