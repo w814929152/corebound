@@ -1,4 +1,4 @@
-[gd_scene load_steps=9 format=3]
+[gd_scene load_steps=10 format=3]
 
 ; 《守核 Corebound》切片3 骨架场景 —— 实时商店覆盖层
 ;
@@ -17,6 +17,7 @@
 [ext_resource type="Script" path="res://scripts/ui/time_director.gd" id="2_td"]
 [ext_resource type="Script" path="res://scripts/ui/battlefield_placeholder.gd" id="3_bf"]
 [ext_resource type="Script" path="res://scripts/ui/monster_layer.gd" id="8_ml"]
+[ext_resource type="Script" path="res://scripts/ui/vfx_layer.gd" id="9_vfx"]
 [ext_resource type="Script" path="res://scripts/ui/hud.gd" id="4_hud"]
 [ext_resource type="Script" path="res://scripts/ui/shop_overlay.gd" id="5_shop"]
 [ext_resource type="Script" path="res://scripts/ui/threat_pulse.gd" id="6_pulse"]
@@ -34,6 +35,9 @@ script = ExtResource("3_bf")
 
 [node name="MonsterLayer" type="Node2D" parent="Battlefield"]
 script = ExtResource("8_ml")
+
+[node name="VfxLayer" type="Node2D" parent="Battlefield"]
+script = ExtResource("9_vfx")
 
 [node name="HudLayer" type="CanvasLayer" parent="."]
 layer = 10

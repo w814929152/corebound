@@ -65,6 +65,15 @@ func _ready() -> void:
 			ml.bind_time_director(director)
 		if ml.has_method("bind_controller"):
 			ml.bind_controller(controller)
+	# 🟠 T-P6-07 A 档 VFX 层（兄弟于 MonsterLayer，在其之上绘制；只读 + 纯演出）。
+	var vfx := get_node_or_null("Battlefield/VfxLayer")
+	if vfx != null:
+		if vfx.has_method("bind_director"):
+			vfx.bind_director(wave_director)
+		if vfx.has_method("bind_time_director"):
+			vfx.bind_time_director(director)
+		if vfx.has_method("bind_controller"):
+			vfx.bind_controller(controller)
 	var hud := get_node_or_null("HudLayer/Hud")
 	if hud != null and hud.has_method("bind_director"):
 		hud.bind_director(director)
