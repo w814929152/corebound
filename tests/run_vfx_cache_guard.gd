@@ -1,35 +1,38 @@
 extends SceneTree
 ##
-## 🟠 T-P6-07 `VFX-C3-01` **永久回归守卫** —— C3 径向几何缓存「抽屉开合」cross-state 断言
-##   （headless · `SubViewport` 钉住视口尺寸 · 桩 `time_director` 切 drawer）
+## 🟠 T-P6-07 VFX 永久回归守卫（headless）—— 两条 quality-lead 复核缺陷的锁定断言
 ##
-## 缺陷（quality-lead `docs/phase6/vfx-verify.md` §`VFX-C3-01`）：C3 缓存键曾漏「几何中心 c」维 → 
+## ── [A] `VFX-C3-01` · C3 径向几何缓存「抽屉开合」cross-state ─────────────────────────
+## 缺陷（`docs/phase6/vfx-verify.md` §`VFX-C3-01`）：C3 缓存键曾漏「几何中心 c」维 →
 ##   **1920×1080（高度受限）** 下抽屉开合 `sc` 逐位不变、仅 `c.x` 左移（−307.2px）→ 键不变 ⇒
 ##   `_radial_geo` 返回旧几何 ⇒ 地面几何（环×3 / 放射刻度 / 出生环 / 方位刻度）**错位整局**。
-##   旧键 `Vector3(sc, vs.x, vs.y)`；修复后键 = `(c.x, c.y, sc)`（`monster_layer.gd` `_radial_geo`）。
+##   旧键 `Vector3(sc, vs.x, vs.y)`；修复后 `monster_layer._radial_geo` 键 = `(c.x, c.y, sc)`。
 ##
-## 🔴 为什么是 **cross-state**（open vs closed）：同状态对照是自证 —— 缺陷恰恰只在**状态切换**时显形，
-##   同状态永远 hit。故本守卫必须比较**两个抽屉态**。
+## ── [B] `VFX-PATH-01` · PATH 清池守卫「判据 ≡ 动作」────────────────────────────────
+## 缺陷：`vfx_layer._process` PATH 分支的守卫曾只测 5 个容器，但清理动作实清 7 个
+##   （漏 `_dmg_grid` / `_kill_set`）→ **仅二者非空时守卫不触发 → 残留**（`_kill_set` 在 PATH 下
+##   由 `_on_monster_killed` 逐杀写入、却从不被清）。修复后守卫按同序 7 容器判定。
 ##
-## 断言（两档视口各跑一遍）：
-##   [G0 场景有效] 该档的 sc 行为符合预期（1080=高度受限→sc 不变「复现条件」；1920=宽度受限→sc 变）
-##   [G1 中心跟随] 抽屉开合 → 几何中心 c.x 左移
-##   [G2 缓存失效] 抽屉开合 → 缓存 **miss**（sig 变）AND 返回几何的 spokes 基点 **跟随新 c**（非停在旧 c）
-##   [G3 命中不破] 同状态重复调用 → 缓存 **hit**（sig 不变）且几何逐位稳定（防「每帧重建」回归）
+## ── 断言（两组均 cross-state / 逐项对照，非自证）────────────────────────────────────
+##  [A] 两档视口（1080=高度受限·复现条件；1920=宽度受限·对照）各 6 项：
+##      G0 场景有效性 / G1 中心跟随 / G2 缓存失效+几何跟随 / G3 命中不破（防每帧重建）
+##  [B] 7 个容器逐个「仅它非空」注入 → 步进 `_process`(PATH) → 断言 7 容器全空（=0）
+##
+## 🔴 有效性自证（负向验证 · 见提交信息/报告）：把键/守卫临时退回旧式 → 本守卫必须 FAIL 且
+##   打印可定位信息；还原 → PASS。一条「新旧都 PASS」的守卫等于没有守卫。
 ##
 ## 跑法： <godot> --headless --path . --script res://tests/run_vfx_cache_guard.gd
-##   （亦为 `run_tests -- radial8` 的门禁件之一 → 见 `tests/run_tests.gd` RADIAL8_GATES）
+##   （亦为 `run_tests -- radial8` 门禁件 → `tests/run_tests.gd` RADIAL8_GATES）
 ##
 
 const SPAWN_RADIUS := 55.0
 
-# 桩：只提供 `clock()["drawer"]`（`_field_width()` 唯一读取的抽屉来源）。
+# 桩：`_field_width()` 唯一读取的抽屉来源（`clock()["drawer"]`）。
 class StubSM:
 	var drawer: int = 0
 	func _init(d: int) -> void:
 		drawer = d
 	func clock() -> Dictionary:
-		# 只补 `_field_width()` 读取的 `drawer`；`state` 供潜在绘制路径容错（本件不绘制）。
 		return {"drawer": drawer, "state": 0}
 
 class StubTD extends Node:
@@ -57,23 +60,36 @@ func _process(_delta: float) -> bool:
 	_done = true
 	var SM = load("res://scripts/geo/space_model.gd")
 	var ML = load("res://scripts/ui/monster_layer.gd")
+	var VFX = load("res://scripts/ui/vfx_layer.gd")
 	var prev_mode = SM.mode
+
+	# ================= [A] VFX-C3-01：C3 缓存键 cross-state =================
 	SM.mode = 1   # RADIAL
 	print("=" .repeat(92))
-	print("VFX-C3-01 守卫 · C3 缓存键「几何中心」cross-state 断言（headless · SubViewport 钉尺寸）")
+	print("VFX 永久守卫 · [A] VFX-C3-01（C3 缓存键「几何中心」）+ [B] VFX-PATH-01（PATH 清池判据≡动作）")
 	print("=" .repeat(92))
+	print("\n[A] VFX-C3-01 · C3 缓存键「几何中心」cross-state（SubViewport 钉尺寸）")
 	# 1080：高度受限 → sc 不随抽屉变（复现缺陷条件）；1920：宽度受限 → sc 随抽屉变（对照）。
 	_case(SM, ML, Vector2i(1920, 1080), true)
 	_case(SM, ML, Vector2i(1920, 1920), false)
+
+	# ================= [B] VFX-PATH-01：PATH 清池判据≡动作 =================
+	SM.mode = 0   # PATH（触发 vfx_layer._process 的 PATH 分支）
+	print("\n[B] VFX-PATH-01 · PATH 清池守卫「判据 ≡ 动作」（仅单容器非空 → 步进后必全空）")
+	_path_clear_case(VFX)
+
 	SM.mode = prev_mode   # 防御性回退（本件通常由 run_tests 以子进程拉起，无同进程污染）
 	print("")
 	print("=" .repeat(92))
-	print("VFX-C3-01 守卫汇总：通过 %d 项 / 失败 %d 项" % [_pass, _fail])
+	print("VFX 守卫汇总：通过 %d 项 / 失败 %d 项" % [_pass, _fail])
 	print("=" .repeat(92))
 	quit(0 if _fail == 0 else 1)
 	return true
 
 
+# ---------------------------------------------------------------------------
+#  [A] VFX-C3-01
+# ---------------------------------------------------------------------------
 func _case(SM, ML, sz: Vector2i, expect_sc_equal: bool) -> void:
 	var tag := "%dx%d" % [sz.x, sz.y]
 	print("\n---- [viewport %s] ----" % tag)
@@ -124,3 +140,67 @@ func _case(SM, ML, sz: Vector2i, expect_sc_equal: bool) -> void:
 		PackedVector2Array(g1["spawn"]) == PackedVector2Array(g1b["spawn"]))
 
 	sv.queue_free()
+
+
+# ---------------------------------------------------------------------------
+#  [B] VFX-PATH-01
+# ---------------------------------------------------------------------------
+## 对 7 个容器逐个「仅它非空」注入 → 步进 `_process`（PATH）→ 断言**7 容器全空**。
+## 🔴 cross-state 精神：注入态（1）→ 步进后态（0）必须反转；旧守卫下 `_dmg_grid`/`_kill_set`
+##   两例会停在 1（残留），即本组会对旧实现 FAIL。
+func _path_clear_case(VFX) -> void:
+	var sv := SubViewport.new()
+	sv.size = Vector2i(1920, 1080)
+	root.add_child(sv)
+	var targets: Array = ["_bolts", "_dmg", "_dmg_grid", "_kf_parts", "_kf_rings", "_hp_cache", "_kill_set"]
+	for target in targets:
+		var vx = VFX.new()
+		sv.add_child(vx)
+		vx.visible = false
+		vx.set_process(false)   # 阻止引擎自动补调 → 注入→步进可控
+		_inject_one(vx, String(target))
+		var before := _count_nonempty(vx)
+		vx._process(0.016)      # PATH 模式（SM.mode=0）
+		var after := _count_nonempty(vx)
+		print("   [%s] 注入前非空=%d → 步进 _process 后非空=%d" % [target, before, after])
+		_ok("[PATH] 仅 `%s` 非空(=%d) → 步进后 7 容器全空(=%d)" % [target, before, after],
+			before == 1 and after == 0)
+	sv.queue_free()
+
+
+func _inject_one(vx, which: String) -> void:
+	match which:
+		"_bolts":
+			vx._bolts = [{"from": Vector2.ZERO, "to": Vector2.ONE, "t": 0.0, "dur": 1.0, "tgt": -1}]
+		"_dmg":
+			vx._dmg = [{"base": Vector2.ZERO, "text": "1", "tier": 0, "life": 0.0, "count": 1, "jitter": 0.0}]
+		"_dmg_grid":
+			vx._dmg_grid = {Vector2i(0, 0): 999.0}
+		"_kf_parts":
+			vx._kf_parts = [{"pos": Vector2.ZERO, "vel": Vector2.ZERO, "life": 0.0,
+				"col": Color(1, 0, 0), "sides": 3, "rot": 0.0, "spin": 0.0}]
+		"_kf_rings":
+			vx._kf_rings = [{"pos": Vector2.ZERO, "life": 0.0, "col": Color(1, 0, 0), "r1": 2.0}]
+		"_hp_cache":
+			vx._hp_cache = {0: {"hp": 1.0, "hp_max": 1.0, "pos": Vector2.ZERO}}
+		"_kill_set":
+			vx._kill_set = {0: true}
+
+
+func _count_nonempty(vx) -> int:
+	var n := 0
+	if not vx._bolts.is_empty():
+		n += 1
+	if not vx._dmg.is_empty():
+		n += 1
+	if not vx._dmg_grid.is_empty():
+		n += 1
+	if not vx._kf_parts.is_empty():
+		n += 1
+	if not vx._kf_rings.is_empty():
+		n += 1
+	if not vx._hp_cache.is_empty():
+		n += 1
+	if not vx._kill_set.is_empty():
+		n += 1
+	return n

@@ -160,8 +160,13 @@ func _process(delta: float) -> void:
 	_vfx_t += dt
 	# ⚠️ PATH 模式：本层恒不生效（金标本逐位等价基准）。清空残留并直接返回。
 	if not _SpaceModel.is_radial():
-		if not (_bolts.is_empty() and _dmg.is_empty() and _kf_parts.is_empty()
-				and _kf_rings.is_empty() and _hp_cache.is_empty()):
+		# 🔴 VFX-PATH-01 修复（quality-lead 边界探察）：守卫**必须与下方清理动作逐一对应**。
+		#   此前守卫只测 5 个容器、动作实清 7 个 → `_dmg_grid` / `_kill_set` **非空时守卫不触发**
+		#   → 二者残留（`_kill_set` 在 PATH 下由 `_on_monster_killed` 逐杀写入 :150、却从不被清）。
+		#   现按清理动作的**同序 7 个容器**判据，判据 ≡ 动作。
+		if not (_bolts.is_empty() and _dmg.is_empty() and _dmg_grid.is_empty()
+				and _kf_parts.is_empty() and _kf_rings.is_empty()
+				and _hp_cache.is_empty() and _kill_set.is_empty()):
 			_bolts = []
 			_dmg = []
 			_dmg_grid = {}
