@@ -58,9 +58,12 @@ const C_REVIVE_FLASH := Color(1.0, 0.96, 0.78, 1.0)   # 爬起瞬间 = 高亮扩
 const REVIVE_FLASH_SEC := 0.6
 
 # 原型配色 / 半径（占位美术，无玩法含义）
+# 🔴 T-P6-06 S4（art-bible §2.1 青橙双极）：PATH 分支**判定为保留**（= 金标本基线渲染路径，
+#   `boot.gd` 一行可回退；`run_tests` / 多个 PATH 模式测试仍走它）→ 不删，只**修色**。
+#   · Tank 原 `#598CDB`(蓝) 落在"玩家冷色极" → 改**暖色**（敌色系），与 Rush/Swarm 可辨。
 const C_RUSH := Color(0.98, 0.45, 0.25, 1.0)
 const C_SWARM := Color(0.82, 0.84, 0.88, 1.0)
-const C_TANK := Color(0.35, 0.55, 0.95, 1.0)
+const C_TANK := Color(0.72, 0.36, 0.16, 1.0)   # 暖（焦铜 #B85C29）—— 原蓝 #598CDB 违反敌我色域
 const C_ELITE := Color(1.0, 0.92, 0.25, 1.0)
 const R_RUSH := 5.0
 const R_SWARM := 6.5
@@ -409,8 +412,9 @@ func _hit_tower_slot(screen_p: Vector2) -> int:
 #  已建塔渲染（I-7）
 # ---------------------------------------------------------------------------
 # 塔原型配色（占位，与怪物区分：塔偏青绿系）
+# 🔴 T-P6-06 S4：Cannon 原橙 `#F28C4D` 与敌橙 `#FF6B3D` 撞色 → 改**青系**（玩家冷色极）。
 const C_TOWER_ARROW := Color(0.40, 0.80, 0.55, 1.0)   # 中性（Arrow）
-const C_TOWER_CANNON := Color(0.95, 0.55, 0.30, 1.0)  # fire（Cannon）
+const C_TOWER_CANNON := Color(0.24, 0.80, 0.88, 1.0)  # fire（Cannon）→ 青 #3DCCE0（原橙 #F28C4D 撞敌色）
 const C_TOWER_FROST := Color(0.45, 0.70, 0.95, 1.0)   # frost（Frost）
 const C_TOWER_CORE := Color(0.95, 0.85, 0.30, 1.0)    # 主塔描边
 const C_SELECT := Color(0.35, 0.95, 0.95, 1.0)        # I-7 选中高亮
@@ -772,6 +776,14 @@ func _oct8(c: Vector2, r: float, rot: float) -> PackedVector2Array:
 	return pts
 
 
+## 正 n 边形顶点（`_oct8` 的推广；供 S5 塔原型内形用）。纯几何、无状态。
+func _ngon(c: Vector2, r: float, n: int, rot: float) -> PackedVector2Array:
+	var pts := PackedVector2Array()
+	for k in n:
+		pts.append(c + _dir(rot + TAU * float(k) / float(n)) * r)
+	return pts
+
+
 func _closed(pts: PackedVector2Array) -> PackedVector2Array:
 	if pts.is_empty():
 		return pts
@@ -1067,6 +1079,8 @@ func _draw_radial_towers(sc: float) -> void:
 		draw_colored_polygon(_oct8(c, R * 0.66, PI / 8.0), P_ALLY)   # 塔身（亮，旋转 22.5°）
 		draw_circle(c, R * 0.30, P_ALLY_DARK)                        # 中心圆
 		draw_circle(c + Vector2(-0.28 * R, -0.28 * R), R * 0.30, Color(1.0, 1.0, 1.0, 0.9))
+		# 🔴 T-P6-06 S5：原型区分**内形**（只读 `ctype`，零新增字段/信号；不破 8 重对称剪影）。
+		_draw_radial_tower_glyph(c, R, String(tw.get("ctype", "Arrow")), sc)
 		_draw_rim(c, R, maxf(1.5, U_OUTLINE * sc), RIM_ALLY)         # P0 增强：内发光
 		draw_polyline(_closed(_oct8(c, R + 0.5 * U_OUTLINE * sc, 0.0)),
 			P_TOWER_EDGE, maxf(1.5, U_OUTLINE * sc), true)          # 外扩描边
@@ -1084,6 +1098,27 @@ func _draw_radial_towers(sc: float) -> void:
 		if _tower_flash.has(slot):
 			var tfp := clampf(float(_tower_flash[slot]) / TOWER_FLASH_SEC, 0.0, 1.0)
 			draw_circle(c, R, Color(1.0, 1.0, 1.0, 0.6 * tfp))
+
+
+## 🔴 T-P6-06 S5（锚点4-3「唯一剪影」/ art-bible §3.1 塔=严格 8 重对称）：RADIAL 三塔
+##   补**原型区分**。约束：八边形轮廓保持**严格 8 重对称**（`_oct8` 红线，不改剪影）→
+##   仅在**内芯**叠一个**居中徽记**，按**边数**区分原型（形状冗余，非色相，兼合 §9.2①）：
+##     Arrow=三角(3) / Cannon=菱形(4) / Frost=六边形(6)。
+##   🔴 只读 `ctype`（`runtime.snapshot().slots` 已含）→ **零新增 snapshot 字段、零新信号**。
+func _draw_radial_tower_glyph(c: Vector2, R: float, ctype: String, sc: float) -> void:
+	var n := 3
+	var rot := -PI * 0.5          # 三角：顶点朝上
+	match ctype:
+		"Cannon":
+			n = 4
+			rot = PI * 0.25       # 菱形
+		"Frost":
+			n = 6
+			rot = 0.0             # 六边形
+	# 亮内形 + 极深描边（自带边界，抗左上高光干扰）。纯几何、无随机、帧间稳定。
+	var pts := _ngon(c, R * 0.26, n, rot)
+	draw_colored_polygon(pts, Color(0.97, 0.99, 1.0, 0.95))
+	draw_polyline(_closed(pts), P_TOWER_EDGE, maxf(1.0, 0.06 * sc), true)
 
 
 # ---- 层7：怪（12 边不规则 + 朝核心尖刺扇 + 外扩描边）----

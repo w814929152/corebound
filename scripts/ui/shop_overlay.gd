@@ -176,7 +176,8 @@ func _build() -> void:
 
 	# ---- 积分 / 波次读数（M5：仅击杀获得）----
 	_scrap_label = Label.new()
-	_scrap_label.add_theme_font_size_override("font_size", 13)
+	# 🔴 T-P6-06 S1（§9.1 P0 最小字号 ≥16px）：13 → 16。
+	_scrap_label.add_theme_font_size_override("font_size", 16)
 	inner.add_child(_scrap_label)
 
 	# ---- 3 个商品位（🔴 尺寸/亮度完全一致，X3 合规）----
@@ -199,7 +200,8 @@ func _build() -> void:
 	# ---- 待放置队列（Q-SR5 跨波保留 · E2 角标持续提醒）----
 	_pending_label = Label.new()
 	_pending_label.text = "待放置队列"
-	_pending_label.add_theme_font_size_override("font_size", 14)
+	# 🔴 T-P6-06 S1（§9.1 P0 最小字号 ≥16px）：14 → 16。
+	_pending_label.add_theme_font_size_override("font_size", 16)
 	inner.add_child(_pending_label)
 	_pending_box = VBoxContainer.new()
 	_pending_box.add_theme_constant_override("separation", 4)
@@ -216,7 +218,8 @@ func _build() -> void:
 	inner.add_child(_heavy_panel)
 	var heavy_title := Label.new()
 	heavy_title.text = "重决策（仅安全窗）"
-	heavy_title.add_theme_font_size_override("font_size", 14)
+	# 🔴 T-P6-06 S1（§9.1 P0 最小字号 ≥16px）：14 → 16。
+	heavy_title.add_theme_font_size_override("font_size", 16)
 	_heavy_panel.add_child(heavy_title)
 
 	_discard_btn = Button.new(); _discard_btn.text = "弃卡（🟡 后续切片）"
@@ -251,30 +254,35 @@ func _make_slot(i: int) -> PanelContainer:
 
 	var idx := Label.new()
 	idx.text = "商品位 %d" % (i + 1)
-	idx.add_theme_font_size_override("font_size", 12)
+	# 🔴 T-P6-06 S1（§9.1 P0 最小字号 ≥16px）：12 → 16。
+	idx.add_theme_font_size_override("font_size", 16)
 	vb.add_child(idx)
 
 	var nm := Label.new()
 	nm.text = "[接口] 卡面"
-	nm.add_theme_font_size_override("font_size", 15)
+	# 🔴 T-P6-06 S1（§9.1 P0 最小字号 ≥16px）：15 → 16。
+	nm.add_theme_font_size_override("font_size", 16)
 	vb.add_child(nm)
 	_slot_name.append(nm)
 
 	var kind := Label.new()
 	kind.text = "H1 买得起"
-	kind.add_theme_font_size_override("font_size", 11)
+	# 🔴 T-P6-06 S1（§9.1 P0 最小字号 ≥16px）：11 → 16。
+	kind.add_theme_font_size_override("font_size", 16)
 	vb.add_child(kind)
 	_slot_kind.append(kind)
 
 	var price := Label.new()
 	price.text = "--"
-	price.add_theme_font_size_override("font_size", 13)
+	# 🔴 T-P6-06 S1（§9.1 P0 最小字号 ≥16px）：13 → 16。
+	price.add_theme_font_size_override("font_size", 16)
 	vb.add_child(price)
 	_slot_price.append(price)
 
 	var note := Label.new()
 	note.text = ""
-	note.add_theme_font_size_override("font_size", 11)
+	# 🔴 T-P6-06 S1（§9.1 P0 最小字号 ≥16px）：11 → 16。
+	note.add_theme_font_size_override("font_size", 16)
 	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	vb.add_child(note)
 	_slot_note.append(note)
@@ -339,9 +347,12 @@ func _refresh_shop() -> void:
 				kind_txt += "  ◈协同"
 			_slot_kind[i].text = kind_txt
 			# H1：价格数字用辉金 vs 灰（🔴 卡片本身始终可见，X6）
-			_slot_price[i].text = "%.0f 分" % price
+			# 🔴 T-P6-06 S2（art-bible §9.2 红线①「任何游戏状态不得仅靠颜色传达」）：
+			#   买得起/买不起除**颜色**外，价格前加 **✓/✗ 字形冗余**（纯加法；配色判据一字不改）。
+			var _aff := bool(s["affordable"][i])
+			_slot_price[i].text = "%s %.0f 分" % [("✓" if _aff else "✗"), price]
 			_slot_price[i].add_theme_color_override("font_color",
-				C_ACCENT if bool(s["affordable"][i]) else C_DIM)
+				C_ACCENT if _aff else C_DIM)
 			var note := String(s["notes"][i])
 			if note == "" and bool(s["at_cap"][i]):
 				note = "已达上限 (+0%)"        # H4
@@ -449,7 +460,8 @@ func _refresh_placement(s: Dictionary) -> void:
 		return
 	var head := Label.new()
 	head.text = "放置模式：点塔位落子（Esc 取消，🔴 取消不退款）"
-	head.add_theme_font_size_override("font_size", 13)
+	# 🔴 T-P6-06 S1（§9.1 P0 最小字号 ≥16px）：13 → 16。
+	head.add_theme_font_size_override("font_size", 16)
 	_place_box.add_child(head)
 
 	var slots: Array = s["slots"]

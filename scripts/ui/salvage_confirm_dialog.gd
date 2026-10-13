@@ -88,7 +88,8 @@ func _build() -> void:
 	vbox.add_child(_title_label)
 
 	_body_label = Label.new()
-	_body_label.add_theme_font_size_override("font_size", 15)
+	# 🔴 T-P6-06 S1（§9.1 P0 最小字号 ≥16px）：15 → 16。
+	_body_label.add_theme_font_size_override("font_size", 16)
 	_body_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_body_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	vbox.add_child(_body_label)

@@ -146,12 +146,14 @@ func _make_row(row: Dictionary) -> Control:
 	box.add_theme_constant_override("separation", 6)
 
 	var info := Label.new()
-	info.add_theme_font_size_override("font_size", 14)
+	# 🔴 T-P6-06 S1（§9.1 P0 最小字号 ≥16px）：14 → 16。
+	info.add_theme_font_size_override("font_size", 16)
 	info.text = "塔位 S%d · 累计投入 %.0f 分 · 装配 %d 层" % [slot, invested, n_layers]
 	box.add_child(info)
 
 	var hint := Label.new()
-	hint.add_theme_font_size_override("font_size", 12)
+	# 🔴 T-P6-06 S1（§9.1 P0 最小字号 ≥16px）：12 → 16。
+	hint.add_theme_font_size_override("font_size", 16)
 	# 🔴 字面 `0%` 在 `String % [...]` 里会被当格式符 → 必须转义为 `0%%`（否则整串格式化失败，
 	#    `%d` 原样残留 + 运行时 `ERROR: String formatting error: unsupported format character`）。
 	hint.text = "修复 %d 分（回满 HP · 保留装配卡）｜ 被动拆除（返还 0%% · 销毁 %d 层）" % [repair_cost, n_layers]

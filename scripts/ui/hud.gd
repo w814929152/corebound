@@ -202,7 +202,8 @@ func _build() -> void:
 
 	# 底部 L3 快捷键提示（「开关抽屉 / 放置」降级为提示文本；抽屉内已有放置入口）
 	_hint_label = Label.new()
-	_hint_label.add_theme_font_size_override("font_size", 14)
+	# 🔴 T-P6-06 S1（art-bible §9.1 P0 无障碍硬红线：最小字号 ≥16px）：14 → 16。
+	_hint_label.add_theme_font_size_override("font_size", 16)
 	_hint_label.add_theme_color_override("font_color", C_TEXT_DIM)
 	_hint_label.text = "Tab 商店 · Esc 关闭/取消 · R 刷新 · 1/2/3 选中即买 · Space 锁定焦点位 · F3 调试"
 	add_child(_hint_label)
