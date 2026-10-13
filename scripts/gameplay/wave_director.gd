@@ -814,10 +814,13 @@ func _end_wave() -> void:
 	# 🟢 切片8续3（可玩 MVP）：通关胜利判定放在 last_result 记录**之后** ——
 	#   此时 kills/scrap_earned 已是本波真实值（W20 全清 = 40 杀），等价性零扰动。
 	#   条件：打完最后一波（w >= MAX_WAVE）且核心未归零（not run_failed）。
+	# 🔴 T-P6-06 S3（BUG-1）：胜负**标志位**在此置定，但 `run_won` 的 **emit 延后**到
+	#   `wave_end` 之后（见下）—— 让结算覆盖层读到「本波积分已入账」后的余额。
+	var won_now := false
 	if w >= MAX_WAVE and not run_failed and not victory:
 		victory = true
 		last_result["won"] = true
-		emit_signal("run_won", w)
+		won_now = true
 	# 🔒 T1：记录本波结束时已 Disabled 的塔数（供 UI/单测断言塔死亡后果）。
 	last_result["towers_disabled"] = _count_disabled_towers()
 	# 🔒 V-8：本波复活诊断量（schema 与批处理镜像逐位相同 → 单测可逐键比对）。
@@ -827,6 +830,13 @@ func _end_wave() -> void:
 	# 时钟侧：进安全窗（TimeDirector 会写 paused 并广播 wave_ended）
 	if director != null:
 		director.wave_end(w)
+	# 🔴 T-P6-06 S3（BUG-1 修正）：`run_won` **延后到 `wave_end` 之后**发。
+	#   入账链 = `wave_end` → TimeDirector `wave_ended` → ShopController `_on_wave_ended`
+	#   → `ShopRuntime.grant_wave_result`（本波 scrap_earned × (1+income_mult) 才入账）。
+	#   原先 `run_won` 早于入账 → 结算覆盖层读 `runtime.scrap` 得**入账前余额**（胜利局显 0）。
+	#   🔴 只调 emit 时序，**不动任何数值 / 结算公式**；失败路径（run_lost 在子步发）不受影响。
+	if won_now:
+		emit_signal("run_won", w)
 
 
 # ---------------------------------------------------------------------------
