@@ -80,6 +80,9 @@ const RADIAL8_GATES: Array = [
 	{"name": "bulwark8", "script": "res://tests/run_slice_bulwark8.gd"},
 	{"name": "panorama8", "script": "res://tests/run_slice_panorama8.gd"},
 	{"name": "attrition8", "script": "res://tests/run_slice_attrition8.gd"},
+	# 🟠 VFX-C3-01 永久守卫（quality-lead 复核增量）：C3 几何缓存「抽屉开合」cross-state 断言。
+	#   慢件（SubViewport + 纯逻辑，无真实帧等待）· 快；headless 可跑。
+	{"name": "vfx_cache_guard", "script": "res://tests/run_vfx_cache_guard.gd"},
 ]
 
 # ② 轻量诊断件：脚本内部恒 quit(0)，无 PASS/FAIL 闸门语义（结果供人工判读）。

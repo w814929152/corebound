@@ -982,10 +982,15 @@ func _drawer_open() -> bool:
 	return int(time_director.sm.clock()["drawer"]) != 0
 
 
-## 🟠 T-P6-07 C3：静态径向几何缓存（按 `(sc, 视口)` 签名；仅变化时重建）。
+## 🟠 T-P6-07 C3：静态径向几何缓存（按 `(c.x, c.y, sc)` 签名；仅变化时重建）。
+##   🔴 VFX-C3-01 修复（quality-lead `docs/phase6/vfx-verify.md`）：键**必须含几何中心的依赖**。
+##   几何完全由 `(c, rs)` 决定，`rs = SPAWN_RADIUS · sc`；而 `c.x = _field_width()/2` **含「抽屉」维**
+##   —— 抽屉展开使战场宽变窄 → `c.x` 左移，但 **1920×1080（高度受限）下 `sc` 逐位不变**
+##   → 旧键 `Vector3(sc, vs.x, vs.y)` 漏了 `c.x` ⇒ 抽屉开合时缓存不失效 ⇒ 地面几何（环×3 /
+##   放射刻度 / 出生环 / 方位刻度）**错位整局**。⇒ 键改 `(c.x, c.y, sc)`：`c` 已含视口 + 抽屉信息，
+##   `sc` 覆盖 `rs`。守卫见 `tests/run_vfx_cache_guard.gd`（已入 `run_tests -- radial8`）。
 func _radial_geo(sc: float, c: Vector2, rs: float) -> Dictionary:
-	var vs := get_viewport().get_visible_rect().size
-	var sig := Vector3(sc, vs.x, vs.y)
+	var sig := Vector3(c.x, c.y, sc)
 	if sig != _geo_sig:
 		_geo_sig = sig
 		var rings: Array = []
