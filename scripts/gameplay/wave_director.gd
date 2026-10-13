@@ -846,6 +846,12 @@ func snapshot() -> Dictionary:
 	var live: Array = []
 	for m in monsters:
 		live.append({
+			# 🟠 T-P6-07 R1（唯一 gameplay 触碰 · additive 只读键）：导出本波出生序号
+			#   `index`（源 = `monster.gd:35` 既有字段）。供渲染层帧间差分做**逐怪伤害数字**
+			#   （A2 需稳定 id：快照每帧重排 → 无 id 无法把"上一帧的它"对上"这一帧的它"）。
+			#   🔴 与既有 `sapper` / `revive_charged` / `aggro_ui` 同族：additive、只读、
+			#      不动任何值/口径/信号、不引入随机。`index` 波内唯一（0-based）、波间重置。
+			"index": int(m.index),
 			"proto": String(m.proto),
 			"elite": bool(m.elite),
 			"hp": float(m.hp),
