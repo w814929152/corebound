@@ -23,6 +23,9 @@ name: CI
 #
 # 🔴 口径红线的守门人：CI 只跑既有判据，**不新增、不下调任何阈值**。
 #    任何一步非零退出 = 红（例如默认回归聚合读数漂移、radial8 任一项挂、MC 破线）。
+#
+# 🔴 硬门禁请按**步骤名**引用，勿按序号：插步会使序号整体偏移
+#    （2026-10-13 音频两步插入使原 步1–7 → 步1–9）。
 
 on:
   push:
@@ -106,6 +109,35 @@ jobs:
           "$GODOT" --headless --path . --script res://tests/run_tests.gd 2>&1 | tee ci-logs/default.log
           echo "---- 九段汇总 ----"
           grep -E "汇总：通过|合计：PASS" ci-logs/default.log || true
+
+      # 🟢 T-P6-07 音频框架门禁（2026-10-13 team-lead 批准 · audio-verify G-6 盲区兜底）：
+      #    G-6 事实：音频 id→路径 是**运行时映射**，打错 key = 运行时**静默 null**；
+      #    而唯一含「资产存在性」断言的 run_audio_scene_check.gd 需真显示 → **进不了 CI**。
+      #    两步均 **headless 可跑 · 无显示依赖** · 🔴 **禁 continue-on-error**（与既有硬门禁同口径）。
+      #
+      #    1) 免导入资产 lint —— 🔴 **关闭 G-6 的唯一有效手段**：逐条 FileAccess.file_exists
+      #       校验 SFX_FILES/STEM_FILES 的路径（key→path 直接取自 audio_director.gd 常量，
+      #       **无第二 SSOT**），缺失即 FAIL 并打印 `key → path`。
+      #       🔴 不依赖 `--import`（走裸文件系统）→ 任何环境可跑。
+      - name: 音频资产 lint（免导入 · key/路径兜底）
+        run: |
+          set -euo pipefail
+          GODOT="$HOME/godot/Godot_v${GODOT_VERSION}_linux.x86_64"
+          mkdir -p ci-logs
+          "$GODOT" --headless --path . --script res://tests/lint_audio_assets.gd 2>&1 | tee ci-logs/audio_lint.log
+
+      #    2) §7 音频框架回归断言 —— **额外回归网**（池 24+4 / 总线名 / 信号数 / 聚焦低通 /
+      #       token 扫描）。🔴 口径如实：本步 **不含任何资产存在性检查**，**不**承担关闭
+      #       G-6 的职责（那是上面第 1 步 lint 的事），勿混算。
+      #    🔴 **勿加 `tests/run_audio_scene_check.gd`**：它需**真显示驱动 + 真音频设备**
+      #       （跑 scenes/battle_shop.tscn 做端到端听觉路径验证），ubuntu headless CI 跑不了
+      #       → 窗口验证只在本地/真机跑，**不属 CI 范围**。
+      - name: 音频框架回归断言（§7 五条）
+        run: |
+          set -euo pipefail
+          GODOT="$HOME/godot/Godot_v${GODOT_VERSION}_linux.x86_64"
+          mkdir -p ci-logs
+          "$GODOT" --headless --path . --script res://tests/run_audio_asserts.gd 2>&1 | tee ci-logs/audio_asserts.log
 
       - name: radial8 聚合闸门
         run: |
