@@ -167,9 +167,9 @@ var _env_tier: int = -1
 var _env_prev: int = -1
 var _env_t: float = 1.0
 
-## 🟠 T-P6-07 C3 几何缓存（静态径向几何按 `(sc, 视口)` 缓存为折线点；仅在缩放/视口变化时重建）。
+## 🟠 T-P6-07 C3 几何缓存（静态径向几何按 `(c.x, c.y, sc)` 缓存为折线点；仅在签名变化时重建；`c` 含「视口 × 抽屉」信息、`sc` 覆盖 `rs`）。
 ##   🔴 纯演出/几何缓存，无玩法含义（与 `_vfx_t` 同性质）。
-var _geo_sig: Vector3 = Vector3(-1.0, -1.0, -1.0)   # (sc, vw, vh) 签名
+var _geo_sig: Vector3 = Vector3(-1.0, -1.0, -1.0)   # (c.x, c.y, sc) 签名
 var _geo: Dictionary = {}
 
 
@@ -960,7 +960,7 @@ func _draw_radial_ground(sc: float) -> void:
 	if _drawer_open():
 		draw_circle(c, (float(_SpaceModel.SPAWN_RADIUS) + 2.0) * sc, col_field)
 	# 🟠 T-P6-07 C3（几何缓存 · perf §4）：静态径向几何（同心环×3 / 放射刻度×8 / 出生环+方位刻度）
-	#   按 `(sc, 视口)` 缓存为折线点，仅在缩放/视口变化时重建 → 省掉每帧 ~500 顶点的三角重算
+	#   按 `(c.x, c.y, sc)` 缓存为折线点，仅在签名变化时重建 → 省掉每帧 ~500 顶点的三角重算
 	#   （点数与直接 `draw_arc` 同分度数，视觉逐像素一致；缓存**只含几何**，颜色仍每帧取档）。
 	var g := _radial_geo(sc, c, rs)
 	var w_ring := maxf(1.0, 0.15 * sc)
