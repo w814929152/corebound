@@ -16,6 +16,16 @@ config/features=PackedStringArray("4.7")
 run/main_scene="res://scenes/main.tscn"
 boot_splash/bg_color=Color(0.05, 0.06, 0.08, 1)
 
+[autoload]
+
+; 🔴 T-P6-07 音频框架（audio-spec-a §4.1）：全局单例，headless 下也会加载
+AudioDirector="*res://scripts/audio/audio_director.gd"
+
+[audio]
+
+; 🔴 T-P6-07：Master → Music / SFX / UI / Voice（Music 内含 250/500Hz 挖坑 + 聚焦低通；SFX 内含聚焦低通）
+buses/default_bus_layout="res://default_bus_layout.tres"
+
 [display]
 
 ; 🔴 Q-S3-C（主理人 2026-10-01 拍板，GDD `design/gdd/shop-reroll.md` v1.2）：
