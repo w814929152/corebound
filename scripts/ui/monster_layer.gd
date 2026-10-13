@@ -167,6 +167,11 @@ var _env_tier: int = -1
 var _env_prev: int = -1
 var _env_t: float = 1.0
 
+## 🟠 T-P6-07 C3 几何缓存（静态径向几何按 `(sc, 视口)` 缓存为折线点；仅在缩放/视口变化时重建）。
+##   🔴 纯演出/几何缓存，无玩法含义（与 `_vfx_t` 同性质）。
+var _geo_sig: Vector3 = Vector3(-1.0, -1.0, -1.0)   # (sc, vw, vh) 签名
+var _geo: Dictionary = {}
+
 
 func _ready() -> void:
 	# 🔴 I-7：点选是商店期交互（安全窗 paused=true 下也要收点击）→ ALWAYS。
@@ -760,8 +765,11 @@ func _draw_radial(sc: float) -> void:
 	_draw_radial_core(sc)         # 层5：盘 + 8 刻齿（唯一轮廓）
 	_draw_radial_towers(sc)       # 层6：双层八边形塔
 	_draw_radial_monsters(sc)     # 层7：12 边不规则 + 朝核心尖刺扇
-	_draw_projectiles(sc)         # 层8：字段缺失 → 零绘制
+	_draw_projectiles(sc)         # 层8：字段缺失 → 零绘制（保留既有 hook）
 	_draw_revive_flash(sc)        # 层9：爬起扩散环（沿用既有）
+	# 🟠 T-P6-07 A 档 VFX（弹流/伤害数字/击杀反馈）由**兄弟节点** `VfxLayer` 绘制
+	#   （见 `scripts/ui/vfx_layer.gd` 与 `battle_shop.tscn`）——🔴 本文件保持**零文本**
+	#   （T-E1③ 源码级守：AC-T1-24「渲染层代码行无 draw_string/Label/progress」）。
 
 
 # ---- 纯函数工具（spec §A.9；无状态、无随机、帧间稳定）----
@@ -944,21 +952,61 @@ func _draw_radial_ground(sc: float) -> void:
 	var col_field := _env_col("field", 1.0)
 	var col_ring := _env_col("ring", 0.5)     # 同心环 α=0.5（沿用现状，只换 RGB 基底）
 	var col_spoke := _env_col("ring", 0.35)   # 放射刻度 α=0.35（同档 ring RGB）
-	# 场地圆（地面基 A）—— 与父节点 Battlefield 幂等同色，保证本层自足
-	draw_circle(c, (float(_SpaceModel.SPAWN_RADIUS) + 2.0) * sc, col_field)
-	# 同心环 ×3（距离刻度）
-	for ru in CONCENTRIC_U:
-		draw_arc(c, float(ru) * sc, 0.0, TAU, 128, col_ring, maxf(1.0, 0.15 * sc), true)
-	# 放射刻度 ×8（方位锚）
-	for k in 8:
-		var a := TAU * float(k) / 8.0
-		draw_line(c, c + _dir(a) * rs, col_spoke, maxf(1.0, 0.12 * sc), true)
+	# 🟠 T-P6-07 C4（描画去重 · perf §4）：父节点 `Battlefield`
+	#   （`battlefield_placeholder._draw_radial_ground`）**先画**全屏 bg + 场地圆。抽屉**收起**时
+	#   本层与父层几何/颜色**逐位相同**（同 `sc`、同中心、同 `_env_col`，且换装档同源 `sm.wave`≡`w`）
+	#   → 本层**跳过重复**的场地圆，省一次每帧重铺。抽屉**展开**时父层用全视口、本层用战场宽 →
+	#   二者不同（各画各的轮廓）→ 仍由本层画，行为与改前一致。
+	if _drawer_open():
+		draw_circle(c, (float(_SpaceModel.SPAWN_RADIUS) + 2.0) * sc, col_field)
+	# 🟠 T-P6-07 C3（几何缓存 · perf §4）：静态径向几何（同心环×3 / 放射刻度×8 / 出生环+方位刻度）
+	#   按 `(sc, 视口)` 缓存为折线点，仅在缩放/视口变化时重建 → 省掉每帧 ~500 顶点的三角重算
+	#   （点数与直接 `draw_arc` 同分度数，视觉逐像素一致；缓存**只含几何**，颜色仍每帧取档）。
+	var g := _radial_geo(sc, c, rs)
+	var w_ring := maxf(1.0, 0.15 * sc)
+	draw_polyline(g["ring0"], col_ring, w_ring, true)   # 同心环 ×3（距离刻度）
+	draw_polyline(g["ring1"], col_ring, w_ring, true)
+	draw_polyline(g["ring2"], col_ring, w_ring, true)
+	for s in g["spokes"]:                                # 放射刻度 ×8（方位锚）
+		draw_line(s[0], s[1], col_spoke, maxf(1.0, 0.12 * sc), true)
 	# 出生环（边界）+ 方位刻度 —— 🔴 **固定不换色**（spec §A.3 / 用户拍板②）
-	draw_arc(c, rs, 0.0, TAU, 160, P_SPAWN_EDGE, maxf(2.0, 0.28 * sc), true)
-	for k in 8:
-		var a2 := TAU * float(k) / 8.0
-		draw_line(c + _dir(a2) * (rs - 0.8 * sc), c + _dir(a2) * (rs + 0.8 * sc),
-			P_SPAWN_EDGE, maxf(1.5, 0.22 * sc), true)
+	draw_polyline(g["spawn"], P_SPAWN_EDGE, maxf(2.0, 0.28 * sc), true)
+	for tk in g["ticks"]:
+		draw_line(tk[0], tk[1], P_SPAWN_EDGE, maxf(1.5, 0.22 * sc), true)
+
+
+## 抽屉是否展开（只读 TimeDirector；`_field_width()` 同源）。
+func _drawer_open() -> bool:
+	if time_director == null or time_director.sm == null:
+		return false
+	return int(time_director.sm.clock()["drawer"]) != 0
+
+
+## 🟠 T-P6-07 C3：静态径向几何缓存（按 `(sc, 视口)` 签名；仅变化时重建）。
+func _radial_geo(sc: float, c: Vector2, rs: float) -> Dictionary:
+	var vs := get_viewport().get_visible_rect().size
+	var sig := Vector3(sc, vs.x, vs.y)
+	if sig != _geo_sig:
+		_geo_sig = sig
+		var rings: Array = []
+		for ru in CONCENTRIC_U:
+			rings.append(_circle_pts(c, float(ru) * sc, 128))
+		var spokes: Array = []
+		var ticks: Array = []
+		for k in 8:
+			var a := TAU * float(k) / 8.0
+			spokes.append([c, c + _dir(a) * rs])
+			ticks.append([c + _dir(a) * (rs - 0.8 * sc), c + _dir(a) * (rs + 0.8 * sc)])
+		_geo = {"ring0": rings[0], "ring1": rings[1], "ring2": rings[2],
+			"spawn": _circle_pts(c, rs, 160), "spokes": spokes, "ticks": ticks}
+	return _geo
+
+
+func _circle_pts(c: Vector2, r: float, seg: int) -> PackedVector2Array:
+	var pts := PackedVector2Array()
+	for i in range(seg + 1):
+		pts.append(c + _dir(TAU * float(i) / float(seg)) * r)
+	return pts
 
 
 # ---- 层3：全单位投影（先画全部影，再画全部本体）----
