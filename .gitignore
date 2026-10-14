@@ -23,3 +23,12 @@ desktop.ini
 # 编辑器备份
 *.swp
 *~
+
+# 验证日志 / 探针截帧产物（不入库：体量与可复现性均不适配版本库）
+ci-logs/
+
+# Godot 4 导入元数据 / UID
+#   本仓约定 = 0 跟踪（`git ls-files "*.import" "*.uid"` 为空），由引擎按需重生成。
+#   显式忽略以消除 `git status` 噪音，不改变既有行为。
+*.import
+*.uid
