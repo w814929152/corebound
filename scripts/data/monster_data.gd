@@ -45,9 +45,29 @@ const ELITE_HP_MULT := 2.5          # m_hp_elite（浓缩口径：Elite 单只 =
 
 ## 🔒 T1 ⑤ Sapper 精英（Q-T11 顺序3「锁定增伤流」）：Sapper 对塔伤害倍率 ×3。
 ##   Sapper = Elite 波（每5波）里的精英怪 —— 无视距离直奔最近的塔并锁定攻击。
-##   对塔 DPS = `ATTRITION × HP0 × m_dps × SAPPER_DMG_MULT`。
+##   对塔 DPS = `ATTRITION × HP0 × m_dps × sapper_dmg_mult(w)`（W≥10 走随波梯度；见下方 P2-Sapper SSOT）。
 ##   🔴 金标本零改动：Sapper 由 elite_waves_enabled 诊断开关控制，MVP 恒 false → 本值不消费。
 const SAPPER_DMG_MULT := 3.0        # Sapper 对塔伤害 ×3（塔杀手）
+
+# ---- 🟠 P2-Sapper 对塔倍率梯度（W≥10）SSOT：sapper_dmg_mult(w) ----
+## spec `docs/phase6/balance-p2-spec.md` §1.2。`sapper_dmg_mult(w) = SAPPER_DMG_MULT × g(w)`；
+## `w < SAPPER_RAMP_W0` → `g≡1`（W5 教学墙逐位不变）。
+## 🟢 提交①「落机制」中性值 `G0=1.0 / SLOPE=0.0` ⇒ `g(w)≡1.0`（全 w）⇒ 返回值逐位 == `SAPPER_DMG_MULT`（3.0）；
+##    中性值同时是 kill-switch：翻参后把 `G0/SLOPE` 退回中性值即零代码回滚（spec §6.1 第 1 档）。
+## 🔴 放本文件（非 `mvp_config.gd`）→ 零 cfg-shape 变更（`cfg_of()` 金标本对象形状不动）。
+const SAPPER_RAMP_W0 := 10          # 梯度开启波（唯一已定值 · GRADIENT_ON_WAVE）
+const SAPPER_RAMP_G0 := 1.0         # 🟡 中性值（提交①）· W0 处梯度基线 g(W0)
+const SAPPER_RAMP_SLOPE := 0.0      # 🟡 中性值（提交①）· 每波线性增量（≥0）
+const SAPPER_RAMP_CAP := 3.0        # g 上限（clampf 上界 ≥ G0）
+
+
+static func sapper_dmg_mult(w: int) -> float:
+	if w < SAPPER_RAMP_W0:                      # w ∈ {1..9}（含 W5）→ 逐位保留现行 3.0
+		return SAPPER_DMG_MULT
+	var g := SAPPER_RAMP_G0 + SAPPER_RAMP_SLOPE * float(w - SAPPER_RAMP_W0)
+	g = clampf(g, SAPPER_RAMP_G0, SAPPER_RAMP_CAP)
+	return SAPPER_DMG_MULT * g
+
 
 # ---- GDD §2.6 仇恨（🔒 T1 生效；MVP 骨架登记，不进判定）----
 const AGGRO_R := 9.0                # R1 转向半径（水平面 XZ，不判 Y）

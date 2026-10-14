@@ -439,6 +439,8 @@ func _apply_aggro() -> void:
 	if player == null:
 		return
 	var v0x := v0_
+	# 🟠 P2-Sapper（路线 A · 波级预计算贯穿）：同一 `w`、同一 SSOT 函数 → 与批处理镜像逐位等价。
+	var sapper_mult := _MonsterData.sapper_dmg_mult(w)
 	for m in monsters:
 		if m == null or float(m.hp) <= 0.0:
 			continue
@@ -459,7 +461,7 @@ func _apply_aggro() -> void:
 					m.state = MState.MARCHING
 					m.target_slot = -1
 				else:
-					_damage_tower(m)
+					_damage_tower(m, sapper_mult)
 
 
 ## 找最近的**未 Disabled** 塔（距离 ≤ AGGRO_R）。返回塔位 slot，无则 -1。
@@ -516,13 +518,14 @@ func _aggro_target_valid(m, v0x: float) -> bool:
 
 
 ## AggroTower 怪对目标塔造成伤害；塔归零 → Disabled 中间态。
-func _damage_tower(m) -> void:
+## 🟠 P2-Sapper：`sapper_mult` = 本波的 `sapper_dmg_mult(w)`（由 `_apply_aggro` 贯穿）。
+func _damage_tower(m, sapper_mult: float) -> void:
 	var t = _tower_by_slot(m.target_slot)
 	if t == null or bool(t.disabled):
 		return
 	# 对塔 DPS = ATTRITION × HP0 × m_dps(proto)（V-1 复合比口径；attrition_override>=0 时覆盖）
-	# 🔒 T1 ⑤ Sapper：对塔伤害 ×3（m.sapper 标志）。
-	var mdps: float = float(m.m_dps) * (_MonsterData.SAPPER_DMG_MULT if m.sapper else 1.0)
+	# 🔒 T1 ⑤ Sapper：对塔伤害 ×`sapper_mult`（= SSOT `sapper_dmg_mult(w)`；中性 g≡1 ⇒ 逐位 = 3.0）。
+	var mdps: float = float(m.m_dps) * (sapper_mult if m.sapper else 1.0)
 	var dmg := _MonsterData.resolve_attrition(attrition_override) * _MonsterData.HP0 * mdps * _WaveSim.DT
 	t.hp = float(t.hp) - dmg
 	if float(t.hp) <= 0.0:

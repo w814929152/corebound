@@ -252,7 +252,8 @@ static func simulate_wave_aggro(player, w: int, cfg: Dictionary, geo,
 		#   贴合 GDD「苟活期可感知、成型期才致命」的意图。🔴 仅扫参显式启用（可回退）。
 		if aggro_enabled and w > warmup_waves:
 			_apply_aggro(monsters, v0_, slot_positions, cfg, player, geo, dps_box,
-				_MonsterData.resolve_attrition(attrition), dis_new_box, protect_core, sapper, v8)
+				_MonsterData.sapper_dmg_mult(w), _MonsterData.resolve_attrition(attrition),
+				dis_new_box, protect_core, sapper, v8)
 		# ---- ⑤ 战斗中复活（v3 §3 · 被动/系统发起 · 波内 `N` 秒后自动重启）----
 		#   🔴 默认 repair_on_disable=0 → 不触发。
 		if revive_mode >= 9 and revive_mode != 11 and w > warmup_waves:
@@ -659,8 +660,8 @@ static func _in_reverb(m: Array, v0_: float, slot_positions: Array, player,
 #             dps 成员变量重算逐位一致）
 # ---------------------------------------------------------------------------
 static func _apply_aggro(monsters: Array, v0_: float, slot_positions: Array,
-		cfg: Dictionary, player, geo, dps_box: Array, attrition: float = 0.5,
-		dis_new_box: Array = [0], protect_core: bool = false,
+		cfg: Dictionary, player, geo, dps_box: Array, sapper_mult: float,
+		attrition: float = 0.5, dis_new_box: Array = [0], protect_core: bool = false,
 		sapper: bool = false, v8_box: Array = []) -> void:
 	var d8_on: bool = v8_box.size() > 0
 	var D8: Dictionary = v8_box[0] if d8_on else {}
@@ -689,7 +690,7 @@ static func _apply_aggro(monsters: Array, v0_: float, slot_positions: Array,
 				if d8_on:
 					D8["gap_unlocked"] += 1.0
 			else:
-				_damage_tower(m, player, cfg, geo, dps_box, attrition, dis_new_box, v8_box)
+				_damage_tower(m, player, cfg, geo, dps_box, sapper_mult, attrition, dis_new_box, v8_box)
 
 
 static func _monster_pos(m: Array, v0_: float) -> Vector2:
@@ -814,14 +815,14 @@ static func _aggro_target_valid(m: Array, v0_: float, player, slot_positions: Ar
 ## AggroTower 怪对目标塔造成伤害；塔归零 → Disabled 中间态 → 重算 dps。
 ## 🔴 直接改 player.towers 的 hp/disabled（单一数据源）→ dps_only 重算读到新 disabled。
 static func _damage_tower(m: Array, player, cfg: Dictionary, geo, dps_box: Array,
-		attrition: float, dis_new_box: Array = [0], v8_box: Array = []) -> void:
+		sapper_mult: float, attrition: float, dis_new_box: Array = [0], v8_box: Array = []) -> void:
 	var slot: int = int(m[3])
 	var t = _tower_by_slot(player, slot)
 	if t == null or bool(t.disabled):
 		return
 	# 对塔 DPS = ATTRITION × HP0 × m_dps(proto)（V-1 复合比口径；attrition 经扫参覆盖解析）
-	# 🔒 T1 ⑤ Sapper：对塔伤害 ×3（m[5]=sapper 标志）。
-	var mdps: float = float(m[4]) * (float(_MonsterData.SAPPER_DMG_MULT) if bool(m[5]) else 1.0)
+	# 🔒 T1 ⑤ Sapper：对塔伤害 ×`sapper_mult`（= SSOT `sapper_dmg_mult(w)`；中性 g≡1 ⇒ 逐位 = 3.0）。
+	var mdps: float = float(m[4]) * (sapper_mult if bool(m[5]) else 1.0)
 	var dmg := attrition * _MonsterData.HP0 * mdps * DT
 	t.hp = float(t.hp) - dmg
 	if float(t.hp) <= 0.0:

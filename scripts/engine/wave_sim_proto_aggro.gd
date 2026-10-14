@@ -193,8 +193,8 @@ static func simulate_wave_proto_aggro(player, w: int, cfg: Dictionary, geo = nul
 		# ---- ④ 仇恨行为（Q-T3 机会型仇恨 · 仅 aggro 开且过起手保护时生效）----
 		if aggro_enabled and w > warmup_waves:
 			_apply_aggro(monsters, v0_, slot_positions, cfg, player, geo, dps_box,
-				_MonsterData.resolve_attrition(attrition), dis_new_box, protect_core,
-				elite_enabled, [])
+				_MonsterData.sapper_dmg_mult(w), _MonsterData.resolve_attrition(attrition),
+				dis_new_box, protect_core, elite_enabled, [])
 		# ---- ⑤ 战斗中复活（V-8 · 默认 repair_on_disable=0 → no-op）----
 		if revive_mode >= 9 and revive_mode != 11 and w > warmup_waves:
 			_WaveSimAggro._tick_revive(player, cfg, geo, dps_box, D8, exp)
@@ -220,8 +220,8 @@ static func simulate_wave_proto_aggro(player, w: int, cfg: Dictionary, geo = nul
 #   其余（最近塔选择 / 迟滞带 / 塔伤害 / sapper×3）一律复用 `wave_sim_aggro` 的 static helper。
 # ---------------------------------------------------------------------------
 static func _apply_aggro(monsters: Array, v0_: float, slot_positions: Array,
-		cfg: Dictionary, player, geo, dps_box: Array, attrition: float = 0.5,
-		dis_new_box: Array = [0], protect_core: bool = false,
+		cfg: Dictionary, player, geo, dps_box: Array, sapper_mult: float,
+		attrition: float = 0.5, dis_new_box: Array = [0], protect_core: bool = false,
 		sapper: bool = false, v8_box: Array = []) -> void:
 	var d8_on: bool = v8_box.size() > 0
 	var D8: Dictionary = v8_box[0] if d8_on else {}
@@ -246,7 +246,7 @@ static func _apply_aggro(monsters: Array, v0_: float, slot_positions: Array,
 				if d8_on:
 					D8["gap_unlocked"] += 1.0
 			else:
-				_WaveSimAggro._damage_tower(m, player, cfg, geo, dps_box, attrition, dis_new_box, v8_box)
+				_WaveSimAggro._damage_tower(m, player, cfg, geo, dps_box, sapper_mult, attrition, dis_new_box, v8_box)
 
 
 ## 怪物世界坐标（按模式分派位置派生；🔴 m_spd 取怪物自身 m[7]，对齐真身 `monster.pos`）。
