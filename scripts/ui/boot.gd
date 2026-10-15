@@ -38,7 +38,7 @@ func _ready() -> void:
 		# 🔴 第五刀上线口径（2026-10-10 用户裁决「上线 + CI 转硬门禁」）：实机**全开**——
 		#    RADIAL + 三原型 + Elite + 仇恨（塔可受损 / Disabled 中间态 / 安全窗三选一修复）。
 		#    上线门禁：实机全开 MC **PRICED（最接近产品）多塔 B@6 = 0.850 ≥ 0.80 达标**
-		#    （FREE 上界 0.877 / OFF 下界 0.677；口径矩阵见 impl §7.4）。
+		#    （FREE 上界 0.877 / OFF 下界 0.683〔P2②翻参后 · 原 0.677〕；口径矩阵见 impl §7.4）。
 		#    注入点必须在 `add_child(bs)` **之后**（battle_shop._ready() 同步建好 wave_director，
 		#    见 battle_shop.gd:50）、`controller.call_deferred("start_run", 1)` **之前**（deferred →
 		#    下一帧才开波，见 battle_shop.gd:91）→ 此处设开关安全、早于首局。
