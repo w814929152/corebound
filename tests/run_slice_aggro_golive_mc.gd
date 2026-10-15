@@ -21,7 +21,7 @@ extends SceneTree
 ##
 ## 判据（spec §4.2 + D7-③）：
 ##   · **主判**：PRICED 臂 B(n_slots=6) 起飞率 ≥ 0.80 ← 口径补全后的门禁
-##   · **基线**：OFF 臂 B@6 = 0.677（既有读数，本脚本自检复现 → 零扰动证据）
+##   · **基线**：OFF 臂 B@6 = 0.683（既有读数，本脚本自检复现 → 零扰动证据）
 ##   · A 路径只作 INFO（H2 已裁决关闭；单核高风险为设计预期）← **不作门禁**
 ##   · 每臂输出：起飞率 / 存活率 / 中位起飞波 / 平均结算波 / 核心 HP 分布 / 末波 Disabled 塔数分布
 ##   · **修复成交次数**（PRICED/FREE 臂 · 确认修复机制确在起作用）
@@ -50,8 +50,8 @@ const TH_TAKEOFF_B := 0.80   # 🔴 spec §4.2 门禁红线（禁下调）
 const WARMUP := 2            # = MonsterData.WARMUP（起手保护）
 const N_SLOTS_MAIN := 6      # 实机默认（门禁臂）
 const N_SLOTS_ALT := 8       # 八槽径向（参考臂 · Q-R9 未批准为出货配置）
-## 既有基线读数（第五刀初版 · repair=0 · n_slots=6 · B）—— 用于自检复现（零扰动证据）。
-const BASE_B6_N_TAKEOFF := 203   # 起飞 203/300 → 0.677
+## 基线读数（提交②翻参后 · repair=0 · n_slots=6 · B）—— 用于自检复现（守门一致证据）。
+const BASE_B6_N_TAKEOFF := 205   # 起飞 205/300 → 0.683（提交②翻参后 · rng 再分岔 · 非行为改善）
 ## 口径矩阵：repair_on_disable 三档（标签用于打印）。
 const REPAIR_MODES: Array = [0, 1, 2]
 const REPAIR_LABELS: Array = ["repair=0 OFF(基线·下界)", "repair=1 FREE(上界)", "repair=2 PRICED(最接近产品)"]
@@ -211,14 +211,14 @@ func _initialize() -> void:
 			% [String(REPAIR_LABELS[ri]), N_SLOTS_MAIN, _fmt(float(b6["rate"])),
 				int(b6["n_takeoff"]), int(b6["n"]), int(b6["n_surv"]), int(b6["n"])])
 
-	# ---- 自检：OFF 臂 B@6 必须复现既有基线 0.677（零扰动证据）----
+	# ---- 自检：OFF 臂 B@6 必须复现既有基线 0.683（零扰动证据）----
 	var off_b6: Dictionary = m6[0]["B"]
 	var off_takeoff := int(off_b6["n_takeoff"])
 	if off_takeoff == BASE_B6_N_TAKEOFF:
-		print("  [自检] OFF B@%d 复现基线 %d/%d=0.677 ✅（repair 接线零扰动）"
+		print("  [自检] OFF B@%d 复现基线 %d/%d=0.683 ✅（repair 接线零扰动）"
 			% [N_SLOTS_MAIN, off_takeoff, int(off_b6["n"])])
 	else:
-		print("  [自检] 🔴 OFF B@%d = %d/%d（期望基线 %d/300=0.677）→ 偏差 = 红旗（0 档被污染？）"
+		print("  [自检] 🔴 OFF B@%d = %d/%d（期望基线 %d/300=0.683）→ 偏差 = 红旗（0 档被污染？）"
 			% [N_SLOTS_MAIN, off_takeoff, int(off_b6["n"]), BASE_B6_N_TAKEOFF])
 		_fail += 1
 

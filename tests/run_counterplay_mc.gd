@@ -18,7 +18,7 @@ extends SceneTree
 ##
 ## 判据（team-lead · C-8）：
 ##   · **主判**：REVIVE(9) 臂 B(n_slots=6) 起飞率 ≥ 0.80 → 保留 C-2 上行；< 0.80 → 破线不上线。
-##   · **自检**：OFF(0) 臂 B@6 必须复现既有基线 203/300=0.677（revive 接线零扰动证据）。
+##   · **自检**：OFF(0) 臂 B@6 必须复现基线 205/300=0.683（提交②翻参后 · 接线一致证据）。
 ##
 ## 跑法：
 ##   <godot> --headless --path D:/roguedemo --script res://tests/run_counterplay_mc.gd [runs]
@@ -40,7 +40,7 @@ const TH_TAKEOFF_B := 0.80      # 🔴 team-lead C-8 门禁红线（禁下调）
 const WARMUP := 2
 const N_SLOTS_MAIN := 6
 const N_SLOTS_ALT := 8
-const BASE_B6_N_TAKEOFF := 203  # 既有基线 OFF B@6 = 203/300 = 0.677（自检复现）
+const BASE_B6_N_TAKEOFF := 205  # 提交②翻参后 OFF B@6 = 205/300 = 0.683（rng 再分岔 · 非行为改善）
 const MODES: Array = [0, 1, 2, 9]
 const LABELS: Array = [
 	"repair=0 OFF(基线·下界)",
@@ -146,10 +146,10 @@ func _initialize() -> void:
 			% [String(LABELS[ri]), N_SLOTS_MAIN, _fmt(float(b6["rate"])),
 				int(b6["n_takeoff"]), int(b6["n"]), int(b6["n_surv"]), int(b6["n"])])
 
-	# ---- 自检：OFF 臂 B@6 复现基线 203/300 ----
+	# ---- 自检：OFF 臂 B@6 复现基线 205/300 ----
 	var off_takeoff := int(m6[0]["B"]["n_takeoff"])
 	if off_takeoff == BASE_B6_N_TAKEOFF:
-		print("  [自检] OFF B@%d 复现基线 %d/%d=0.677 ✅（M-1 接线零扰动）"
+		print("  [自检] OFF B@%d 复现基线 %d/%d=0.683 ✅（M-1 接线零扰动）"
 			% [N_SLOTS_MAIN, off_takeoff, int(m6[0]["B"]["n"])])
 	else:
 		print("  [自检] 🔴 OFF B@%d = %d/%d（期望 %d/300）→ 偏差 = 红旗（0 档被污染？）"

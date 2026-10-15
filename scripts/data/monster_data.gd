@@ -51,13 +51,14 @@ const SAPPER_DMG_MULT := 3.0        # Sapper 对塔伤害 ×3（塔杀手）
 
 # ---- 🟠 P2-Sapper 对塔倍率梯度（W≥10）SSOT：sapper_dmg_mult(w) ----
 ## spec `docs/phase6/balance-p2-spec.md` §1.2。`sapper_dmg_mult(w) = SAPPER_DMG_MULT × g(w)`；
-## `w < SAPPER_RAMP_W0` → `g≡1`（W5 教学墙逐位不变）。
-## 🟢 提交①「落机制」中性值 `G0=1.0 / SLOPE=0.0` ⇒ `g(w)≡1.0`（全 w）⇒ 返回值逐位 == `SAPPER_DMG_MULT`（3.0）；
-##    中性值同时是 kill-switch：翻参后把 `G0/SLOPE` 退回中性值即零代码回滚（spec §6.1 第 1 档）。
+## `w < SAPPER_RAMP_W0` → `g≡1`（**W5 教学墙不动**：g(5)=1 ⇒ ×3.0 逐位保留）。
+## 🟢 提交②「已翻参」（Phase 6 · P2 · 用户拍板）：`G0=1.5 / SLOPE=0.10` ⇒ **W10 g=1.5(×4.5) · W15 g=2.0(×6.0) · W20 g=2.5(×7.5)**。
+##    🔴 真实效果在**逐精英波压力**（W10/15/20 停塔·掉血上升），**不在聚合起飞率**（后者对本次翻参几乎无感）。
+##    🟢 退回中性值 `G0=1.0 / SLOPE=0.0` = **零代码 kill-switch**（spec §6.1 第 1 档）。
 ## 🔴 放本文件（非 `mvp_config.gd`）→ 零 cfg-shape 变更（`cfg_of()` 金标本对象形状不动）。
 const SAPPER_RAMP_W0 := 10          # 梯度开启波（唯一已定值 · GRADIENT_ON_WAVE）
-const SAPPER_RAMP_G0 := 1.0         # 🟡 中性值（提交①）· W0 处梯度基线 g(W0)
-const SAPPER_RAMP_SLOPE := 0.0      # 🟡 中性值（提交①）· 每波线性增量（≥0）
+const SAPPER_RAMP_G0 := 1.5         # 🟢 提交②已翻参（用户拍板）· W0 处梯度基线 g(W0)
+const SAPPER_RAMP_SLOPE := 0.10     # 🟢 提交②已翻参（用户拍板）· 每波线性增量（≥0）
 const SAPPER_RAMP_CAP := 3.0        # g 上限（clampf 上界 ≥ G0）
 
 

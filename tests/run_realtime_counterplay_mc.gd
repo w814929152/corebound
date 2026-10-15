@@ -16,7 +16,7 @@ extends SceneTree
 ##
 ## 🔴 零扰动守门（team-lead 强约束 —— rng 消费序的最强守门）：
 ##   OFF 臂（`combat_revive_enabled=false` · `repair_on_disable=0` · RADIAL 六槽 ·
-##   proto/elite/aggro 全开 · seed=20260930）**必须复现批处理基线 `203/300 = 0.677`**。
+##   proto/elite/aggro 全开 · seed=20260930）**必须复现批处理基线 `205/300 = 0.683`**。
 ##   → 若 OFF 未复现 = 实时↔批处理分岔（rng 序 / 口径差异）→ **立即停手上报，禁硬调**。
 ##
 ## 口径（= C-8 实机全开 MC 同口径，便于对拍）：
@@ -26,7 +26,7 @@ extends SceneTree
 ##   · `warmup_waves = MonsterData.WARMUP = 2` · seed=20260930 · W_MAX=20 · actions=12
 ##
 ## 判据：
-##   · **守门（硬）**：OFF B@6 == 203/300（实时↔批处理零分岔 → 实时版读数可信）
+##   · **守门（硬）**：OFF B@6 == 205/300（实时↔批处理零分岔 → 实时版读数可信）
 ##   · **主判**：PRODUCT（`combat_revive_enabled=true`）B@6 起飞率 ≥ 0.80
 ##
 ## 跑法：
@@ -53,7 +53,7 @@ const SEED := 20260930
 const TH_TAKEOFF_B := 0.80      # 🔴 team-lead R-1 门禁红线（禁下调）
 const WARMUP := 2               # = MonsterData.WARMUP
 const N_SLOTS_MAIN := 6         # 实机默认（门禁臂）
-const BASE_B6_N_TAKEOFF := 203  # 🔴 批处理基线 OFF B@6（守门目标：必须复现）
+const BASE_B6_N_TAKEOFF := 205  # 🔴 提交②翻参后批处理基线 OFF B@6=205/300=0.683（守门目标：必须复现）
 
 var _fail := 0
 
@@ -210,10 +210,10 @@ func _initialize() -> void:
 	print("===============================================================")
 	print("  判定")
 	print("===============================================================")
-	# ---- 守门：OFF B@6 == 203 ----
+	# ---- 守门：OFF B@6 == 205 ----
 	var off_takeoff := int(off_b["n_takeoff"])
 	if off_takeoff == BASE_B6_N_TAKEOFF:
-		print("  [守门 PASS] OFF B@%d 复现批处理基线 %d/%d=0.677 ✅（实时↔批处理零分岔 · 实时读数可信）"
+		print("  [守门 PASS] OFF B@%d 复现批处理基线 %d/%d=0.683 ✅（实时↔批处理零分岔 · 实时读数可信）"
 			% [N_SLOTS_MAIN, off_takeoff, int(off_b["n"])])
 	else:
 		print("  [守门 FAIL] OFF B@%d = %d/%d（期望 %d/%d）→ 🔴 实时↔批处理**分岔**（rng 序 / 口径差异）"
