@@ -1,6 +1,6 @@
 # Phase 6 · P2-Sapper 域 参数规格（只写规格 · 零改值）—— OBS-2 修正方向 P2
 
-> **性质**：**只写规格**（spec-only）。本轮**未改动任何数值 / 代码**（`mvp_config.gd` / `monster_data.gd` / `wave_director.gd` / `wave_sim_aggro.gd` 均**未动**），**未跑 Godot**，**未 push**。数值列一律为 **PLACEHOLDER（待用户拍板 + 工程实现 + MC 标定）**。
+> **性质**：**只写规格**（spec-only）。本轮**未改动任何数值 / 代码**（`mvp_config.gd` / `monster_data.gd` / `wave_director.gd` / `wave_sim_aggro.gd` 均**未动**），**未跑 Godot**，**未 push**。数值列**原为 PLACEHOLDER**（待用户拍板 + 工程实现 + MC 标定）—— **✅ 已于 Phase 6 · P2 提交② 定稿**（见 **§1.3 · §7.2**）。
 > **授权依据**：用户已批准「平衡推进 = **P2-Sapper 域 · 仅 W≥10**」。
 > 🔴 **命名消歧**：带「P2」的旧引用须**按域判别** —— **「P2-Sapper 域」**（本文件 · Sapper 对塔伤害余额/倍率 `SAPPER_DMG_MULT × g(w)`）与 **「P2-雪崩支柱」**（`docs/phase6/vfx-art-spec.md` §10 · 视觉密度）**互不相干**。
 > **上游诊断**：`docs/phase6/balance-eval.md`（复核订正版 v2）§2.2 · `docs/phase6/balance-eval-verify.md`（V7）。
@@ -38,10 +38,11 @@ dmg = ATTRITION × HP0 × m_dps × sapper_dmg_mult(w) × DT
 
 ```
 # ---- SSOT：scripts/data/monster_data.gd（新增 static func；参数为 const）----
-const SAPPER_RAMP_W0    := 10      # 首个受梯度作用的波（GRADIENT_ON_WAVE）· 仅此值已定（=10）
-const SAPPER_RAMP_G0    := <PLACEHOLDER>   # W0 处的梯度基线（g(10)）
-const SAPPER_RAMP_SLOPE := <PLACEHOLDER>   # 每波线性增量（≥0）
-const SAPPER_RAMP_CAP   := <PLACEHOLDER>   # g 的上限（clamp 上界，≥ G0）
+# ✅ 已定稿（Phase 6 · P2 提交②）—— 参数 `W0=10 / G0=1.5 / SLOPE=0.10 / CAP=3.0`
+const SAPPER_RAMP_W0    := 10      # 首个受梯度作用的波（GRADIENT_ON_WAVE）= 10
+const SAPPER_RAMP_G0    := 1.5     # W0 处的梯度基线（g(10)）
+const SAPPER_RAMP_SLOPE := 0.10    # 每波线性增量（≥0）
+const SAPPER_RAMP_CAP   := 3.0     # g 的上限（clamp 上界，≥ G0）
 
 static func sapper_dmg_mult(w: int) -> float:
     if w < SAPPER_RAMP_W0:                     # w ∈ {1..9}（含 W5）
@@ -53,22 +54,22 @@ static func sapper_dmg_mult(w: int) -> float:
 
 | 量 | 含义 | 取值 |
 |---|---|---|
-| `SAPPER_RAMP_W0` | 梯度**开启波**（唯一已定值） | **10** |
+| `SAPPER_RAMP_W0` | 梯度**开启波**（首个受梯度作用的波） | **10** |
 | `g(w)`, `w < 10` | 未开启 → 恒等 | **1.0**（→ mult = **3.0**，逐位不变） |
 | `g(w)`, `w ≥ 10` | `G0 + SLOPE·(w−10)`，clamp 到 `[G0, CAP]` | 线性、单调不减 |
 | 生效波（离散） | 仅精英波 **{10, 15, 20}** 会**实际消费**（Sapper 只在精英波生成） | — |
 | 数学定义域 | 全 `w`（函数纯） | 但 w<10 恒 3.0、非精英波不消费 |
 
-### 1.3 推荐起步值（🔴 **PLACEHOLDER · 仅供工程搭骨架 + MC 标定起点，非定稿**）
+### 1.3 定稿值（✅ Phase 6 · P2 提交②）
 
-| 参数 | 建议起点 | 效果（示意） |
+| 参数 | 定稿值 | 效果 |
 |---|---|---|
 | `SAPPER_RAMP_G0` | 1.5 | W10 → g=1.5 → mult **×4.5** |
 | `SAPPER_RAMP_SLOPE` | 0.10 / 波 | W15 → g=2.0 → ×6.0 |
 | `SAPPER_RAMP_CAP` | 3.0 | W20 → g=2.5 → ×7.5（未触顶；CAP 仅兜底） |
 
-> 🔴 **本表数值未定稿、不得直接上线**。最终值必须由 **MC 标定（W10/15/20 恢复压力且不造新墙）+ 用户签** 决定。
-> 🔴 若用户希望「W10 与现状持平、仅 W15/20 加压」，把 `G0` 设为 **1.0** 即可（见 §6 回滚性质）。
+> ✅ **本表数值已定稿**（Phase 6 · P2 提交② · 已 MC 标定「W10/15/20 恢复压力且不造新墙」+ 用户签 · 2026-10-15）。**实际落地结果见 §7.2。**
+> 🟢 **回滚口径**：把 `G0` 设为 **1.0** 可回到「W10 与现状持平」（若同时置 `SLOPE=0.0` 则全 `w` 中性/逐位等价）—— **零代码**，见 §6.1 / §7.1。
 
 ---
 
@@ -200,6 +201,7 @@ static func sapper_dmg_mult(w: int) -> float:
 ## 7. 待拍板 → 🟢 答复登记（team-lead · 2026-10-12）
 
 > 下表左=原问，右=**已答复**（team-lead 逐条批）；仅**梯度具体取值**待 MC 标定，其余已闭合。
+> 🟢 **状态更新（2026-10-15 · supersede 批注）**：本节为 **2026-10-12 答复快照**，其状态项（「仅梯度取值待 MC 标定」/「明确标 PLACEHOLDER」/「v0.5 · 待加梯度」）**已于 Phase 6 · P2 提交② 全部定稿** —— 现况见 §1.3 与 **§7.2**。**历史记录不回改**（同 §8 序号口径处置）。
 
 | # | 问题 | 🟢 答复 |
 |---|---|---|
@@ -216,12 +218,33 @@ static func sapper_dmg_mult(w: int) -> float:
 | 提交 | 代码改动 | 参数 | CI 后果 | 回滚 |
 |---|---|---|---|---|
 | **① 落机制**（中性） | 常量 `SAPPER_DMG_MULT` → 函数 `sapper_dmg_mult(w)`（两处消费点共享 SSOT，见 §3） | `G0=1.0 / SLOPE=0.0` ⇒ **`g(w) ≡ 1.0`** | ✅ **逐位等价 → CI 三条「实机全开」MC 门禁（`run_slice_aggro_golive_mc` / `run_counterplay_mc` / `run_realtime_counterplay_mc`）保持绿、`203` 仍有效** | 独立撤该提交 |
-| **② 翻参** | **零代码**（只改参数） | `G0=1.5 / SLOPE=0.10 / CAP=3.0`（= §1.3 起步值 · **须用户拍板**） | 🔴 `203` 失效 → 须**同步重签基线**；主判 `B@6≥0.80` 可能破 | 独立退回中性值（见下） |
+| **② 翻参** | **零代码**（只改参数） | `G0=1.5 / SLOPE=0.10 / CAP=3.0`（= §1.3 定稿值 · ✅ **已拍板（用户 · 2026-10-15）并已落地**） | 🔴 `203` 失效 → 已**同步重签基线**（`203→205`，见 §7.2） | 独立退回中性值（见下） |
 
 - 🔴 **中性值 = kill-switch**：`G0=1.0 / SLOPE=0.0` ⇒ `sapper_dmg_mult(w) ≡ SAPPER_DMG_MULT = 3.0`（**全 w**）⇒ 与现行**逐位等价**。它同时是**提交①的默认值**与**翻参后的一键回退位**。
 - 🔴 **回滚（翻参之后）**：把 `G0 / SLOPE` 退回中性值即可 —— **零代码**（不撤任何代码、只改参数）→ 回到 §6.1 第 1 档（最干净的 kill-switch）。
 - **验收门分工**：**提交①** 门 = `t1aggro` 全绿（尤其 `AC-T1-25A/B` 真身↔镜像逐位差 0）+ CI 三条 MC 门禁绿 + `203` **复现** → 见 **§8.2 组 A**（**不重签基线**）；**提交②** 门 = **§8.2 组 B**（**含基线重签**）。
 - 🔴 **只有提交②需要用户拍板参数**；**提交①是纯重构 · 零行为变更 · 可先落地**。
+
+### 7.2 🟢 提交② 落地记录（Phase 6 · 2026-10-15）
+
+> 记账：登记**参数定稿 / 基线重签 / 效果证据 / 回滚**四项实际结果。**只登记、不改任何数值口径**（`SAPPER_DMG_MULT` 仍 = 3.0，`g` 公式同 §1.1 / §1.2）。
+
+**① 参数定稿**
+- `W0 = 10 / G0 = 1.5 / SLOPE = 0.10 / CAP = 3.0` ⇒ `g(10)=1.5`（W10 → mult **×4.5**）· `g(15)=2.0`（W15 → **×6.0**）· `g(20)=2.5`（W20 → **×7.5**，未触顶，CAP 仅兜底）。
+- 🔴 **W5 精确保留**：`g(5) = 1.0` ⇒ `sapper_dmg_mult(5) = 3.0`（教学墙逐位不变 · §0 / §5.1 A1）。
+
+**② 基线重签**（三「实机全开」MC 门禁）
+- `BASE_B6_N_TAKEOFF`：**203 → 205**（`run_slice_aggro_golive_mc.gd` / `run_counterplay_mc.gd` / `run_realtime_counterplay_mc.gd`）。
+- 🔴 **如实标注：`203 → 205` 是 rng 再分岔假象、非行为改善。** 依据 **quality-lead 前缀 hash 实验**：连续共享 rng 下 **W1–9 前缀 hash `1998867701 → 2549223616`（变了）**；per-run rng 对照 **`3485991772` 不变** → 分岔来自 `g≡1`→`g≠1` 改变了共享 rng 流的分支对齐，**并非 OFF 臂行为真的变好**。clean 对照方向为**预期微负**（PRICED `0.867 → 0.863`）。
+- ✅ **未下调任何阈值**（`TH_TAKEOFF_B = 0.80` 不变）。
+
+**③ 效果证据在逐波压力、不在聚合起飞率**
+- PRICED 逐波：W10 `0.200 → 0.343` · W15 `0.037 → 0.130` · W20 `0.040 → 0.077`；**≥2 波有压 `0.030 → 0.117`**（对齐 §5.3 **C1**「≥2 波恢复压力」）。
+- 三门禁主判 **B@6 = 0.850 / 0.823 / 0.823（全 ≥0.80，未破线）**；W10 **未成新硬墙**（对齐 §5.3 **C2**）。
+- ⚠️ 聚合起飞率**不进反微降**（见 ② clean 对照）→ **判据以逐波压力为准**（聚合量被 rng 分岔污染，不宜作效果主指标）。
+
+**④ 回滚**
+- `G0 / SLOPE` 退回中性 `1.0 / 0.0` ⇒ `sapper_dmg_mult(w) ≡ 3.0` ⇒ **零代码** kill-switch（= §6.1 第 1 档 / §7.1）。
 
 ---
 
@@ -299,7 +322,7 @@ static func sapper_dmg_mult(w: int) -> float:
 - **Sapper 生成**：`wave_director.gd:741-751`（`_spawn_one`）· `wave_sim_aggro.gd:743-754`（`_build_sapper_flags`，均以 `w` 驱动 `elite_indices`）。
 - **默认回归构成**：`tests/run_tests.gd:25-26,155-156`（默认 = slice1~8 + t1aggro）· `tests/test_suite_t1_aggro.gd:629-732`（W5/W4 Sapper 断言）· `:1322-1351`（AC-T1-25 A/B 逐位守护）。
 - **金标 MC**：`tests/test_suite_slice2.gd`（B 起飞率 91.3% / 274·300 / 20 局 trace，经 `run_loop` 无 aggro）。
-- **GDD**：`design/gdd/wave-spawner.md` §2.5.4（Elite 守恒）· §2.11（Sapper 破塔者 · 🟢 v0.5 口径回写：已进实机 + 待加 W≥10 梯度）。
+- **GDD**：`design/gdd/wave-spawner.md` §2.5.4（Elite 守恒）· §2.11（Sapper 破塔者 · 🟢 **v0.6** 口径回写：已进实机 + **已含 W≥10 梯度 · P2 提交② 落地**）。
 - **上游**：`docs/phase6/balance-eval.md` §2.2 · `docs/phase6/balance-eval-verify.md` §3.3/§4.2/§4.3。
 
 ---
