@@ -57,13 +57,21 @@ GODOT="<你的 Godot 可执行文件>"
 
 ## CI
 
-`.github/workflows/ci.yml` 在 push / PR 时自动跑：
+`.github/workflows/ci.yml` 在 push / PR 时自动跑（`docs/**`、`**/*.md`、`.workbuddy/**` 的改动不触发），ubuntu-latest + Godot 4.7.2-stable，共 **9 步测试**：
 
 1. **默认回归** —— 切片 1–8 + T1 仇恨，九段汇总、退出码 0；
-2. **radial8 聚合闸门** —— geo8 / radial / geo8_smoke / geo8_golden / expo / bulwark8 / panorama8 / attrition8；
-3. **实机口径 MC** —— 三原型 + Elite，300 局，B 起飞率 ≥ 0.80。
+2. **音频资产 lint** —— 免导入的 `key → path` 兜底校验（关闭 G-6：音频 id 打错在运行时只会静默 null）；
+3. **音频框架回归断言** —— audio-spec-a §7 五条（池 24+4 / 总线名 / 信号数 / 聚焦低通 / token 扫描）；
+4. **radial8 聚合闸门** —— 9 个子套件：geo8 / radial / geo8_smoke / geo8_golden / expo / bulwark8 / panorama8 / attrition8 / vfx_cache_guard；
+5. **aggro_golive 退化逐位守护** —— 三轴合并镜像（第五刀）；
+6. **实机口径 MC** —— 三原型 + Elite，300 局，B 起飞率 ≥ 0.80；
+7. **实机全开 MC** —— proto/elite/aggro 全 ON × `repair_on_disable` ∈ {0 OFF, 1 FREE, 2 PRICED}，PRICED 多塔 B@6 ≥ 0.80（第五刀上线门禁）；
+8. **反制窗口 M-1 上线 MC（C-8）** —— REVIVE(9) 多塔 B@6 ≥ 0.80，并自检 OFF B@6 复现 203/300 = 0.677（M-1 接线零扰动）；
+9. **反制窗口实时版 MC（R-1）** —— 真身 `WaveDirector` 直读产品开关 `combat_revive_enabled`，OFF B@6 守门 + PRODUCT B@6 ≥ 0.80。
 
 任一步非零退出 = CI 红。日志无论成败都会作为 artifact 上传。
+
+> 🔴 硬门禁请按**步骤名**引用，勿按序号引用：插步会使序号整体偏移（2026-10-13 音频两步插入，曾使原步 1–7 变步 1–9）。
 
 ## 目录结构
 
