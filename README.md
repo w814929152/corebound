@@ -59,7 +59,7 @@ GODOT="<你的 Godot 可执行文件>"
 
 `.github/workflows/ci.yml` 在 push / PR 时自动跑（`docs/**`、`**/*.md`、`.workbuddy/**` 的改动不触发），ubuntu-latest + Godot 4.7.2-stable，共 **9 步测试**：
 
-1. **默认回归** —— 切片 1–8 + T1 仇恨，九段汇总、退出码 0；
+1. **默认回归** —— 切片 1–8 + T1 仇恨 + B-1 引导状态机，十段汇总、退出码 0；
 2. **音频资产 lint** —— 免导入的 `key → path` 兜底校验（关闭 G-6：音频 id 打错在运行时只会静默 null）；
 3. **音频框架回归断言** —— audio-spec-a §7 五条（池 24+4 / 总线名 / 信号数 / 聚焦低通 / token 扫描）；
 4. **radial8 聚合闸门** —— 9 个子套件：geo8 / radial / geo8_smoke / geo8_golden / expo / bulwark8 / panorama8 / attrition8 / vfx_cache_guard；

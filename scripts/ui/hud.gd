@@ -137,6 +137,16 @@ func bind_controller(c: Node) -> void:
 	call_deferred("_on_run_changed")
 
 
+## 🔴 B-1 零教学（`docs/phase6/b1-tutorial-spec.md` §7-B(b) · 按 backlog 默认执行原则取推荐项 b）：
+##    引导未 DONE 前隐藏底部常驻键位行 —— 首屏同时出现「键位表 + 步骤提示」会互相稀释；
+##    `TutorialOverlay` 自然完成 / 跳过后再露出完整键位表。
+##    🔴 纯显隐开关：不改文本内容、不动布局、不触碰任何快照读数。
+func set_hint_visible(v: bool) -> void:
+	if _hint_label == null:
+		return
+	_hint_label.visible = v
+
+
 func _on_state_changed(_from: int, _to: int) -> void:
 	queue_redraw()
 

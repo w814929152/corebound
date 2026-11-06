@@ -1,4 +1,4 @@
-[gd_scene load_steps=10 format=3]
+[gd_scene load_steps=11 format=3]
 
 ; 《守核 Corebound》切片3 骨架场景 —— 实时商店覆盖层
 ;
@@ -22,6 +22,7 @@
 [ext_resource type="Script" path="res://scripts/ui/shop_overlay.gd" id="5_shop"]
 [ext_resource type="Script" path="res://scripts/ui/threat_pulse.gd" id="6_pulse"]
 [ext_resource type="Script" path="res://scripts/ui/core_hp_bar.gd" id="7_hp"]
+[ext_resource type="Script" path="res://scripts/ui/tutorial_overlay.gd" id="10_tut"]
 
 [node name="BattleShop" type="Node"]
 script = ExtResource("1_root")
@@ -66,3 +67,14 @@ process_mode = 3
 
 [node name="CoreHpBar" type="Control" parent="CoreHpLayer"]
 script = ExtResource("7_hp")
+
+; 🔴 B-1 零教学浮层（docs/phase6/b1-tutorial-spec.md §6）
+;    层号 135 = 高于商店 100 / 核心 HP 130，低于二次确认弹窗 140（弹窗可压住引导）。
+;    层号常量 LAYER_TUTORIAL 写在 tutorial_overlay.gd 内 —— 不落 mvp_config.gd（零 cfg-shape 变更）。
+;    process_mode 3 = ALWAYS：安全窗（get_tree().paused）下仍要推进「修」这一步。
+[node name="TutorialLayer" type="CanvasLayer" parent="."]
+layer = 135
+process_mode = 3
+
+[node name="TutorialOverlay" type="Control" parent="TutorialLayer"]
+script = ExtResource("10_tut")

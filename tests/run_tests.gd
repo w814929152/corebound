@@ -49,6 +49,7 @@ const TestSuiteT1Aggro := preload("res://tests/test_suite_t1_aggro.gd")
 const TestSuiteAggroGolive := preload("res://tests/test_suite_aggro_golive.gd")
 const TestSuiteRadial := preload("res://tests/test_suite_radial.gd")
 const TestSuiteGeo8 := preload("res://tests/test_suite_geo8.gd")
+const TestSuiteTutorial := preload("res://tests/run_tutorial_asserts.gd")
 const _Geo := preload("res://scripts/geo/geo.gd")
 const _SpaceModel := preload("res://scripts/geo/space_model.gd")
 
@@ -113,7 +114,7 @@ func _initialize() -> void:
 	for a in OS.get_cmdline_user_args():
 		if (a.begins_with("slice") or a.begins_with("t1") or a == "v0radial"
 				or a == "radial" or a == "geo8" or a == "radial8" or a == "radial8diag"
-				or a == "repair8" or a == "aggro_golive"):
+				or a == "repair8" or a == "aggro_golive" or a == "tutorial"):
 			only = a
 
 	var ok := true
@@ -157,6 +158,9 @@ func _initialize() -> void:
 		ok = TestSuiteSlice8.new().run_all() and ok
 	if only == "" or only == "t1aggro":
 		ok = TestSuiteT1Aggro.new().run_all() and ok
+	# 🔴 B-1 零教学浮层（2026-11-06 · backlog ⑭）：纯 UI 状态机，进默认回归（无 MC、秒级）。
+	if only == "" or only == "tutorial":
+		ok = TestSuiteTutorial.new().run_all() and ok
 	# 🔴 第五刀 · 三轴合并镜像退化逐位守护（独立入口，**不进**默认无参回归 → 九段聚合读数逐位不变）。
 	if only == "aggro_golive":
 		ok = TestSuiteAggroGolive.new().run_all() and ok

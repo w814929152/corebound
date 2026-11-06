@@ -95,6 +95,21 @@ func _ready() -> void:
 		if n != null and n.has_method("bind_controller"):
 			n.bind_controller(controller)
 
+	# 🔴 B-1 零教学浮层（docs/phase6/b1-tutorial-spec.md §6 · backlog ⑭）
+	#    纯 UI 只读层：只吃 runtime.snapshot() / wave_director.snapshot() / time_director.snapshot()，
+	#    不写玩法状态、不订阅玩法信号（10Hz 节流轮询，对齐 SR-6）。
+	#    `bind_hud` 只用于 §7-B(b)：引导未 DONE 前隐藏 HUD 常驻键位行。
+	var tut := get_node_or_null("TutorialLayer/TutorialOverlay")
+	if tut != null:
+		if tut.has_method("bind_controller"):
+			tut.bind_controller(controller)
+		if tut.has_method("bind_director"):
+			tut.bind_director(director)
+		if tut.has_method("bind_wave_director"):
+			tut.bind_wave_director(wave_director)
+		if tut.has_method("bind_hud"):
+			tut.bind_hud(hud)
+
 	# ---- 开局：由 `WaveDirector` 发出 W1 的 wave_started ----
 	if controller != null:
 		controller.call_deferred("start_run", 1)
