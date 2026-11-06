@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <defs>
+    <radialGradient id="gCore" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#fffbe8"/>
+      <stop offset="0.38" stop-color="#ffc24d"/>
+      <stop offset="0.74" stop-color="#ff7a2f"/>
+      <stop offset="1" stop-color="#c3350d"/>
+    </radialGradient>
+    <radialGradient id="gGlow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#ff9a3c" stop-opacity="0.5"/>
+      <stop offset="0.6" stop-color="#ff9a3c" stop-opacity="0.12"/>
+      <stop offset="1" stop-color="#ff9a3c" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect x="0" y="0" width="128" height="128" rx="22" fill="#0b0e14"/>
+  <circle cx="64" cy="64" r="62" fill="url(#gGlow)"/>
+  <circle cx="64" cy="64" r="52" fill="none" stroke="#243044" stroke-width="2"/>
+  <circle cx="64" cy="64" r="38" fill="none" stroke="#2e3d55" stroke-width="2" stroke-dasharray="4 7"/>
+  <circle cx="64" cy="64" r="26" fill="none" stroke="#3b4f6e" stroke-width="2"/>
+  <circle cx="64" cy="64" r="15" fill="url(#gCore)"/>
+  <circle cx="64" cy="64" r="15" fill="none" stroke="#ffd98a" stroke-width="1.5" opacity="0.85"/>
+  <g fill="#7f96b8">
+    <circle cx="64" cy="16" r="3"/>
+    <circle cx="64" cy="112" r="3"/>
+    <circle cx="16" cy="64" r="3"/>
+    <circle cx="112" cy="64" r="3"/>
+    <circle cx="30" cy="30" r="2.5"/>
+    <circle cx="98" cy="30" r="2.5"/>
+    <circle cx="30" cy="98" r="2.5"/>
+    <circle cx="98" cy="98" r="2.5"/>
+  </g>
+</svg>

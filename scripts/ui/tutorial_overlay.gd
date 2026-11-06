@@ -26,6 +26,9 @@ extends Control
 ##
 
 const _TSM := preload("res://scripts/engine/time_state_machine.gd")
+## 🔴 只读卡价表（纯数据脚本，无副作用）：用于「买不起」时的兜底判定，
+##    避免把 12.0 这类价格魔数写死在 UI 层。
+const _TD := preload("res://scripts/data/tower_data.gd")
 
 ## 🔴 层号常量写在本文件（不落 `mvp_config.gd`，保持零 cfg-shape 变更）。
 const LAYER_TUTORIAL := 135
@@ -59,11 +62,17 @@ const POLL_HZ := 10.0       # 判定节流 ≤10Hz（不每帧重算）
 const REPAIR_FALLBACK_WAVE := 8   # 规格 §7-A(a)：W8 结束仍无受损塔 → 自动 DONE
 
 const STEP_TEXT := {
-	Step.BUY: "Tab 打开商店 · 1/2/3 买一张建筑卡",
 	Step.PLACE: "点「放置」→ 再点一个塔位落子",
-	Step.RUN: "Space 开始本波 —— 守住核心",
+	Step.RUN: "Space 开始下一波 —— 守住核心",
 	Step.REPAIR: "安全窗可修复受损塔（点塔位 → 修复 / 拆除）",
 }
+
+## BUY 步按「买不买得起 + 商店开没开」分三态（🔴 实测口径，见文件头）：
+##   开局 `scrap = 0`，而卡价 12 ⇒ 首波结束前商店里全是灰的。若一律提示"买一张卡"，
+##   玩家照做会撞见买不起的货架，首局直接卡在第一步。
+const BUY_TEXT_POOR := "守住这一波 —— 击杀敌人换废料，波间才能建塔"
+const BUY_TEXT_TAB := "Tab 打开商店 · 1/2/3 买一张建筑卡"
+const BUY_TEXT_RICH := "1/2/3 买一张建筑卡"
 
 # ---- 依赖注入（对齐既有 `bind_*` 风格，不用 get_node 满天飞）----
 var controller: Node = null       # ShopController（只读 runtime.snapshot()）
@@ -88,6 +97,9 @@ var _hint_hidden: bool = false
 #    故判定一律用「比进入本步时**多**了什么」，而不是绝对阈值。
 var _place_towers: int = -1       # 进入 PLACE 时的塔数
 var _run_wave: int = -1           # 进入 RUN 时的波次
+# 🔴 BUY 步文案分态用的两个只读读数（仅影响**文字**，不影响任何判据 / 推进）：
+var _buy_can_afford: bool = false # 货架上是否有买得起的卡（快照 `affordable` 任一为真）
+var _drawer_open: bool = false    # 商店抽屉是否已开（开着就不必再提示按 Tab）
 
 
 func _ready() -> void:
@@ -144,6 +156,10 @@ func _poll() -> void:
 	var w: Dictionary = {}
 	if wave_director != null:
 		w = wave_director.snapshot()
+	# 仅用于 BUY 文案分态（不改判定）：抽屉开合走 TimeDirector 只读快照。
+	if director != null:
+		var ds: Dictionary = director.snapshot()
+		_drawer_open = int(ds.get("drawer", _TSM.Drawer.CLOSED)) != _TSM.Drawer.CLOSED
 	advance_with(s, w)
 	_refresh_visual()
 
@@ -161,6 +177,7 @@ func advance_with(s: Dictionary, w: Dictionary) -> int:
 	var pend: Array = s.get("pending", [])
 	var towers := int(s.get("towers", 0))
 	_cur_has_disabled = _has_disabled(s)
+	_buy_can_afford = _can_afford_any(s)
 	var wave_now := _wave_now(s, w)
 
 	# 一次 tick 内允许级联（例：买到即落地 ⇒ BUY → PLACE → RUN）。
@@ -207,6 +224,18 @@ func _has_disabled(s: Dictionary) -> bool:
 		if row is Dictionary and bool(row.get("disabled", false)):
 			return true
 	return false
+
+
+## 货架上是否至少有 1 张买得起（快照 `affordable` 已由 `shop_runtime.snapshot()` 导出）。
+## 商店尚未发牌（affordable 为空）时退回「废料 ≥ 裸塔价」判定 —— 价格取自 `tower_data.PRICE`。
+func _can_afford_any(s: Dictionary) -> bool:
+	var aff: Array = s.get("affordable", [])
+	if aff.size() > 0:
+		for a in aff:
+			if bool(a):
+				return true
+		return false
+	return float(s.get("scrap", 0.0)) >= float(_TD.PRICE["tower"])
 
 
 func _wave_now(s: Dictionary, w: Dictionary) -> int:
@@ -320,12 +349,21 @@ func _refresh_visual() -> void:
 		_alpha = 0.0
 		modulate = Color(1.0, 1.0, 1.0, 0.0)
 		return
-	_label.text = String(STEP_TEXT.get(step, ""))
+	_label.text = _text_for(step)
 	if not visible:
 		# 步进切换 / 首次出现：从头淡入。
 		_alpha = 0.0
 		modulate = Color(1.0, 1.0, 1.0, 0.0)
 	visible = true
+
+
+## 当前步文案。BUY 步按「买不买得起 + 抽屉开没开」分三态（判据不受影响，只换字）。
+func _text_for(s: int) -> String:
+	if s != Step.BUY:
+		return String(STEP_TEXT.get(s, ""))
+	if not _buy_can_afford:
+		return BUY_TEXT_POOR
+	return BUY_TEXT_RICH if _drawer_open else BUY_TEXT_TAB
 
 
 func _sync_hud_hint() -> void:

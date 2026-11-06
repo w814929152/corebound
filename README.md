@@ -55,6 +55,20 @@ GODOT="<你的 Godot 可执行文件>"
 
 > ⚠️ `--headless --script` 路径下 Godot 没有 `global_script_class_cache`，因此工程内**一律 `preload`，不写 `class_name`**。
 
+## 打包可玩版本
+
+已配好 Windows Desktop 导出预设（`export_presets.cfg`，单文件 exe + 内嵌 pck）：
+
+```bash
+"$GODOT" --headless --path . --export-release "Windows Desktop" build/windows/Corebound.exe
+```
+
+产物 `build/windows/Corebound.exe`（约 112 MB，pck 内嵌，双击即玩，无需安装 Godot 或联网）。`build/`、`*.exe` 已在 `.gitignore` 内，**二进制不入库**。
+
+**操作**：`Tab` 商店 · `1/2/3` 买卡 · `R` 刷新 · `Space` 开下一波 · `Esc` 关抽屉/取消/跳过引导 · 鼠标点塔位落子。
+
+详细打包流程、模板位置、验收记录与已知限制见 `docs/phase6/demo-build.md`。
+
 ## CI
 
 `.github/workflows/ci.yml` 在 push / PR 时自动跑（`docs/**`、`**/*.md`、`.workbuddy/**` 的改动不触发），ubuntu-latest + Godot 4.7.2-stable，共 **9 步测试**：

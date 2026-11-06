@@ -34,6 +34,12 @@ buses/default_bus_layout="res://default_bus_layout.tres"
 ;    `shop_layout.gd` 的 `maxf(560, 0.32×屏宽)` 算尺保留，作非基准屏（窗口 resize / expand）的安全网。
 window/size/viewport_width=1920
 window/size/viewport_height=1080
+; 🔴 可游玩版本（2026-11-06）：**实际窗口**收到 1600×900，但 `viewport_*` 仍是 1920×1080
+;    —— override 只改窗口外框，不改逻辑视口 ⇒ `shop_layout.gd` 的 1920 基准算尺、
+;    快照读数、金标本全部零扰动（纯显示缩放，画布按 `canvas_items` 等比缩放）。
+;    起因：默认 1920×1080 窗口在 1080p 屏上连同标题栏会溢出，底部核心血条被切掉。
+window/size/window_width_override=1600
+window/size/window_height_override=900
 window/stretch/mode="canvas_items"
 ; 🔴 显式钉死 aspect（4.7 新建项目默认值已改为 expand，不写死会随引擎升级漂）
 window/stretch/aspect="expand"
