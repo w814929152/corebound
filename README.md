@@ -23,7 +23,19 @@
 | **献祭（Salvage Rite）** | 安全窗内拆塔的第二个出口：返还 0%、卡全销毁，换取 `stackcap_bonus`（收益 ∝ 投入） |
 | **肉盾流（Bulwark）** | 涌现策略：暴露位塔先挨打、怪物锁定后停下不漏怪 → 用站位换来后排输出 |
 
-## 技术要点
+## 卡池与扩展包
+
+玩家路线商店基础池 6 张：`Arrow` / `Cannon` / `Frost`（三塔）+ `FireUp` / `FrostUp`（强化）+ `ScrapUp`（经济）。
+
+**扩展包**（实机默认开启，`shop_runtime.set_extended_pack()` 一行可关）再加 4 张：
+
+| 卡 | 定位 | dps | tag | rng | 特点 |
+|---|---|---|---|---|---|
+| **Lance** | 远程狙击 | 11.0 | `pierce` | 26.0 | 射程与输出双高，代价是独立 tag（协同从头攒） |
+| **Tesla** | 贴身通电 | 6.0 | `shock` | 16.0 | 全塔最低 dps，换群伤 + 0.10 减速 |
+| **PirUp** / **ShkUp** | 强化 | — | `pierce` / `shock` | — | 分别只对 Lance / Tesla 生效 |
+
+🔴 **扩展卡只进玩家池**：金标本 `TOWERS` / `ShopAI.CARD_NAMES` / `WEIGHTS` 一字未动，AI 路线与 300 局 MC 金标本完全不受影响。设计与取舍见 `docs/phase6/extended-pack.md`。
 
 - **金标本（golden reference）逐位对齐**：玩法数值以一套 Python 对照实现为金标本，headless 测试逐位（`%.17g` / `%.17e`）比对，任何 ULP 级偏差都会翻红。
 - **浮点可移植性强制**（ADR-0002）：整数指数必须走 `FpPow.pow_int()`；移植 Python `sum()` 必须走 `FpSum.sum_py()`。

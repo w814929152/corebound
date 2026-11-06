@@ -421,6 +421,14 @@ func _hit_tower_slot(screen_p: Vector2) -> int:
 const C_TOWER_ARROW := Color(0.40, 0.80, 0.55, 1.0)   # 中性（Arrow）
 const C_TOWER_CANNON := Color(0.24, 0.80, 0.88, 1.0)  # fire（Cannon）→ 青 #3DCCE0（原橙 #F28C4D 撞敌色）
 const C_TOWER_FROST := Color(0.45, 0.70, 0.95, 1.0)   # frost（Frost）
+## 🆕 扩展包两塔（2026-11-06）**不给独立色相** —— 这是刻意的，理由见下。
+##   🔴 RADIAL 实机**根本不用本函数**：`_draw_radial_towers` 的塔身是统一 `P_ALLY`（青），
+##      原型只走**内形通道**（`_draw_radial_tower_glyph` 的边数 3/4/6/5/7）。
+##      本函数只服务 legacy PATH 模式。
+##   🔴 为什么不给紫 / 黄：S4 的教训 —— Cannon 原本是橙 `#F28C4D`，与敌橙 `#FF6B3D` 撞色，
+##      已改青。玩家塔必须整体待在**冷色极**（青蓝绿）做敌我识别；
+##      紫贴近精英品红 `#E8437F`、黄贴近敌橙，都会把「自己的塔」读成「威胁」。
+##      ⇒ 新塔沿用既有三塔配色：PATH 下回落到 `C_TOWER_ARROW`（与 Arrow 同色，可接受 —— legacy）。
 const C_TOWER_CORE := Color(0.95, 0.85, 0.30, 1.0)    # 主塔描边
 const C_SELECT := Color(0.35, 0.95, 0.95, 1.0)        # I-7 选中高亮
 const C_HOST := Color(0.95, 0.75, 0.35, 0.9)          # D-TB-6 合法宿主高亮
@@ -433,6 +441,8 @@ func _tower_color(ctype: String) -> Color:
 		"Frost":
 			return C_TOWER_FROST
 		_:
+			# 🔴 扩展塔（Lance / Tesla）刻意走这里 —— 见常量区说明：
+			#    RADIAL 不用本函数，PATH 下与 Arrow 同色可接受。
 			return C_TOWER_ARROW
 
 
@@ -1176,6 +1186,14 @@ func _draw_radial_tower_glyph(c: Vector2, R: float, ctype: String, sc: float) ->
 		"Frost":
 			n = 6
 			rot = 0.0             # 六边形
+		# 🆕 扩展包两塔：继续「按边数区分原型」的既有约定（3/4/6 → 5/7）。
+		# 🔴 只动内芯徽记的顶点数，**外框 8 重对称一字未动**（art-bible §3.1 红线）。
+		"Lance":
+			n = 5
+			rot = -PI * 0.5       # 五边形（顶点朝上）
+		"Tesla":
+			n = 7
+			rot = -PI * 0.5       # 七边形
 	# 亮内形 + 极深描边（自带边界，抗左上高光干扰）。纯几何、无随机、帧间稳定。
 	# 🟠 0.31R（≈+19% vs 改前 0.26R）——见上「选项 A」说明。
 	var pts := _ngon(c, R * 0.31, n, rot)

@@ -12,6 +12,7 @@ const TestSuiteSlice3 := preload("res://tests/test_suite_slice3.gd")
 const TestSuiteSlice4 := preload("res://tests/test_suite_slice4.gd")
 const BattleShop := preload("res://scenes/battle_shop.tscn")
 const SpaceModel := preload("res://scripts/geo/space_model.gd")
+const ShopRuntime := preload("res://scripts/gameplay/shop_runtime.gd")
 
 
 func _ready() -> void:
@@ -32,6 +33,15 @@ func _ready() -> void:
 		#        （后者根本不装载 main.tscn）→ 金标本零扰动。
 		#    回滚：把下面这行删掉 / 改回 `Mode.PATH` 即可（一行回退，双模设计本就为此）。
 		SpaceModel.mode = SpaceModel.Mode.RADIAL
+		# 🆕 扩展包（2026-11-06 · 「丰富玩法」）：把 Lance / Tesla / PirUp / ShkUp
+		#    放进**玩家路线**商店卡池（6 张 → 10 张）。
+		#    🔴 为什么安全：金标本 `ShopAI.CARD_NAMES` / `WEIGHTS` **一字不动**，
+		#       扩展卡只经 `shop_runtime._build_player_pool()` 追加 ⇒ AI 路线 / MC / 金标本零扰动。
+		#    🔴 为什么在这里开：本分支只在**窗口模式**执行；headless 自测与
+		#       `--script` 测试路径永不进入 ⇒ 任何断言读数不受影响。
+		#    一行回滚：改成 `set_extended_pack(false)` 或删掉本行（回到 6 张卡口径）。
+		ShopRuntime.set_extended_pack(true)
+		print("[boot] 扩展包 ON —— 玩家卡池 6 → 10（+Lance/Tesla/PirUp/ShkUp）")
 		# 🔴 第四 / 第五刀：原型 / 精英波 + 仇恨（tower_aggro）**上线**
 		#    （原型/精英：`docs/phase3/proto-elite-golive-spec.md` §2.2；
 		#     仇恨：`docs/phase3/tower-aggro-golive-spec.md` + `...-impl.md` §7）。

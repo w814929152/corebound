@@ -50,6 +50,7 @@ const TestSuiteAggroGolive := preload("res://tests/test_suite_aggro_golive.gd")
 const TestSuiteRadial := preload("res://tests/test_suite_radial.gd")
 const TestSuiteGeo8 := preload("res://tests/test_suite_geo8.gd")
 const TestSuiteTutorial := preload("res://tests/run_tutorial_asserts.gd")
+const TestSuiteExtPack := preload("res://tests/run_ext_pack_asserts.gd")
 const _Geo := preload("res://scripts/geo/geo.gd")
 const _SpaceModel := preload("res://scripts/geo/space_model.gd")
 
@@ -114,7 +115,8 @@ func _initialize() -> void:
 	for a in OS.get_cmdline_user_args():
 		if (a.begins_with("slice") or a.begins_with("t1") or a == "v0radial"
 				or a == "radial" or a == "geo8" or a == "radial8" or a == "radial8diag"
-				or a == "repair8" or a == "aggro_golive" or a == "tutorial"):
+				or a == "repair8" or a == "aggro_golive" or a == "tutorial"
+				or a == "extpack"):
 			only = a
 
 	var ok := true
@@ -161,6 +163,9 @@ func _initialize() -> void:
 	# 🔴 B-1 零教学浮层（2026-11-06 · backlog ⑭）：纯 UI 状态机，进默认回归（无 MC、秒级）。
 	if only == "" or only == "tutorial":
 		ok = TestSuiteTutorial.new().run_all() and ok
+	# 🆕 扩展包：新塔 / 新强化 / 玩家卡池开关（金标本 TOWERS / CARD_NAMES 零污染）
+	if only == "" or only == "extpack":
+		ok = TestSuiteExtPack.new().run_all() and ok
 	# 🔴 第五刀 · 三轴合并镜像退化逐位守护（独立入口，**不进**默认无参回归 → 九段聚合读数逐位不变）。
 	if only == "aggro_golive":
 		ok = TestSuiteAggroGolive.new().run_all() and ok

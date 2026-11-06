@@ -58,9 +58,41 @@ const _TSM := preload("res://scripts/engine/time_state_machine.gd")
 ##      （control-manifest §5：数值只在 `scripts/data/` 与金标本里定义一次）。
 const PLAYER_EXCLUDED_CARDS: Array = ["RerollD"]
 
+## 🆕 扩展包卡序（显式数组 → 抽卡池顺序确定、可测；不用 Dictionary 遍历顺序）。
+##   与 `TowerData.EXT_WEIGHTS` 的键集合必须一一对应（自测断言）。
+const EXT_CARD_ORDER: Array = ["Lance", "Tesla", "PirUp", "ShkUp"]
+
+## 🆕 扩展包开关。🔴 默认 `false` = 产品未启用口径 ⇒ 玩家池仍是 6 张，
+##    与改动前逐位一致；`true` 时玩家池 = 6 + 4 = 10 张（AI 池恒不变）。
+static var extended_pack: bool = false
+
 static var _pool_names: Array = []
 static var _pool_weights: Array = []
 static var _pool_total := 0.0
+
+
+## 🆕 切换扩展包。🔴 必须清静态缓存，否则 `_build_player_pool()` 的
+##   `if not _pool_names.is_empty(): return` 会让切换静默失效。
+static func set_extended_pack(on: bool) -> void:
+	if extended_pack == on:
+		return
+	extended_pack = on
+	_pool_names.clear()
+	_pool_weights.clear()
+	_pool_total = 0.0
+
+
+## 🔴 扩展包兼容层：卡种判定**先查扩展表，再回落金标本** `ShopAI.card_kind()`。
+##    ⚠️ 刻意**不修改** `shop_ai.gd`（金标本镜像文件）：
+##      默认 7 张卡走末尾分支，结果与改动前逐位一致；扩展卡只影响玩家路线。
+##    ⚠️ 必须包这一层，否则 `Lance` / `Tesla` 会被金标本判成 `"econ"`
+##      （`card_kind` 只认 `TOWERS` / `REINF`）→ 买建筑卡走成全局卡分支：扣钱、不落塔。
+static func _card_kind(nm: String) -> String:
+	if _TD.TOWERS_EXT.has(nm):
+		return "tower"
+	if _TD.REINF_EXT.has(nm):
+		return "reinforce"
+	return _ShopAI.card_kind(nm)
 
 
 ## 玩家路线卡池（6 张）：`Arrow / Cannon / Frost / FireUp / FrostUp / ScrapUp`
@@ -75,7 +107,9 @@ static func player_card_weights() -> Array:
 	return _pool_weights
 
 
-## 玩家池权重之和（= 1 − 0.095 = 0.905）：`PyRandom.choices()` 用它归一（control-manifest P3）。
+## 玩家池权重之和：`PyRandom.choices()` 用它归一（control-manifest P3）。
+##   · 扩展包关：= 1 − 0.095 = **0.905**（6 张，与改动前一致）
+##   · 扩展包开：= 0.905 + Σ`EXT_WEIGHTS` = **1.245**（10 张）
 ## 🔴 N2：float 序列求和走 `FpSum.sum_py()`（control-manifest §2）。
 static func player_pool_total() -> float:
 	_build_player_pool()
@@ -91,6 +125,14 @@ static func _build_player_pool() -> void:
 			continue                          # 🔴 D-4：RerollD 不进玩家池
 		_pool_names.append(s)
 		_pool_weights.append(float(_ShopAI.WEIGHTS[s]))
+	# 🆕 扩展包：**追加在末尾**。`PyRandom.choices()` 用累积权重 + `bisect_right`，
+	#    末尾追加不改变既有元素的区间起点 ⇒ 老卡的相对稀有度关系保持
+	#    （绝对值因总和变大而等比下降，这是"池变大"的应有表现）。
+	if extended_pack:
+		for nm in EXT_CARD_ORDER:
+			var s := String(nm)
+			_pool_names.append(s)
+			_pool_weights.append(float(_TD.EXT_WEIGHTS[s]))
 	_pool_total = _FpSum.sum_py(_pool_weights)
 
 
@@ -318,7 +360,7 @@ func offer_at(slot: int) -> String:
 
 
 func card_kind(slot: int) -> String:
-	return _ShopAI.card_kind(offer_at(slot))
+	return _card_kind(offer_at(slot))
 
 
 ## 卡种 → GDD §2.7 的三类中文名（建筑卡 / 单塔效果卡 / 全局效果卡）
@@ -349,7 +391,7 @@ func price_at(slot: int) -> float:
 func _action_for(nm: String) -> Array:
 	if nm == "":
 		return []
-	var kind := _ShopAI.card_kind(nm)
+	var kind := _card_kind(nm)
 	match kind:
 		"tower":
 			# 建筑卡：买的时候**不落塔**（买/放解耦），落子走 `confirm_placement()`
@@ -456,7 +498,7 @@ func legal_note(slot: int) -> String:
 	var nm := offer_at(slot)
 	if nm == "":
 		return "此位无卡"
-	match _ShopAI.card_kind(nm):
+	match _card_kind(nm):
 		"tower":
 			# E1：塔位已满且场上无同原型塔 → 无合法目标（H8 置灰）
 			for t in player.towers:
@@ -512,7 +554,7 @@ func buy(slot: int) -> bool:
 		last_error = "买不起：需要 %.0f 分，当前 %.0f 分" % [cost, scrap]
 		return false
 
-	match _ShopAI.card_kind(nm):
+	match _card_kind(nm):
 		"tower":
 			# ① 建筑卡 → **入待放置队列**（买 / 放解耦，GDD §2.7；不占塔位、不占强化槽）
 			#    🟡 切片8：同时锁定**本次实付分**到平行数组 `pending_cost`（落子时才计入塔 invested）
@@ -546,7 +588,7 @@ func buy(slot: int) -> bool:
 ## 🔴 仍可购买（GDD E7 / H4：保底是"买得到"不是"有收益"），且**不新增第三种植灰理由**（X6）。
 func at_cap(slot: int) -> bool:
 	var nm := offer_at(slot)
-	if _ShopAI.card_kind(nm) != "econ":
+	if _card_kind(nm) != "econ":
 		return false
 	return not (nm == "ScrapUp" and float(player.income_mult) < 1.0)
 
@@ -570,7 +612,7 @@ func highlights() -> Dictionary:
 		if nm == "":
 			out[i] = {"tag_synergy": false, "plus_one": false, "layer_next": "", "kappa_preview": "", "delta_pct": 0.0}
 			continue
-		var kind := _ShopAI.card_kind(nm)
+		var kind := _card_kind(nm)
 		var act := _action_for(nm)
 		out[i] = {
 			"tag_synergy": _h2_tag_synergy(nm, kind, info),
