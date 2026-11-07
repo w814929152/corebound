@@ -32,6 +32,7 @@ extends RefCounted
 ##
 
 const _TD := preload("res://scripts/data/tower_data.gd")
+const _ShopAI := preload("res://scripts/engine/shop_ai.gd")
 
 
 # ---------------------------------------------------------------------------
@@ -69,6 +70,10 @@ const ROLE := {
 	# ---- 🆕 真实伤害流派（2026-11-07 · combat-types GDD v0.3）----
 	"Oblivion": "真实单体：无视抗性",
 	"Void": "真实群伤：无视抗性",
+	# ---- 🆕 触发型建筑（2026-11-07）：登场 / 整备 / 阵亡 加等级 ----
+	"Vanguard": "登场：自身 +1 级",
+	"Drillmaster": "整备：全场 +1 级",
+	"Martyr": "阵亡：全场 +1 级",
 	# ---- 单塔效果卡：L1 强化谁 / L2 点名 / L3 叠层规则 ----
 	"FireUp": "强化「火」系塔",
 	"FrostUp": "强化「冰」系塔",
@@ -144,6 +149,18 @@ static func _tower_def(nm: String) -> Dictionary:
 	return {}
 
 
+## 卡 → tag 内部标识（建筑卡 = 塔表 tag；强化卡 = `reinf_tag`；全局卡 / 未知卡 = ""）。
+##   🆕 蓝图卡面（art-bible §5.5）「Tag 电路符号」的数据源 —— 只读 SSOT 派生，
+##   与 `mark_line` / `describe` 同一口径，改表自动跟随。
+static func tag_of(nm: String) -> String:
+	var d := _tower_def(nm)
+	if not d.is_empty():
+		return String(d["tag"])
+	if _TD.REINF.has(nm) or _TD.REINF_EXT.has(nm) or _TD.REINF_EXT2.has(nm):
+		return String(_TD.reinf_tag(nm))
+	return ""
+
+
 ## 某 tag 下**现存所有塔**（先主表、再扩展表 —— 与 `TowerData._tower_def()` 同序）。
 ##   🔴 派生而非手写：新增塔且复用既有 tag 时，「可强化」自动包含它，不会漏。
 static func hosts_of_tag(tag: String) -> Array:
@@ -159,7 +176,37 @@ static func hosts_of_tag(tag: String) -> Array:
 	return out
 
 
-# ---------------------------------------------------------------------------
+## ---------------------------------------------------------------------------
+##  稀有度派生（art-bible §2.3 五级色阶 · P1-6 · 2026-11-07 落地）
+## ---------------------------------------------------------------------------
+## 🔴 **只读派生，不写任何数值**：稀有度由商店抽取权重（SSOT = `shop_ai.WEIGHTS`
+##    + `tower_data.EXT_WEIGHTS`）机械映射，改权重卡面自动跟随 —— 与 stat_line 同一管法。
+##    映射口径（展示层约定 · 2026-11-07，调档只动本函数）：
+##      w ≥ 0.13         → common   石灰（基础 5 卡：三主塔 + 双强化）
+##      0.095 ≤ w < 0.13 → uncommon 苔绿（ScrapUp / RerollD 0.095 + 第二塔 0.10）
+##      w < 0.095        → rare     湖蓝（Lance/Sunder/Hex/Oblivion/Void 0.09 + 扩展强化 0.075）
+##      epic / legendary → 暂无对应卡（色阶与角标系统已就位，新卡按 w 自动落档）
+##    金标本零改动：本函数只读 WEIGHTS / EXT_WEIGHTS，不参与抽取（`draw_offers` 不经此处）。
+static func weight_of(nm: String) -> float:
+	if _ShopAI.WEIGHTS.has(nm):
+		return float(_ShopAI.WEIGHTS[nm])
+	if _TD.EXT_WEIGHTS.has(nm):
+		return float(_TD.EXT_WEIGHTS[nm])
+	return -1.0
+
+
+static func rarity(nm: String) -> String:
+	var w := weight_of(nm)
+	if w < 0.0:
+		return "common"                # 未登记权重（异常/新卡未接）→ 按最常见处理
+	if w >= 0.13:
+		return "common"
+	if w >= 0.095:
+		return "uncommon"
+	return "rare"
+
+
+## ---------------------------------------------------------------------------
 #  逐行派生
 # ---------------------------------------------------------------------------
 ## 建筑卡第 2 行：`伤害 7 · 射程 18`
