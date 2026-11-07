@@ -56,6 +56,8 @@ const _PathGeometry := preload("res://scripts/geo/path_geometry.gd")
 const _SpaceModel := preload("res://scripts/geo/space_model.gd")
 const _MonsterData := preload("res://scripts/data/monster_data.gd")
 const _Monster := preload("res://scripts/gameplay/monster.gd")
+## 🆕 战斗类型系统 —— 只在 combat_types_enabled 时按抗性分池结算（默认关 → 逐位不变）。
+const _CombatTypes := preload("res://scripts/data/combat_types.gd")
 ## 🔒 V-8：复用批处理镜像的**诊断量容器工厂** —— 复活诊断字典与 `wave_sim_aggro` 共用
 ##   同一份 schema（键名/初值逐位相同）→ 实时↔批处理逐位比对才能直接对键取值，
 ##   也杜绝"两边各写一份 schema、改了一边忘了另一边"的漂移。🔴 只调它的 static 工厂，
@@ -119,6 +121,9 @@ var warmup_waves: int = _MonsterData.WARMUP
 var prototype_split_enabled: bool = false
 ## 🟡 S5-D1：GDD §2.5.4 词缀版 Elite 波。MVP 恒 false。
 var elite_waves_enabled: bool = false
+## 🆕 战斗类型系统（物理/魔法 × 物抗/魔抗）。🔴 默认 false = 旧聚合池口径逐位不变。
+##   打开后：塔按攻击类型拆分 DPS 池，怪物按原型抗性分别结算（见 `_substep` ②）。
+var combat_types_enabled: bool = false
 
 # ---- 运行时注入 ----
 var runtime = null          # ShopRuntime（提供 player / cfg / geo）
@@ -136,6 +141,13 @@ var spawned: int = 0
 var n: int = 0
 var interval: float = 0.0
 var dps: float = 0.0
+## 🆕 战斗类型：物攻 / 魔攻 / 真实 DPS 池（🔴 默认 combat_types_enabled=false → 恒 0，不消费）。
+var _phys_dps: float = 0.0
+var _magic_dps: float = 0.0
+var _true_dps: float = 0.0
+## 🆕 破甲光环：物抗 / 魔抗全局破甲量（🔴 默认关闭 → 恒 0，不消费；见 start_wave 计算）。
+var _phys_reduct: float = 0.0
+var _magic_reduct: float = 0.0
 var hp_unit: float = 0.0
 var spk: float = 0.0        # scrap_per_kill = 2 + 0.5w
 var t_reach: float = 10.0
@@ -173,6 +185,23 @@ const MAX_SUBSTEPS_PER_FRAME := 64
 ## 🟢 切片8续3（可玩 MVP）：一局总波数（W1..W20）。与金标本 `run_loop` 的
 ##    `max_wave = 20` 默认值对齐。打完 W20 且核心未归零 → 通关（`run_won`）。
 const MAX_WAVE := 20
+
+## 🆕 关卡推进（2026-11-07）：实例波数上限 `_max_wave`（默认 = MAX_WAVE）。
+##    🔴 金标本零扰动：默认值 20 与 `MAX_WAVE` 逐位一致，胜利判定 `w >= _max_wave`
+##       在不被覆盖时与 `w >= MAX_WAVE` 完全等价。只有关卡系统调用 `set_max_wave()`
+##       才改变（此时已在玩家路线、非金标本路径）。
+##    🔴 为什么用实例字段而非改 `const`：`MAX_WAVE` 被金标本 `run_loop`（max_wave=20）
+##       隐式对齐，改常量会让 PATH 金标本全部错位。实例字段默认 20 = 逐位不变。
+var _max_wave: int = MAX_WAVE
+
+
+## 覆盖本局总波数（关卡系统注入；不调 = 20，与金标本等价）。
+##   返回是否成功（拒绝 <=0 的非法值）。
+func set_max_wave(w: int) -> bool:
+	if w <= 0:
+		return false
+	_max_wave = w
+	return true
 
 
 func _ready() -> void:
@@ -253,6 +282,23 @@ func start_wave(p_w: int) -> void:
 	var D := float(ms["D"])
 	# 🔴 R1：本波打的是**上波买出来的构筑** → 波首算一次 DPS，波内恒定（与金标本同）
 	dps = _DE.dps_only(player, cfg, geo)
+	# 🆕 战斗类型：波首算一次按攻击类型拆分的 DPS 池（🔴 默认关 → 不消费，逐位不变）。
+	_phys_dps = 0.0
+	_magic_dps = 0.0
+	_true_dps = 0.0
+	_phys_reduct = 0.0
+	_magic_reduct = 0.0
+	if combat_types_enabled:
+		var _byt: Dictionary = _DE.compute_dps(player, cfg, geo).get("dps_by_type", {})
+		_phys_dps = float(_byt.get("physical", 0.0))
+		_magic_dps = float(_byt.get("magic", 0.0))
+		_true_dps = float(_byt.get("true", 0.0))
+		# 🆕 破甲光环：从场上塔类型算物抗/魔抗破甲量（与批处理 wave_sim 同一 SSOT → 逐位等价）。
+		var _ctypes: Array = []
+		for _t in player.towers:
+			_ctypes.append(String(_t.ctype))
+		_phys_reduct = _CombatTypes.armor_reduction(_ctypes, _CombatTypes.PHYSICAL)
+		_magic_reduct = _CombatTypes.armor_reduction(_ctypes, _CombatTypes.MAGIC)
 	var spawn_span := D * _Cfg.spawn_window(w)
 	interval = spawn_span / float(maxi(1, n))
 	limit = D + t_reach + 1e-9
@@ -371,19 +417,29 @@ func _substep() -> void:
 
 	# ---- ② 集火（W-A1 聚合池 / W-A2 距核心最近优先 / W-A3 溢出结转 / W-A4 不判射程）----
 	_stable_sort_by_remain()
-	var dmg := dps * _WaveSim.DT
-	for m in monsters:
-		if dmg <= 0.0:
-			break
-		if float(m.hp) <= dmg:
-			dmg -= float(m.hp)
-			m.hp = 0.0
-			kills += 1
-			scrap_earned += spk
-			emit_signal("monster_killed", m)
-		else:
-			m.hp = float(m.hp) - dmg
-			dmg = 0.0
+	if combat_types_enabled:
+		# 🆕 类型分池：物攻池 / 魔攻池 / 真实池各自独立集火，每只怪按原型抗性减免；
+		#   真实伤害无视抗性。🔴 与 `WaveSim._apply_pool` 语义同构（同 SSOT → 逐位等价）。
+		var _phys_dmg := _phys_dps * _WaveSim.DT
+		var _magic_dmg := _magic_dps * _WaveSim.DT
+		var _true_dmg := _true_dps * _WaveSim.DT
+		_apply_pool_live(_phys_dmg, _CombatTypes.PHYSICAL, _phys_reduct)
+		_apply_pool_live(_magic_dmg, _CombatTypes.MAGIC, _magic_reduct)
+		_apply_pool_live(_true_dmg, _CombatTypes.TRUE, 0.0)
+	else:
+		var dmg := dps * _WaveSim.DT
+		for m in monsters:
+			if dmg <= 0.0:
+				break
+			if float(m.hp) <= dmg:
+				dmg -= float(m.hp)
+				m.hp = 0.0
+				kills += 1
+				scrap_earned += spk
+				emit_signal("monster_killed", m)
+			else:
+				m.hp = float(m.hp) - dmg
+				dmg = 0.0
 
 	# ---- ③ 前进：判死 / 漏怪（原地压缩，保持相对顺序）----
 	#   🔒 T1：AggroTower 态怪物**停下**（t_remain 冻结，不前进、不漏怪）。
@@ -771,6 +827,33 @@ func _stable_sort_by_remain() -> void:
 		i += 1
 
 
+## 🆕 战斗类型：单一类型伤害池的实时集火（🔴 仅 combat_types_enabled 时调用）。
+##   🔴 与 `WaveSim._apply_pool` 语义同构（同 SSOT `CombatTypes` → 实时↔批处理逐位等价）。
+##   每只怪按**有效抗性**（静态抗性 − 破甲量）减免，溢出结转；击杀走 `monster_killed` 信号。
+func _apply_pool_live(dmg: float, dmg_type: String, reduction: float = 0.0) -> void:
+	if dmg <= 0.0:
+		return
+	for m in monsters:
+		if dmg <= 0.0:
+			break
+		if float(m.hp) <= 0.0:
+			continue
+		var resist := _CombatTypes.effective_resist(String(m.proto), dmg_type, reduction)
+		var factor := 1.0 - clampf(resist, 0.0, 1.0)
+		if factor <= 0.0:
+			continue                       # 免伤：该类型打不动这只，伤害不消耗
+		var eff := dmg * factor
+		if float(m.hp) <= eff:
+			dmg -= float(m.hp) / factor
+			m.hp = 0.0
+			kills += 1
+			scrap_earned += spk
+			emit_signal("monster_killed", m)
+		else:
+			m.hp = float(m.hp) - eff
+			dmg = 0.0
+
+
 # ---------------------------------------------------------------------------
 #  波次结束（GDD §2.9 / E-W1 / E-W2 / E-W3）
 # ---------------------------------------------------------------------------
@@ -820,7 +903,7 @@ func _end_wave() -> void:
 	# 🔴 T-P6-06 S3（BUG-1）：胜负**标志位**在此置定，但 `run_won` 的 **emit 延后**到
 	#   `wave_end` 之后（见下）—— 让结算覆盖层读到「本波积分已入账」后的余额。
 	var won_now := false
-	if w >= MAX_WAVE and not run_failed and not victory:
+	if w >= _max_wave and not run_failed and not victory:
 		victory = true
 		last_result["won"] = true
 		won_now = true
@@ -909,6 +992,7 @@ func snapshot() -> Dictionary:
 		"prototype_split_enabled": prototype_split_enabled,
 		"elite_waves_enabled": elite_waves_enabled,
 		"tower_aggro_enabled": tower_aggro_enabled,
+		"combat_types_enabled": combat_types_enabled,
 		"is_elite_wave": is_elite_wave(),
 		# 🔒 T1 反制窗口 UI 数据源（🔴 只**增**只读键，不改既有键语义）：
 		#   `aggro_ui` = "塔会挨打"这一**事实层总闸**（= 仇恨开关本身，与复活档位解耦）→

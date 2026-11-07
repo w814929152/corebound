@@ -40,6 +40,9 @@ const _Softcap := preload("res://scripts/engine/softcap.gd")
 const _TowerData := preload("res://scripts/data/tower_data.gd")
 const _FpPow := preload("res://scripts/engine/fp_pow.gd")
 const _FpSum := preload("res://scripts/engine/fp_sum.gd")
+## 🆕 战斗类型系统（物理/魔法 × 物抗/魔抗）—— 只读攻击类型标注，不参与默认结算。
+##   🔴 只在 `combat_types_enabled` 开关打开时被消费；默认关闭 → 逐位不变（见文件尾）。
+const _CombatTypes := preload("res://scripts/data/combat_types.gd")
 
 
 # ---------------------------------------------------------------------------
@@ -67,6 +70,7 @@ static func compute_dps(player, cfg: Dictionary, geo = null) -> Dictionary:
 	if n == 0:
 		return {
 			"total": 0.0,
+			"dps_by_type": {"physical": 0.0, "magic": 0.0, "true": 0.0},
 			"info": {
 				"per_tower": [], "adj": [], "E": [], "aoe": 1.0, "crossfire": 1.0,
 				"aux": 1.0, "empower": 1.0, "subtotal": 0.0, "core": 0, "L": [],
@@ -266,6 +270,9 @@ static func compute_dps(player, cfg: Dictionary, geo = null) -> Dictionary:
 			"base": base, "stack": stack, "syn": syn, "res": res,
 			"focus": foc, "allin": ali, "cov": cov, "dps": dps_i,
 			"disabled": bool(t.disabled),
+			# 🆕 战斗类型：本塔攻击类型标注（🔴 additive 只读键，不改 dps 值 / 口径）。
+			#   仅在 `combat_types_enabled` 时被聚合为 `dps_by_type`（见阶段 C 后）。
+			"dmg_type": _CombatTypes.tower_dmg_type(ctype),
 		})
 
 	# -----------------------------------------------------------------------
@@ -340,8 +347,41 @@ static func compute_dps(player, cfg: Dictionary, geo = null) -> Dictionary:
 
 	var total := subtotal * aoe * cf * aux * empower
 
+	# -----------------------------------------------------------------------
+	# 🆕 战斗类型：按攻击类型拆分 DPS（🔴 只在 combat_types_enabled 时计算）
+	# -----------------------------------------------------------------------
+	#   逐塔 dps_i 已含全部 7 乘区（base..cov）与 disabled 折损，但**不含**阶段 C 的
+	#   全局乘区（aoe/cf/aux/empower）。这些全局乘区是「类型无关」的标量 → 对物/魔
+	#   两条池**同乘**，故可先按类型对「逐塔 dps」求和，再统一乘全局乘区：
+	#     dps_by_type[t] = Σ_{塔i, type_i==t} per_tower[i].dps  ×  (aoe·cf·aux·empower)
+	#   这样 `total` 仍 = `dps_by_type[physical] + dps_by_type[magic]`（补偿求和一致）。
+	#   🔴 默认关闭：`dps_by_type` 键仍写入（值 = 各类型分量，未乘抗性），但不改变
+	#      `total` 的既有口径 —— 单测可用它断言「物+魔 = total」的恒等关系。
+	var global_mult := aoe * cf * aux * empower
+	var dps_by_type := {
+		"physical": 0.0,
+		"magic": 0.0,
+		"true": 0.0,
+	}
+	var _phys_parts: Array = []
+	var _magic_parts: Array = []
+	var _true_parts: Array = []
+	for p in per_tower:
+		var pt := String(p.get("dmg_type", "physical"))
+		var pd := float(p["dps"])
+		if pt == _CombatTypes.MAGIC:
+			_magic_parts.append(pd)
+		elif pt == _CombatTypes.TRUE:
+			_true_parts.append(pd)
+		else:
+			_phys_parts.append(pd)
+	dps_by_type["physical"] = _FpSum.sum_py(_phys_parts) * global_mult
+	dps_by_type["magic"] = _FpSum.sum_py(_magic_parts) * global_mult
+	dps_by_type["true"] = _FpSum.sum_py(_true_parts) * global_mult
+
 	return {
 		"total": total,
+		"dps_by_type": dps_by_type,
 		"info": {
 			"per_tower": per_tower, "adj": adj, "E": E, "aoe": aoe,
 			"crossfire": cf, "aux": aux, "empower": empower, "subtotal": subtotal,

@@ -229,6 +229,10 @@ static func cfg_of(
 		"salvage_on": salvage_on,
 		"salvage_from_wave": 1,
 		"salvage_refund": SALVAGE_REFUND,
+		# 🆕 战斗类型系统（物理/魔法 × 物抗/魔抗 · design/gdd/combat-types.md）。
+		#   🔴 默认 false = 旧聚合池口径逐位不变；true 时塔按攻击类型拆分 DPS 池、
+		#      怪物按原型抗性分别结算（wave_sim / wave_director 双消费点同读本键）。
+		"combat_types_enabled": false,
 	}
 	for k in overrides:
 		c[k] = overrides[k]
