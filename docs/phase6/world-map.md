@@ -1,9 +1,9 @@
-﻿# 大地图选关（裂隙航图）· world-map
+# 大地图选关（裂隙航图）· world-map
 
 > **状态**：已落地（2026-11-07）· `CAMPAIGN_ENABLED = true` 实机默认开启
 > **改动**：`scripts/ui/stage_select_overlay.gd` 全量重写 + `scripts/ui/boot.gd` 接线
 > **上游**：`design/gdd/campaign-progression.md`（关卡 = 地图 × 波次 × 通关条件）
-> **验证**：`run_tests.gd -- campaign`（110 项）· `-- uistyle`（122 项）· 实机截帧
+> **验证**：`run_tests.gd -- campaign`（120 项）· `-- uistyle`（122 项）· 实机截帧
 
 ---
 
@@ -109,6 +109,39 @@ boot._ready()
 
 | 套件 | 结果 |
 |---|---|
-| `run_tests.gd -- campaign` | 110 项全过（新增 §9 大地图 27 项） |
+| `run_tests.gd -- campaign` | 120 项全过（新增 §9 大地图 27 项 + 换图 null 回归 10 项） |
 | `run_tests.gd -- uistyle` | 122 项全过（新增航图字号 / 零默认控件 3 项） |
 | 实机截帧 | `shots_map/`（1600×900，Playwright 无关，`--write-movie` 直出） |
+
+## 9. 实机崩溃复盘（0xc0000005 · 切到 variant-a 必崩）
+
+**现象**：选 `1-2`（map = `variant-a`）进入战斗后 2~4 秒，进程直接消失；
+stderr 全空，Windows 事件日志 `APPCRASH / 0xc0000005`，偏移固定。
+
+**根因**（`scripts/geo/build_grid.gd:127`）：
+
+```gdscript
+var s: Array = _SpaceModel._MapVariants.sites(mid)   # sites() 对「复用基准」的变体返回 null
+```
+
+`MapVariants.sites()` 用 `null` 表示「复用基准 SITES」（10 张变体里 8 张是 null）。
+把 `null` 赋给**带类型标注的 `Array`** 会让 Godot 抛
+`Trying to assign value of type 'Nil' to a variable of type 'Array'`，
+**函数当场中断并返回 null** —— 但调用方（`site_cells` / `site_index` / `monster_layer._radial_geo`）
+拿到 null 后继续当数组用，绘制期间反复触发，最终把渲染线程带崩。
+
+**为什么测试没抓到**：`run_campaign_asserts` 只断言了 `MapVariants.sites() == null`
+（数据层语义），没有调用 `BuildGrid.active_sites()`（消费端）。静态检查也不报——
+GDScript 是运行时检查，而 headless 测试不跑绘制。
+
+**修复**：`typeof(s) != TYPE_ARRAY` 判空后再回落 `SITES`（不打类型标注）。
+
+**回归**：`run_campaign_asserts` §8 新增 10 项 —— 遍历 `IMPLEMENTED_MAPS`，
+逐张断言 `active_sites()` 是**非 null 的有效 Array**。这条断言的粒度是「消费端」，
+下次谁再让访问器返回 null 就会当场翻红。
+
+**复现探针**：`tools/probe_variant_crash.gd`（窗口模式跑真实战斗场景 + variant-a + 900 帧，
+headless 抓不到这类崩溃）。
+
+**教训**：`null` 语义 + 类型标注是这套工程里最贵的组合。变体表的 `sites` 用 `null`
+表示复用是正确的数据设计，但**消费端不许用带类型标注的变量去接**。

@@ -120,12 +120,15 @@ const _SQRT3 := 1.7320508075688772
 
 
 ## 🆕 活动阵地表（默认 = const SITES；切图 = 变体表，`sites` 为 null 时复用基准）。
+##   🔴 `sites()` 对「复用基准」的变体返回 **null** —— 不能直接赋给 `Array` 类型变量
+##     （Godot 会抛 "Trying to assign Nil to Array"，函数中断并返回 null，调用方再拿到
+##      null 继续画 → 实机原生崩溃 0xc0000005）。这里必须用 `typeof` 判空。
 static func active_sites() -> Array:
 	var mid: String = _SpaceModel.active_map_id
 	if mid == "tri-fissure":
 		return SITES
-	var s: Array = _SpaceModel._MapVariants.sites(mid)
-	if s == null or s.is_empty():
+	var s = _SpaceModel._MapVariants.sites(mid)
+	if typeof(s) != TYPE_ARRAY or s.is_empty():
 		return SITES
 	return s
 

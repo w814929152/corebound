@@ -319,6 +319,16 @@ func _test_map_switching() -> void:
 	_SpaceModel.set_active_map("variant-a")
 	_check("切图后 active_map_id = variant-a", _SpaceModel.active_map_id == "variant-a")
 	_check("切图后 active_open_deg() = 306", absf(_SpaceModel.active_open_deg() - 306.0) < 1e-9)
+
+	# 🔴 换图回归（实机崩过一次）：`sites` 为 null 的变体必须回落到基准 SITES。
+	#   旧实现 `var s: Array = MapVariants.sites(mid)` 把 null 赋给 Array →
+	#   Godot 报错并让 active_sites() 返回 null → 绘制层拿到 null → 原生崩溃 0xc0000005。
+	for mid in _CampaignData.IMPLEMENTED_MAPS:
+		_SpaceModel.set_active_map(String(mid))
+		var act = _BuildGrid.active_sites()
+		_check("变体 %s 的 active_sites() 是有效 Array（非 null）" % mid,
+			typeof(act) == TYPE_ARRAY and act.size() > 0)
+	_SpaceModel.set_active_map("variant-a")
 	_check("切图后 active_ridges() = 变体表",
 		_SpaceModel.active_ridges() == _MapVariants.ridges("variant-a"))
 	_check("切图后 active_spawn_arcs() = 变体表",
