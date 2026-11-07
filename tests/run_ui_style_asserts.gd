@@ -348,8 +348,11 @@ func _test_i_card_text() -> void:
 		cards.append(String(nm))
 	for nm in _TD.REINF_EXT:
 		cards.append(String(nm))
+	for nm in _TD.REINF_EXT2:
+		cards.append(String(nm))
 	cards.append("ScrapUp")
-	_check_int("待验卡数 = 主表 3 + 扩展 2 + 强化 4 + 全局 1", cards.size(), 10)
+	# 🔴 卡数随数据表增长（并行会话可能继续加卡），不硬编码，只校验「每张都有描述」
+	_check("待验卡全部就位（≥ 20，实际 %d）" % cards.size(), cards.size() >= 20)
 
 	var empty: Array = []
 	var bad_lines: Array = []
@@ -405,13 +408,14 @@ func _test_i_card_text() -> void:
 	_check("每行 ≤9 汉字（版式硬约束 · 超出即二次换行）%s" % (
 		"" if over.is_empty() else " → " + str(over)), over.is_empty())
 
-	# ---- 强化卡「可强化：xxx」也派生自 tag（新增同 tag 塔自动被包含）----
-	for pair in [["FireUp", "Cannon"], ["FrostUp", "Frost"], ["PirUp", "Lance"], ["ShkUp", "Tesla"]]:
+	# ---- 强化卡「可强化 X 系塔」派生自 tag（v0.2：同 tag 双塔，改为按 tag 中文而非点名）----
+	for pair in [["FireUp", "火"], ["FrostUp", "冰"], ["PirUp", "穿甲"], ["ShkUp", "电"]]:
 		var card := String(pair[0])
-		var host := String(pair[1])
+		var tag_cn := String(pair[1])
 		var d2 := _CardText.describe(card)
-		_check("%s 的「可强化」点名 %s" % [card, host], d2.find(host) >= 0)
-	_check("FireUp 不会误点名 Frost（tag 不同）", _CardText.describe("FireUp").find("Frost") < 0)
+		_check("%s 的「可强化」标注 %s 系塔" % [card, tag_cn],
+			d2.find("可强化 %s 系塔" % tag_cn) >= 0)
+	_check("FireUp 不会误标冰系（tag 不同）", _CardText.describe("FireUp").find("冰 系塔") < 0)
 	_check("全局卡 ScrapUp 写明 +20% 与 3 层上限",
 		_CardText.describe("ScrapUp").find("+20%") >= 0
 		and _CardText.describe("ScrapUp").find("上限3层") >= 0)

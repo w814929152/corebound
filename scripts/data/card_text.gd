@@ -44,6 +44,9 @@ const TAG_CN := {
 	"frost": "冰",
 	"pierce": "穿甲",
 	"shock": "电",
+	"sunder": "破甲",
+	"hex": "咒术",
+	"true": "真",
 }
 
 ## 第 1 行：这张卡**做什么**（机制，不含数值）
@@ -54,11 +57,34 @@ const ROLE := {
 	"Frost": "命中减速 30%",
 	"Lance": "远程单体",
 	"Tesla": "近身溅射 + 减速",
+	"Sunder": "削弱全场物抗",
+	"Hex": "削弱全场魔抗",
+	# ---- 🆕 流派第二塔（2026-11-07 · card-packs v0.2）----
+	"Ember": "近身灼烧：一片",
+	"Icicle": "单体强减速",
+	"Javelin": "近身连射",
+	"Bolt": "单体电弧直击",
+	"Maul": "群体物理压制",
+	"Rune": "群体魔法清场",
+	# ---- 🆕 真实伤害流派（2026-11-07 · combat-types GDD v0.3）----
+	"Oblivion": "真实单体：无视抗性",
+	"Void": "真实群伤：无视抗性",
 	# ---- 单塔效果卡：L1 强化谁 / L2 点名 / L3 叠层规则 ----
 	"FireUp": "强化「火」系塔",
 	"FrostUp": "强化「冰」系塔",
 	"PirUp": "强化「穿甲」系塔",
 	"ShkUp": "强化「电」系塔",
+	"SunUp": "强化「破甲」系塔",
+	"HexUp": "强化「咒术」系塔",
+	"TrueUp": "强化「真」系塔",
+	# ---- 🆕 流派第二强化（与第一强化同 tag，可再叠一层）----
+	"FireUp2": "强化「火」系塔",
+	"FrostUp2": "强化「冰」系塔",
+	"PirUp2": "强化「穿甲」系塔",
+	"ShkUp2": "强化「电」系塔",
+	"SunUp2": "强化「破甲」系塔",
+	"HexUp2": "强化「咒术」系塔",
+	"TrueUp2": "强化「真」系塔",
 	# ---- 全局效果卡 ----
 	"ScrapUp": "提高废料收入",
 }
@@ -165,12 +191,13 @@ static func describe(nm: String) -> String:
 		return ""
 	if _TD.TOWERS.has(nm) or _TD.TOWERS_EXT.has(nm):
 		return "%s\n%s\n%s" % [r, stat_line(nm), mark_line(nm)]
-	if _TD.REINF.has(nm) or _TD.REINF_EXT.has(nm):
-		var hosts := hosts_of_tag(_TD.reinf_tag(nm))
-		var host_txt := "（无同类塔）"
-		if not hosts.is_empty():
-			host_txt = _join_sep(hosts, "、")
-		return "%s\n可强化 %s\n%s" % [r, host_txt, REINF_FLOW]
+	if _TD.REINF.has(nm) or _TD.REINF_EXT.has(nm) or _TD.REINF_EXT2.has(nm):
+		# 🔴 v0.2：同 tag 现有两座塔（核心塔 + 第二塔），列出具体塔名会让
+		#   「可强化 Cannon、Ember」超 9 汉字（版式硬约束 → 二次换行）。
+		#   改为按 tag 中文（第 1 行 ROLE 已写「强化「火」系塔」，tag 信息不丢），
+		#   字数固定不随塔数量增长。
+		var tg_cn := tag_cn(_TD.reinf_tag(nm))
+		return "%s\n可强化 %s 系塔\n%s" % [r, tg_cn, REINF_FLOW]
 	if nm == "ScrapUp":
 		return "%s\n每层 +%.0f%% 废料\n占1槽，上限%d层" % [
 			r, INCOME_STEP * 100.0, GLOBAL_SLOT_MAX]

@@ -1,0 +1,163 @@
+# 卡包（Card Pack）—— 流派编排 + 开局选包
+
+> **归属**：数据层 `scripts/data/card_packs.gd` · 局外进度 `scripts/gameplay/run_meta.gd`
+> · 发牌层 `scripts/gameplay/shop_runtime.gd`（`active_packs` / 刷新保底）· 呈现层 `scripts/ui/pack_select_overlay.gd`
+> **切入口**：`ShopRuntime.set_active_packs()`（默认空 = 老口径）· **一行回滚**
+> **提交**：2026-11-07 · 承接用户两轮需求：
+>   ①「把卡牌整理成卡包，解锁后开局选包」→ v0.1（5 包 × 2 张）
+>   ②「卡太少，每包要能组成一个完整 build（王者万象棋 / 东方梦符祭）」→ **v0.2（本版：7 包 × 6 张）**
+> 🔴 默认路径（空选包）玩家池仍是 6 张 / 0.905，`TOWERS` / `CARD_NAMES` / `WEIGHTS` 一字未动。
+
+---
+
+## 0. 版本演进
+
+| 版本 | 诉求 | 结构 | 卡池 |
+|---|---|---|---|
+| v0.1 | 防稀释（分池 + 选包） | 5 包 × 2 张（塔 + 强化） | 3 包 = 6 张 |
+| **v0.2（本版）** | **每包 = 完整 build** | **7 包 × 6 张** | **3 包 = 18 张** |
+
+v0.2 的关键突破：**从「选几张卡」升级为「选一条流派」**。每包不再是「塔 + 强化」两件套，
+而是「核心塔 + 第二塔 + 强化 ×2 + 经济 + 泛用配塔」六件套——**一个包自身就能独立成型**，
+对齐万象棋 / 梦符祭「选羁绊 = 选一套」的体验。
+
+---
+
+## 1. 结论前置
+
+四句话（前两句是 v0.1 就有的，后两句是 v0.2 新结论）：
+
+1. **卡池张数本身就是难度旋钮，不是容量。** `keyword-adaptation.md` §7.4 实测：玩家池 7 → 10 张（3 张零效果白板），A 路径起飞率 −8.0pp、B −11.0pp；单张「能用但弱」的卡更狠（−10.3pp/张）。⇒ 盲目加卡 = 把内容翻译成降体验。
+2. **但「完整 build」是硬需求。** v0.1 的每包 2 张（塔 + 强化）能让玩家「选流派」，但选不到「一套 build」——缺第二塔、缺双强化、缺经济滚动，单包撑不起一整局。玩家要的不是更多散卡，是**每包自成一条能通关的路线**。
+3. **所以 v0.2 扩容到每包 6 张，同时用「刷新保底」对冲稀释。** 池从 6 张涨到 18 张，稀释被三件事吃掉：
+   - **选包即筛池**：未选的 4 包（24 张）根本不进池，池 = 3 包并集（去重约 12–18 张），且同主题自洽；
+   - **刷新保底**（本版新增）：卡包模式下，手动刷新若 3 张里没有「骨架卡」（流派塔 / 强化），强制补一张，让 build 骨架不被大池淹没；
+   - **包内权重倾斜**：核心塔高频、第二强化稀有，build 骨架优先出现。
+4. **解锁仍用「最佳波次」，不用「通关次数」。** `campaign-progression.md` §3「失败也是产出」——打不过也该有推进，否则首次通关前的内容永远看不见。
+
+一句话：**v0.2 不是让玩家带更多牌，是让玩家决定这局走哪条完整流派。**
+
+---
+
+## 2. 卡包表（SSOT：`scripts/data/card_packs.gd`）
+
+| 包 | id | 核心塔 | 第二塔 | 强化 A/B | 经济 | 泛用 | 解锁 |
+|---|---|---|---|---|---|---|---|
+| 基石包 | `core` | Arrow | Cannon+Frost | FireUp / FrostUp | ScrapUp | — | 默认 |
+| 熔炉包 | `cinder` | Cannon | Ember | FireUp / FireUp2 | ScrapUp | Arrow | 默认 |
+| 霜序包 | `rime` | Frost | Icicle | FrostUp / FrostUp2 | ScrapUp | Arrow | 默认 |
+| 穿甲包 | `pierce` | Lance | Javelin | PirUp / PirUp2 | ScrapUp | Arrow | ≥ 6 |
+| 电弧包 | `arc` | Tesla | Bolt | ShkUp / ShkUp2 | ScrapUp | Arrow | ≥ 12 |
+| 破甲包 | `sunder` | Sunder | Maul | SunUp / SunUp2 | ScrapUp | Arrow | ≥ 16 |
+| 咒术包 | `hex` | Hex | Rune | HexUp / HexUp2 | ScrapUp | Arrow | ≥ 18 |
+| 湮灭包 | `true` | Oblivion | Void | TrueUp / TrueUp2 | ScrapUp | Arrow | ≥ 20 |
+
+### 2.1 每包为什么是「6 张」这套结构
+
+「完整 build」要覆盖三阶段，缺一环就沦为「选几张卡」：
+
+| 阶段 | 卡类 | 作用 |
+|---|---|---|
+| 开局 | 核心塔 | 流派主打，先造出来 |
+| 中期 | 第二塔 + 强化 A/B | 扩站位（一远一近 / 一单一群）+ 双塔各叠强化 |
+| 成型 | 经济 + 泛用配塔 | 经济滚雪球 + 兜底站位 |
+
+第二塔（Ember / Icicle / Javelin / Bolt / Maul / Rune）与第二强化（FireUp2 / FrostUp2 / ...）
+是本版**新增的 12 张卡**，全部复用现有三种卡种（塔 / 强化 / 经济），**零引擎改动**——
+`ShopAI.apply_action` / `enumerate_actions` / `CARD_NAMES`（金标本）一字未动，AI 路线与 MC 判据链零扰动。
+
+### 2.2 跨包共享（「羁绊共享」编排）
+
+同一张卡**可以**出现在多个包里（万象棋 / 梦符祭的羁绊共享同款）：
+
+- **泛用卡** `Arrow` / `ScrapUp`：通用兜底塔 + 通用经济，所有流派都要。
+- **基石包的双流派入门**：`core` 包含 `Cannon` / `Frost` / `FireUp` / `FrostUp`，
+  与 `cinder` / `rime` 的专精塔共享 —— 新手包 = 体验两种基础流派，不是第 8 条 tag 线。
+
+`validate()` 的「卡跨包重复」检查对共享卡**豁免**（`is_shared_card()`），
+流派专精塔（Lance/Tesla/Sunder/Hex + 六座第二塔）与第二强化卡仍只在本包出现。
+
+### 2.3 池序（容易踩的坑）
+
+`PyRandom.choices()` 是「累积权重 + `bisect_right`」，**池内顺序改变抽卡序列**。因此：
+
+- 池序**只由包序决定**（`sort_by_pack_order()`），不随「玩家先点哪个包」漂移；
+- 卡包模式（`active_packs` 非空）**完全忽略** `extended_pack` 开关——卡包表已覆盖全部卡，
+  两个开关同时开会让同一张卡进池两次。
+
+---
+
+## 3. 刷新保底（本版新增 · 卡池深度对冲）
+
+**为什么需要**：18 张池下，手动刷新（纯随机、无保底，GDD §2.8.1）抽出 3 张里可能一张流派卡都没有，
+玩家刷了等于白刷。这是「大池稀释」最直接的体验痛点。
+
+**机制**（`shop_runtime._apply_reroll_pity()`）：
+
+- 仅卡包模式生效（`active_packs` 非空）；空选包（老口径 6 张池）不生效 → 逐位不变；
+- 刷新后若 3 张里没有「骨架卡」（`skeleton_cards()` = 流派塔 + 强化，**排除** Arrow/ScrapUp），
+  把 1 个未锁定位改写为骨架卡池的随机一张；
+- 🔴 不覆盖锁定位（同 `_apply_pity` 的 SR-R4）；已含骨架卡则不干预。
+
+**为什么不是「槽位扩容到 4 位」**（本版否决的替代方案）：抽屉基准宽 614px，
+3 位 × 168px + 间距已占满内容宽 578px；4 位要么缩到 130px（破坏卡面可读性，
+`card_text.gd` 的「每行 ≤9 汉字」约束失效），要么加宽抽屉（牵动 `shop_layout` + 战场占比 +
+一批布局断言）。**刷新保底零 UI 改动、风险最低**，是更划算的对冲。
+
+---
+
+## 4. 解锁与存档（`scripts/gameplay/run_meta.gd`）
+
+| 项 | 口径 |
+|---|---|
+| 存档路径 | `user://card_packs.json`（`ver` / `best_wave` / `runs` / `wins` / `packs`） |
+| 解锁判据 | 历史**最佳波次**（`best_wave`）≥ 包的 `unlock_wave` |
+| 推进 | 一局结束（胜或负）由 `ShopController.run_finished` → `RunMeta.record_run()`；`best_wave` 只升不降 |
+| 记住选包 | `packs` 存上一次选择；失效（包变少 / 未解锁）自动回落空选 |
+| 坏档 | 解析失败 / 版本不符 → **静默回落空状态**，不阻塞开局 |
+
+- 只存**局外事实**：不存局内经济、不存卡池权重、不存塔数值 —— 坏档最多丢解锁进度。
+- 🔴 与并行推进系统（`campaign.gd`，`user://save.json`）**不合并**：两份存档并存，收敛点在
+  `unlocked_ids()` 一个函数。等关卡接进 `boot.gd`，把 `unlock_wave` 换成「已通关关卡」即可。
+
+---
+
+## 5. 新增卡牌清单（本版 12 张）
+
+### 5.1 第二塔（6 座 · 复用 `build` 卡种 · 平衡基准：dps 低于同 tag 主塔，用 aoe/rng/slow 换差异）
+
+| 卡 | tag | dps | rng | 特性 | 与主塔的互补 |
+|---|---|---|---|---|---|
+| Ember | fire | 6 | 14 | aoe | Cannon 远程溅射 vs Ember 近身灼烧 |
+| Icicle | frost | 4 | 15 | slow 0.45 | Frost 远程减速 vs Icicle 近身强减速 |
+| Javelin | pierce | 9 | 17 | 单体 | Lance 远程狙击 vs Javelin 近身连射 |
+| Bolt | shock | 8 | 19 | 单体 | Tesla 近身 aoe vs Bolt 单体直击 |
+| Maul | sunder | 7 | 16 | aoe | Sunder 单体破甲 vs Maul 群体物理 |
+| Rune | hex | 5 | 17 | aoe | Hex 单体破魔 vs Rune 群体魔法 |
+
+### 5.2 第二强化（6 张 · 复用 `reinf` 卡种 · 同 tag 可再叠一层）
+
+`FireUp2` / `FrostUp2` / `PirUp2` / `ShkUp2` / `SunUp2` / `HexUp2` —— 语义与第一强化完全一致
+（`reinf` 卡种，同卡再买叠层），只是「第二张同名 tag 的强化卡」，让单包能同时给两座塔各叠一层。
+
+### 5.3 真实伤害流派（并行线新增 · `combat_types.gd` v0.3）
+
+`Oblivion`（真实主塔）/ `Void`（真实第二塔）/ `TrueUp` / `TrueUp2`（强化）构成第 8 个 tag「true」：
+真实伤害**无视一切抗性**（不吃物抗/魔抗，也不受破甲影响），克制高抗性怪（Tank 物抗 0.30 /
+Rush 魔抗 0.20）。代价是 dps 刻意压低（Oblivion 6 / Void 5），只有打高抗怪时才划算。
+🔴 该流派由**并行会话**在 `tower_data.gd` / `combat_types.gd` 落地，本文件只负责把它编进「湮灭包」
+并补 `card_text.gd` 文案（TAG_CN "true"→"真"），不碰对方的 `combat_types.gd` 数值。
+
+---
+
+## 6. 边界与未决
+
+1. **强度平衡未跑 MC**：第二塔/第二强化的 dps / 权重是纸面估值，未走 300 局 MC。
+   18 张池 + 刷新保底的「实际起飞率」尚未量化——首局手感是否达标，最直接的旋钮是
+   `unlock_wave`（6/12/16/18）与第二塔的权重（0.10）。
+2. **经济卡未差异化**：每包的经济卡暂统一 `ScrapUp`。若要「流派专属经济」（如火系加攻速、
+   冰系加减速），需要新增 econ 卡种变体 → 动 `ShopAI.apply_action` 的 econ 分支（金标本），
+   本版刻意不做，留待扩展。
+3. **刷新保底的强度旋钮**：当前「无骨架卡 → 补 1 张」是硬编码。若实测觉得保底过强/过弱，
+   可改成「补 1 张且不占商品位」或「只保底核心塔、不保底第二强化」。
+4. **两份解锁体系未合并**：卡包 by 最佳波次 / 关卡 by 首次通关，等关卡系统接进 `boot.gd` 再收敛。

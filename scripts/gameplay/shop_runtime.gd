@@ -43,6 +43,8 @@ const _PyRandom := preload("res://scripts/engine/py_random.gd")
 const _FpSum := preload("res://scripts/engine/fp_sum.gd")
 const _DE := preload("res://scripts/engine/damage_engine.gd")
 const _TD := preload("res://scripts/data/tower_data.gd")
+## 🆕 卡包表（数据层）：本局卡池 = 所选卡包的并集（见文件下半「卡包模式」）
+const _Packs := preload("res://scripts/data/card_packs.gd")
 const _WaveSim := preload("res://scripts/engine/wave_sim.gd")
 const _Geo6 := preload("res://scripts/geo/geo6.gd")
 const _Geo := preload("res://scripts/geo/geo.gd")
@@ -62,15 +64,51 @@ const PLAYER_EXCLUDED_CARDS: Array = ["RerollD"]
 
 ## 🆕 扩展包卡序（显式数组 → 抽卡池顺序确定、可测；不用 Dictionary 遍历顺序）。
 ##   与 `TowerData.EXT_WEIGHTS` 的键集合必须一一对应（自测断言）。
-const EXT_CARD_ORDER: Array = ["Lance", "Tesla", "PirUp", "ShkUp"]
+const EXT_CARD_ORDER: Array = ["Lance", "Tesla", "PirUp", "ShkUp", "Sunder", "Hex", "SunUp", "HexUp", "Oblivion", "TrueUp"]
 
 ## 🆕 扩展包开关。🔴 默认 `false` = 产品未启用口径 ⇒ 玩家池仍是 6 张，
 ##    与改动前逐位一致；`true` 时玩家池 = 6 + 4 = 10 张（AI 池恒不变）。
 static var extended_pack: bool = false
 
+## 🆕 卡包模式（2026-11-07）· 本局所选卡包 id 列表。
+##   · **空 = 未启用卡包模式** ⇒ `_build_player_pool()` 走老口径（6 张 / 扩展包 10 张），
+##     与改动前**逐位一致**（headless 自测 / 金标本 / MC 都不经过这里）。
+##   · 非空 ⇒ 玩家池 = 所选卡包的并集（每包 2 张，选 3 包 = 6 张，见 `card_packs.gd`）。
+##   🔴 静态量：跨"再来一局"保持同一套包；换包必须重新 `set_active_packs()`。
+static var active_packs: Array = []
+
 static var _pool_names: Array = []
 static var _pool_weights: Array = []
 static var _pool_total := 0.0
+
+
+## 🆕 设定本局卡包。传空数组 = 退回老口径。
+##   🔴 必须清缓存：`_build_player_pool()` 开头的 `if not _pool_names.is_empty(): return`
+##      会让"换包"静默失效（与 `set_extended_pack()` 同一个坑）。
+static func set_active_packs(ids: Array) -> void:
+	var norm: Array = []
+	for nm in ids:
+		var s := String(nm)
+		if s == "" or norm.has(s):
+			continue
+		if not _Packs.has_pack(s):
+			continue                       # 未知包 id 直接丢弃（不让它进池）
+		norm.append(s)
+	if norm == active_packs:
+		return
+	# 🔴 池序只由包序决定（不随"玩家点选顺序"漂）：同一套包必须抽出同一序列。
+	active_packs = _Packs.sort_by_pack_order(norm)
+	_invalidate_player_pool()
+
+
+static func active_pack_ids() -> Array:
+	return active_packs.duplicate()
+
+
+static func _invalidate_player_pool() -> void:
+	_pool_names.clear()
+	_pool_weights.clear()
+	_pool_total = 0.0
 
 
 ## 🆕 切换扩展包。🔴 必须清静态缓存，否则 `_build_player_pool()` 的
@@ -79,9 +117,7 @@ static func set_extended_pack(on: bool) -> void:
 	if extended_pack == on:
 		return
 	extended_pack = on
-	_pool_names.clear()
-	_pool_weights.clear()
-	_pool_total = 0.0
+	_invalidate_player_pool()
 
 
 ## 🔴 扩展包兼容层：卡种判定**先查扩展表，再回落金标本** `ShopAI.card_kind()`。
@@ -93,6 +129,8 @@ static func _card_kind(nm: String) -> String:
 	if _TD.TOWERS_EXT.has(nm):
 		return "tower"
 	if _TD.REINF_EXT.has(nm):
+		return "reinforce"
+	if _TD.REINF_EXT2.has(nm):
 		return "reinforce"
 	return _ShopAI.card_kind(nm)
 
@@ -109,6 +147,13 @@ static func player_card_weights() -> Array:
 	return _pool_weights
 
 
+## 🆕 商店槽位数（card-packs v0.2）：卡包模式仍恒 3 位（614px 抽屉放不下第 4 位）。
+##   🔴 槽位扩容已否决（见 card-packs.md §对冲）：改用「刷新保底」对冲 18 张池稀释，
+##      商品位恒 3，UI 零改动，`cfg["shop_offers"]`（=3）与改动前逐位一致。
+static func shop_slot_count() -> int:
+	return 3
+
+
 ## 玩家池权重之和：`PyRandom.choices()` 用它归一（control-manifest P3）。
 ##   · 扩展包关：= 1 − 0.095 = **0.905**（6 张，与改动前一致）
 ##   · 扩展包开：= 0.905 + Σ`EXT_WEIGHTS` = **1.245**（10 张）
@@ -120,6 +165,19 @@ static func player_pool_total() -> float:
 
 static func _build_player_pool() -> void:
 	if not _pool_names.is_empty():
+		return
+	# 🆕 卡包模式（优先级最高）：卡池 = 所选卡包并集，顺序 = 包序 → 包内序。
+	#   🔴 走这条分支时**不再看** `extended_pack` —— 卡包表本身已经覆盖全部 10 张卡，
+	#      两个开关同时开会变成"同一张卡进池两次"（PyRandom 的累积区间被重复占用）。
+	if not active_packs.is_empty():
+		for pid in active_packs:
+			for nm in _Packs.cards_of(String(pid)):
+				var s := String(nm)
+				if _pool_names.has(s):
+					continue
+				_pool_names.append(s)
+				_pool_weights.append(_Packs.card_weight(s))
+		_pool_total = _FpSum.sum_py(_pool_weights)
 		return
 	for nm in _ShopAI.CARD_NAMES:
 		var s := String(nm)
@@ -270,6 +328,11 @@ func _apply_pity(shop: Array, force) -> void:
 	var f := String(force)
 	if f == "":
 		return
+	# 🔴 卡包模式：保底卡必须**在本局池内**，否则写进去等于发了一张理论上买不到的卡
+	#    （玩家看到的池子和实际发牌不一致）。老口径下 FireUp/FrostUp 恒在池内 → 本判定恒真，
+	#    与改动前逐位一致；`pity_card()` 也只可能返回这两张（它只查 `REINF` 主表）。
+	if not player_card_names().has(f):
+		return
 	for nm in shop:
 		if String(nm) == f:
 			return                                  # 已含 ≥1 张 force → 不干预
@@ -283,9 +346,10 @@ func _apply_pity(shop: Array, force) -> void:
 
 
 ## GDD §2.8.3 `deal_initial_shop()` —— 纯随机 3 张 → 再按 `_apply_pity` 写 force（P1–P4）。
+##   🔴 槽位数恒 3（`shop_slot_count()`），卡池深度对冲走「刷新保底」而非扩容（见 reroll）。
 func deal_initial_shop() -> Array:
 	var force = pity_force()
-	var out := _draw_offers_player(int(cfg["shop_offers"]))
+	var out := _draw_offers_player(shop_slot_count())
 	_apply_pity(out, force)
 	return out
 
@@ -331,12 +395,39 @@ func reroll() -> bool:
 	if lock_index >= 0 and lock_index < offers.size():
 		kept = String(offers[lock_index])
 	# 🔴 无 force（D-1：手动 reroll 纯随机不保底）+ 玩家路线自己的发牌（D-2 有放回 · D-4 无 RerollD）
-	var fresh := _draw_offers_player(int(cfg["shop_offers"]))
+	var fresh := _draw_offers_player(shop_slot_count())
 	scrap -= cost
 	rerolls += 1
 	offers = _merge_with_lock(lock_index, kept, fresh, offers.size())
+	# 🆕 刷新保底（card-packs v0.2）：卡包模式（18 张池）下，若刷新结果里一张「骨架卡」都没有，
+	#   强制补一张骨架卡（核心塔/强化），对冲大池稀释 —— 让玩家刷新也能稳定拿到 build 骨架。
+	_apply_reroll_pity()
 	last_error = ""
 	return true
+
+
+## 🆕 刷新保底（card-packs v0.2 · 卡池深度对冲）：
+##   仅卡包模式生效（`active_packs` 非空）；若当前 3 位里没有任何「骨架卡」
+##   （所选包的核心塔 + 强化卡），把 1 个未锁定位改写为骨架卡池的随机一张。
+##   🔴 空选包（老口径 6 张池）不生效 → 与改动前逐位一致；AI 路线（金标本）不经过这里。
+##   🔴 不覆盖锁定位（同 `_apply_pity` 的 SR-R4）；锁定位若已是骨架卡则不干预。
+func _apply_reroll_pity() -> void:
+	if active_packs.is_empty():
+		return                                   # 老口径：不引入刷新保底，逐位不变
+	var skel := _Packs.skeleton_cards(active_packs)
+	if skel.is_empty():
+		return
+	# 若当前已有骨架卡 → 不干预（玩家已经刷到 build 骨架）
+	for nm in offers:
+		if skel.has(String(nm)):
+			return
+	var unlocked: Array = []
+	for i in offers.size():
+		if i != lock_index:
+			unlocked.append(i)
+	if unlocked.is_empty():
+		return                                   # 全部锁定 → 不干预（E15 / SR-R4）
+	offers[int(rng.choice(unlocked))] = String(rng.choice(skel))
 
 
 ## 锁定位**原样保留**，其余位用新抽的卡填（🔴 锁定位不参与刷新，GDD §2.6）。
@@ -1378,7 +1469,7 @@ func snapshot() -> Dictionary:
 		legal.append(legal_at(i))
 		notes.append(legal_note(i))
 		caps.append(at_cap(i))
-	while names.size() < _Cfg.SHOP_SLOTS:
+	while names.size() < shop_slot_count():
 		names.append("")
 		kinds.append("")
 		prices.append(0.0)
@@ -1434,6 +1525,9 @@ func snapshot() -> Dictionary:
 		"pity_card": pity_card_name(),
 		"cards": player.cards.size(),
 		"cards_max": int(cfg["backpack"]),
+		# 🆕 卡包模式：本局卡包 / 卡池张数（UI 只读，用来解释"这局为什么只有这些卡"）
+		"card_packs": active_pack_ids(),
+		"card_pool_size": player_card_names().size(),
 		"towers": player.towers.size(),
 		# 🆕 自由摆放：上限取 `tower_cap`（玩家路线塔数上限），不是 `n_slots`（金标本槽位数）。
 		"towers_max": tower_cap(),

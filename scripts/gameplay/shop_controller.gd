@@ -40,6 +40,9 @@ const DEFAULT_RUN_SEED := 20260930
 
 signal shop_changed()
 signal run_changed()
+## 🆕 一局结束（胜 / 负都发）。局外进度（卡包解锁）只认这一条信号：
+##   由 `boot.gd` 接到 `run_meta.record_run()`，本文件不碰存档。
+signal run_finished(won: bool, wave: int)
 
 
 var runtime = null
@@ -49,6 +52,10 @@ var wave_director: Node = null       # WaveDirector（波次 / 刷怪权威，�
 var over: bool = false               # 核心 HP ≤ 0 → 不再推进
 var _pending_result: Dictionary = {}
 var last_realtime_result: Dictionary = {}
+## 🆕 再来一局前的拦截点（卡包选择）：有效时 `_on_restart_requested` **不直接重开**，
+##   而是交给它（`boot.gd` 弹选包界面 → 选完再调 `start_new_run()`）。
+##   无效 = 老口径（直接重开，行为与改动前一致）。
+var restart_hook: Callable = Callable()
 
 
 func _ready() -> void:
@@ -132,6 +139,7 @@ func _on_run_lost(p_w: int) -> void:
 	over = true
 	print("[shop_controller] 核心 HP 归零（W%d）→ 停止推进（E-W3 立即失败）" % p_w)
 	_emit_run()
+	run_finished.emit(false, p_w)
 	_show_result(false, p_w)
 
 
@@ -139,6 +147,7 @@ func _on_run_won(p_w: int) -> void:
 	over = true
 	print("[shop_controller] 通关胜利（打完 W%d 且核心未归零）" % p_w)
 	_emit_run()
+	run_finished.emit(true, p_w)
 	_show_result(true, p_w)
 
 
@@ -158,15 +167,25 @@ func _show_result(p_won: bool, p_wave: int) -> void:
 
 
 func _on_restart_requested() -> void:
-	# 重开一局：复位 over → runtime 重建（清 scrap/core_hp/构筑/待放置）→
-	#   刷新 WaveDirector 的 player 引用（setup 会 new_player）→ 重新开波 W1。
+	# 🆕 卡包：先给 `boot.gd` 一次"选包"的机会（解锁了新包 / 想换构筑）。
+	#   它选完会调 `start_new_run()`；不设 hook 时直接重开（老口径）。
+	if restart_hook.is_valid():
+		restart_hook.call()
+		return
+	print("[shop_controller] 再来一局 → 重新开波 W1")
+	start_new_run()
+
+
+## 重开一局（也用于"首次开局"）：复位 over → runtime 重建（清 scrap/core_hp/构筑/待放置）
+##   → 刷新 WaveDirector 的 player 引用（setup 会 new_player）→ 重新开波 W1。
+##   🔴 卡包选择在调用方（`ShopRuntime.set_active_packs()`），本函数不碰卡池。
+func start_new_run() -> void:
 	over = false
 	if runtime != null:
 		runtime.setup("B", DEFAULT_RUN_SEED)
 	if wave_director != null:
 		wave_director.bind_runtime(runtime)   # 刷新 player / core_hp 引用
 	_emit_run()
-	print("[shop_controller] 再来一局 → 重新开波 W1")
 	start_run(1)
 
 

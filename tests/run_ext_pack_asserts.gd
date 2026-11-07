@@ -34,9 +34,10 @@ const OLD_CANNON_DPS := 7.0
 const OLD_CANNON_RNG := 18.0
 const OLD_FROST_DPS := 5.0
 const OLD_FROST_SLOW := 0.30
-## 玩家池权重和：6 张 = 1 − 0.095(RerollD) = 0.905；10 张 = 0.905 + 0.34 = 1.245
+## 玩家池权重和：6 张 = 1 − 0.095(RerollD) = 0.905；
+##   扩展包开启 16 张 = 0.905 + 0.835（10 张扩展卡权重和）= 1.740
 const POOL_TOTAL_6 := 0.905
-const POOL_TOTAL_10 := 1.245
+const POOL_TOTAL_16 := 1.740
 const EPS := 1e-9
 
 var _pass := 0
@@ -89,16 +90,20 @@ func _check_float(name: String, got: float, want: float) -> void:
 # ---------------------------------------------------------------------------
 func _test_a_tables() -> void:
 	_log("---- A 数据表结构 ----")
-	_check_int("A1 TOWERS_EXT 塔数", _TD.TOWERS_EXT.size(), 2)
-	_check_int("A2 REINF_EXT 强化数", _TD.REINF_EXT.size(), 2)
-	_check_int("A3 EXT_WEIGHTS 权重条数", _TD.EXT_WEIGHTS.size(), 4)
+	# 🔴 v0.3：TOWERS_EXT = 4 扩展塔（Lance/Tesla/Sunder/Hex）+ 6 流派第二塔
+	#   （Ember/Icicle/Javelin/Bolt/Maul/Rune）+ 2 真实伤害塔（Oblivion/Void）= 12；
+	#   EXT_WEIGHTS 额外含 6 第二强化 + 2 真实强化（TrueUp/TrueUp2）= 24。
+	_check_int("A1 TOWERS_EXT 塔数", _TD.TOWERS_EXT.size(), 12)
+	_check_int("A2 REINF_EXT 强化数", _TD.REINF_EXT.size(), 5)
+	_check_int("A2b REINF_EXT2 第二强化数", _TD.REINF_EXT2.size(), 7)
+	_check_int("A3 EXT_WEIGHTS 权重条数", _TD.EXT_WEIGHTS.size(), 24)
 	# 卡序与权重表必须一一对应（漏一条 = 抽卡时权重查不到 → 崩）
 	var missing := 0
 	for nm in _ShopRuntime.EXT_CARD_ORDER:
 		if not _TD.EXT_WEIGHTS.has(String(nm)):
 			missing += 1
 	_check_int("A4 EXT_CARD_ORDER ⊆ EXT_WEIGHTS", missing, 0)
-	_check_int("A5 EXT_CARD_ORDER 条数", _ShopRuntime.EXT_CARD_ORDER.size(), 4)
+	_check_int("A5 EXT_CARD_ORDER 条数", _ShopRuntime.EXT_CARD_ORDER.size(), 10)
 	# 扩展表不得污染主表
 	_check_bool("A6 TOWERS 未被写入扩展卡", _TD.TOWERS.has("Lance") or _TD.TOWERS.has("Tesla"), false)
 	_check_int("A7 TOWERS 仍只有 3 塔", _TD.TOWERS.size(), 3)
@@ -117,6 +122,38 @@ func _test_b_ext_values() -> void:
 	_check_str("B6 Tesla tag", _TD.tower_tag("Tesla"), "shock")
 	_check_float("B7 Tesla rng", _TD.tower_rng("Tesla"), 16.0)
 	_check_float("B8 Tesla slow", _TD.tower_slow("Tesla"), 0.10)
+	# 🆕 破甲塔（Sunder / Hex）
+	_check_float("B9 Sunder dps", _TD.tower_dps("Sunder"), 8.0)
+	_check_str("B10 Sunder tag", _TD.tower_tag("Sunder"), "sunder")
+	_check_float("B11 Sunder rng", _TD.tower_rng("Sunder"), 19.0)
+	_check_float("B12 Sunder slow", _TD.tower_slow("Sunder"), 0.0)
+	_check_float("B13 Hex dps", _TD.tower_dps("Hex"), 6.0)
+	_check_str("B14 Hex tag", _TD.tower_tag("Hex"), "hex")
+	_check_float("B15 Hex rng", _TD.tower_rng("Hex"), 18.0)
+	_check_float("B16 Hex slow", _TD.tower_slow("Hex"), 0.0)
+	# 🆕 流派第二塔（card-packs v0.2）：同 tag 主塔的互补站位（dps 低于主塔）
+	_check_float("B17 Ember dps", _TD.tower_dps("Ember"), 6.0)
+	_check_str("B18 Ember tag", _TD.tower_tag("Ember"), "fire")
+	_check_float("B19 Ember rng", _TD.tower_rng("Ember"), 14.0)
+	_check_float("B20 Icicle dps", _TD.tower_dps("Icicle"), 4.0)
+	_check_str("B21 Icicle tag", _TD.tower_tag("Icicle"), "frost")
+	_check_float("B22 Icicle slow", _TD.tower_slow("Icicle"), 0.45)
+	_check_float("B23 Javelin dps", _TD.tower_dps("Javelin"), 9.0)
+	_check_str("B24 Javelin tag", _TD.tower_tag("Javelin"), "pierce")
+	_check_float("B25 Bolt dps", _TD.tower_dps("Bolt"), 8.0)
+	_check_str("B26 Bolt tag", _TD.tower_tag("Bolt"), "shock")
+	_check_float("B27 Maul dps", _TD.tower_dps("Maul"), 7.0)
+	_check_str("B28 Maul tag", _TD.tower_tag("Maul"), "sunder")
+	_check_float("B29 Rune dps", _TD.tower_dps("Rune"), 5.0)
+	_check_str("B30 Rune tag", _TD.tower_tag("Rune"), "hex")
+	# 🆕 真实伤害塔（combat-types GDD v0.3）
+	_check_float("B31 Oblivion dps", _TD.tower_dps("Oblivion"), 6.0)
+	_check_str("B32 Oblivion tag", _TD.tower_tag("Oblivion"), "true")
+	_check_float("B33 Oblivion rng", _TD.tower_rng("Oblivion"), 20.0)
+	_check_float("B34 Oblivion slow", _TD.tower_slow("Oblivion"), 0.0)
+	_check_float("B35 Void dps", _TD.tower_dps("Void"), 5.0)
+	_check_str("B36 Void tag", _TD.tower_tag("Void"), "true")
+	_check_float("B37 Void rng", _TD.tower_rng("Void"), 15.0)
 
 
 # ---------------------------------------------------------------------------
@@ -146,6 +183,27 @@ func _test_d_reinf_tag() -> void:
 	_check_bool("D3 PirUp 对 Lance 生效", _TD.reinf_tag("PirUp") == _TD.tower_tag("Lance"), true)
 	_check_bool("D4 ShkUp 对 Tesla 生效", _TD.reinf_tag("ShkUp") == _TD.tower_tag("Tesla"), true)
 	_check_bool("D5 PirUp 对 Tesla 无效", _TD.reinf_tag("PirUp") == _TD.tower_tag("Tesla"), false)
+	# 🆕 破甲塔强化 tag
+	_check_str("D6 SunUp tag", _TD.reinf_tag("SunUp"), "sunder")
+	_check_str("D7 HexUp tag", _TD.reinf_tag("HexUp"), "hex")
+	_check_bool("D8 SunUp 对 Sunder 生效", _TD.reinf_tag("SunUp") == _TD.tower_tag("Sunder"), true)
+	_check_bool("D9 HexUp 对 Hex 生效", _TD.reinf_tag("HexUp") == _TD.tower_tag("Hex"), true)
+	# 🆕 第二强化卡（REINF_EXT2）：与第一强化同 tag，可对同 tag 塔再叠一层
+	_check_str("D10 FireUp2 tag", _TD.reinf_tag("FireUp2"), "fire")
+	_check_str("D11 FrostUp2 tag", _TD.reinf_tag("FrostUp2"), "frost")
+	_check_str("D12 PirUp2 tag", _TD.reinf_tag("PirUp2"), "pierce")
+	_check_str("D13 ShkUp2 tag", _TD.reinf_tag("ShkUp2"), "shock")
+	_check_str("D14 SunUp2 tag", _TD.reinf_tag("SunUp2"), "sunder")
+	_check_str("D15 HexUp2 tag", _TD.reinf_tag("HexUp2"), "hex")
+	# 第二强化与主塔/第二塔同 tag（都能投）
+	_check_bool("D16 FireUp2 对 Cannon 生效", _TD.reinf_tag("FireUp2") == _TD.tower_tag("Cannon"), true)
+	_check_bool("D17 FireUp2 对 Ember 生效", _TD.reinf_tag("FireUp2") == _TD.tower_tag("Ember"), true)
+	# 🆕 真实伤害强化卡（combat-types GDD v0.3）
+	_check_str("D18 TrueUp tag", _TD.reinf_tag("TrueUp"), "true")
+	_check_str("D19 TrueUp2 tag", _TD.reinf_tag("TrueUp2"), "true")
+	_check_bool("D20 TrueUp 对 Oblivion 生效", _TD.reinf_tag("TrueUp") == _TD.tower_tag("Oblivion"), true)
+	_check_bool("D21 TrueUp2 对 Void 生效", _TD.reinf_tag("TrueUp2") == _TD.tower_tag("Void"), true)
+	_check_bool("D22 TrueUp 对 Cannon 无效", _TD.reinf_tag("TrueUp") == _TD.tower_tag("Cannon"), false)
 
 
 # ---------------------------------------------------------------------------
@@ -161,6 +219,16 @@ func _test_e_card_kind() -> void:
 	_check_str("E5 Arrow → tower（回落）", _ShopRuntime._card_kind("Arrow"), "tower")
 	_check_str("E6 FireUp → reinforce（回落）", _ShopRuntime._card_kind("FireUp"), "reinforce")
 	_check_str("E7 ScrapUp → econ（回落）", _ShopRuntime._card_kind("ScrapUp"), "econ")
+	# 🆕 第二塔/第二强化卡种判定（第二塔必须是 tower，否则买建筑卡走成全局卡分支）
+	_check_str("E8 Ember → tower", _ShopRuntime._card_kind("Ember"), "tower")
+	_check_str("E9 Rune → tower", _ShopRuntime._card_kind("Rune"), "tower")
+	_check_str("E10 FireUp2 → reinforce", _ShopRuntime._card_kind("FireUp2"), "reinforce")
+	_check_str("E11 SunUp2 → reinforce", _ShopRuntime._card_kind("SunUp2"), "reinforce")
+	# 🆕 真实伤害卡种判定（Oblivion/Void 是 tower，TrueUp/TrueUp2 是 reinforce）
+	_check_str("E12 Oblivion → tower", _ShopRuntime._card_kind("Oblivion"), "tower")
+	_check_str("E13 Void → tower", _ShopRuntime._card_kind("Void"), "tower")
+	_check_str("E14 TrueUp → reinforce", _ShopRuntime._card_kind("TrueUp"), "reinforce")
+	_check_str("E15 TrueUp2 → reinforce", _ShopRuntime._card_kind("TrueUp2"), "reinforce")
 
 
 # ---------------------------------------------------------------------------
@@ -179,22 +247,28 @@ func _test_f_pool_switch() -> void:
 
 	_ShopRuntime.set_extended_pack(true)
 	var names10: Array = _ShopRuntime.player_card_names().duplicate()
-	_check_int("F5 开启池卡数", names10.size(), 10)
+	_check_int("F5 开启池卡数", names10.size(), 16)
 	_check_bool("F6 开启池含 Lance", names10.has("Lance"), true)
 	_check_bool("F7 开启池含 Tesla", names10.has("Tesla"), true)
 	_check_bool("F8 开启池含 PirUp", names10.has("PirUp"), true)
 	_check_bool("F9 开启池含 ShkUp", names10.has("ShkUp"), true)
-	_check_float("F10 开启池权重和", _ShopRuntime.player_pool_total(), POOL_TOTAL_10)
-	_check_int("F11 开启池权重条数一致", _ShopRuntime.player_card_weights().size(), 10)
+	_check_bool("F10 开启池含 Sunder", names10.has("Sunder"), true)
+	_check_bool("F11 开启池含 Hex", names10.has("Hex"), true)
+	_check_bool("F12 开启池含 SunUp", names10.has("SunUp"), true)
+	_check_bool("F13 开启池含 HexUp", names10.has("HexUp"), true)
+	_check_bool("F13b 开启池含 Oblivion", names10.has("Oblivion"), true)
+	_check_bool("F13c 开启池含 TrueUp", names10.has("TrueUp"), true)
+	_check_float("F14 开启池权重和", _ShopRuntime.player_pool_total(), POOL_TOTAL_16)
+	_check_int("F15 开启池权重条数一致", _ShopRuntime.player_card_weights().size(), 16)
 
 	# 🔴 静态缓存清理：关闭后必须回 6 张（否则开关静默失效）
 	_ShopRuntime.set_extended_pack(false)
-	_check_int("F12 关闭后池卡数（缓存已清）", _ShopRuntime.player_card_names().size(), 6)
-	_check_float("F13 关闭后权重和", _ShopRuntime.player_pool_total(), POOL_TOTAL_6)
+	_check_int("F16 关闭后池卡数（缓存已清）", _ShopRuntime.player_card_names().size(), 6)
+	_check_float("F17 关闭后权重和", _ShopRuntime.player_pool_total(), POOL_TOTAL_6)
 
 	# 金标本 AI 池恒不受影响（这是"零扰动"的核心断言）
-	_check_int("F14 金标本 CARD_NAMES 仍 7 张", _ShopAI.CARD_NAMES.size(), 7)
-	_check_bool("F15 金标本池不含扩展卡", _ShopAI.CARD_NAMES.has("Lance"), false)
+	_check_int("F18 金标本 CARD_NAMES 仍 7 张", _ShopAI.CARD_NAMES.size(), 7)
+	_check_bool("F19 金标本池不含扩展卡", _ShopAI.CARD_NAMES.has("Lance"), false)
 
 
 # ---------------------------------------------------------------------------

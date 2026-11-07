@@ -30,6 +30,10 @@ const _WaveDirector := preload("res://scripts/gameplay/wave_director.gd")
 var director: Node = null
 var controller: Node = null
 var wave_director: Node = null
+## 🆕 卡包：`false` = 本场景**不自动开波**，由 `boot.gd` 在玩家选完卡包后
+##   `ShopRuntime.set_active_packs()` + `controller.start_new_run()` 手动开局。
+##   🔴 默认 `true`：所有既有冒烟 / 探针 / 单独跑本场景的路径行为不变（一行回滚点）。
+var auto_start_run: bool = true
 
 
 func _ready() -> void:
@@ -124,5 +128,6 @@ func _ready() -> void:
 			tut.bind_hud(hud)
 
 	# ---- 开局：由 `WaveDirector` 发出 W1 的 wave_started ----
-	if controller != null:
+	#   🆕 卡包：`auto_start_run = false` 时留给 boot 选完包再开（见字段注释）
+	if controller != null and auto_start_run:
 		controller.call_deferred("start_run", 1)

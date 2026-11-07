@@ -37,6 +37,29 @@
 
 🔴 **扩展卡只进玩家池**：金标本 `TOWERS` / `ShopAI.CARD_NAMES` / `WEIGHTS` 一字未动，AI 路线与 300 局 MC 金标本完全不受影响。设计与取舍见 `docs/phase6/extended-pack.md`。
 
+### 卡包（每包 = 一条完整 build · 每局带 3 包）
+
+30 张玩家卡切成 **8 包 × 6 张**，每包是一条能独立成型的流派（核心塔 + 第二塔 + 双强化 + 经济 + 泛用配塔），对齐王者万象棋 / 东方梦符祭的羁绊式编排：
+
+| 包 | 核心塔 → 第二塔 | 身份 | 解锁 |
+|---|---|---|---|
+| 基石包 | `Arrow`（泛用双流派入门） | 泛用主塔 · 经济滚雪球 | 默认 |
+| 熔炉包 | `Cannon` → `Ember` | 火：双塔灼烧 | 默认 |
+| 霜序包 | `Frost` → `Icicle` | 冰：双塔减速 | 默认 |
+| 穿甲包 | `Lance` → `Javelin` | 穿甲：远程狙击 + 近身连射 | 最佳波次 ≥ 6 |
+| 电弧包 | `Tesla` → `Bolt` | 电：近身溅射 + 单体爆发 | ≥ 12 |
+| 破甲包 | `Sunder` → `Maul` | 破甲：削物抗 + 物理群伤 | ≥ 16 |
+| 咒术包 | `Hex` → `Rune` | 咒术：削魔抗 + 魔法清场 | ≥ 18 |
+| 湮灭包 | `Oblivion` → `Void` | 真实：无视抗性 | ≥ 20 |
+
+- **每局只带 3 包**：未选包的卡根本不进池，池 = 3 包并集（去重约 12–18 张），且同主题自洽。
+- **刷新保底**：卡包模式下，手动刷新若 3 张里没有「骨架卡」（流派塔/强化），强制补一张，对冲大池稀释。
+- 解锁到第 4 包起，**开局前弹选包界面**（数字键 1–8 切换 / Enter 开始）；「再来一局」也会先回选包，方便换构筑。
+- 解锁按**历史最佳波次**（失败也推进），存档 `user://card_packs.json`。
+- 空选包时 `shop_runtime` 仍走老口径（6 张 / 0.905，金标本 / headless 零扰动）。
+
+设计推导、池序坑、刷新保底、与关卡推进的关系见 `docs/phase6/card-packs.md`。
+
 - **金标本（golden reference）逐位对齐**：玩法数值以一套 Python 对照实现为金标本，headless 测试逐位（`%.17g` / `%.17e`）比对，任何 ULP 级偏差都会翻红。
 - **浮点可移植性强制**（ADR-0002）：整数指数必须走 `FpPow.pow_int()`；移植 Python `sum()` 必须走 `FpSum.sum_py()`。
 - **双空间模型**：`SpaceModel` 支持 PATH（折线路径）与 RADIAL（径向）双模，默认 PATH、窗口模式注入 RADIAL，一行可回滚。
@@ -150,7 +173,7 @@ GODOT="<你的 Godot 可执行文件>"
 
 `.github/workflows/ci.yml` 在 push / PR 时自动跑（`docs/**`、`**/*.md`、`.workbuddy/**` 的改动不触发），ubuntu-latest + Godot 4.7.2-stable，共 **9 步测试**：
 
-1. **默认回归** —— 切片 1–8 + T1 仇恨 + B-1 引导状态机，十段汇总、退出码 0；
+1. **默认回归** —— 切片 1–8 + T1 仇恨 + B-1 引导状态机 + 扩展包/UI 样式/塔等级牌/卡包/关卡推进/战斗类型，多段汇总、退出码 0；
 2. **音频资产 lint** —— 免导入的 `key → path` 兜底校验（关闭 G-6：音频 id 打错在运行时只会静默 null）；
 3. **音频框架回归断言** —— audio-spec-a §7 五条（池 24+4 / 总线名 / 信号数 / 聚焦低通 / token 扫描）；
 4. **radial8 聚合闸门** —— 9 个子套件：geo8 / radial / geo8_smoke / geo8_golden / expo / bulwark8 / panorama8 / attrition8 / vfx_cache_guard；
@@ -190,6 +213,7 @@ design/      设计稿（GDD、数值模拟）
 - **卡面文案与版式推导**：`docs/phase6/card-text.md`
 - **放置模式修复（四条 bug 复盘）**：`docs/phase6/placement-fix.md`
 - **自由摆放（网格化 + 坐标落子 + 塔数上限）**：`docs/phase6/free-placement.md`
+- **卡包（分池 + 开局选包 + 最佳波次解锁）**：`docs/phase6/card-packs.md`
 
 ---
 

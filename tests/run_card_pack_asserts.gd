@@ -1,0 +1,411 @@
+extends RefCounted
+##
+## headless 断言 —— 卡包（Card Pack）· 分池 / 选包 / 解锁 / 发牌
+##
+## 背景（2026-11-07 用户需求）：把卡牌整理成不同卡包；解锁全部卡包后，开局前选择若干卡包，
+##   避免卡池过大刷不到想要的卡，同时把「这局养什么」变成开局决策。
+##
+## 🔴 设计约束（`design/gdd/keyword-adaptation.md` §7.4 实测）：
+##   玩家池 7 → 10 张 → A 起飞率 −8.0pp / B −11.0pp（且单张"能用但弱"的卡更狠，−10.3pp/张）。
+##   ⇒ 分池后**每局卡池恒为 6 张**（3 包 × 2 张），张数不涨，构成由玩家选。
+##
+## 断言口径（v0.2 · 每包 6 张 = 完整 build）：
+##   A 数据表结构：7 包 × 6 张，无 RerollD、每张都能查到权重、现有池无漏卡、
+##     每包至少 1 塔、包内强化卡的 tag 有对应塔；泛用卡（Arrow/ScrapUp）允许跨包共享
+##   B 解锁口径：最佳波次 → 已解锁包数 → 必须选几包（≤3 全带，>3 才需要选）
+##   C 选择规整：未知 / 未解锁 / 重复 / 超量 一律被剔除，顺序按包序
+##   D 卡池派生：所选包并集 = 卡池（顺序、权重、总和都对得上）；骨架卡 = 塔+强化
+##   E 老口径不破：`set_active_packs([])` 时仍是 6 张 / 0.905，扩展包开关仍是 10 张 / 1.245
+##   F 发牌：真 runtime 连开 8 波，offers **必须全部**落在所选池内；pity 卡不得越池
+##   G 界面结构：7 个卡包位、同尺寸（X3）、按钮四态自定义、文本 ≥16px、锁定态禁用
+##
+## 跑法：
+##   <godot> --headless --path . --script res://tests/run_tests.gd -- cardpack
+##
+
+const _Packs := preload("res://scripts/data/card_packs.gd")
+const _RunMeta := preload("res://scripts/gameplay/run_meta.gd")
+const _ShopRuntime := preload("res://scripts/gameplay/shop_runtime.gd")
+const _ShopAI := preload("res://scripts/engine/shop_ai.gd")
+const _TD := preload("res://scripts/data/tower_data.gd")
+const _PackUI := preload("res://scripts/ui/pack_select_overlay.gd")
+
+## 老口径常量（与 `run_ext_pack_asserts.gd` 同值，改动前基线）
+const POOL_TOTAL_6 := 0.905
+const POOL_TOTAL_14 := 1.575
+const FONT_MIN := 16
+
+var _pass := 0
+var _fail := 0
+
+
+func _log(s: String) -> void:
+	print(s)
+
+
+func _ok(name: String, cond: bool, detail: String = "") -> void:
+	if cond:
+		_pass += 1
+	else:
+		_fail += 1
+	var tail := "" if detail == "" else "  " + detail
+	_log("   [%s] %s%s" % ["PASS" if cond else "FAIL", name, tail])
+
+
+func _eq_int(name: String, got: int, want: int) -> void:
+	_ok(name, got == want, "got=%d want=%d" % [got, want])
+
+
+func _eq_float(name: String, got: float, want: float, eps: float = 1e-9) -> void:
+	_ok(name, absf(got - want) <= eps, "got=%.12f want=%.12f" % [got, want])
+
+
+func _eq_arr(name: String, got: Array, want: Array) -> void:
+	var same := got.size() == want.size()
+	if same:
+		for i in got.size():
+			if String(got[i]) != String(want[i]):
+				same = false
+				break
+	_ok(name, same, "got=%s want=%s" % [str(got), str(want)])
+
+
+func run_all() -> bool:
+	# 🔴 测试环境：不读不写真实存档（`user://card_packs.json`）
+	_RunMeta.set_save_enabled(false)
+	_RunMeta.reset_progress()
+	_ShopRuntime.set_active_packs([])
+	_ShopRuntime.set_extended_pack(false)
+
+	_log("")
+	_log("=".repeat(78))
+	_log("卡包（Card Pack）· 分池 / 选包 / 解锁 / 发牌")
+	_log("基准：每局 3 包 = 6 张（分池前玩家池张数）· 解锁按最佳波次")
+	_log("=".repeat(78))
+
+	_test_a_table()
+	_test_b_unlock()
+	_test_c_normalize()
+	_test_d_pool()
+	_test_e_legacy()
+	_test_f_deal()
+	_test_g_ui()
+
+	# 🔴 收尾：把静态状态还原成默认，避免污染同进程内的后续套件
+	_ShopRuntime.set_active_packs([])
+	_ShopRuntime.set_extended_pack(false)
+	_RunMeta.reset_progress()
+
+	_log("")
+	_log("=".repeat(78))
+	_log("汇总：通过 %d 项 / 失败 %d 项" % [_pass, _fail])
+	if _fail == 0:
+		_log("[OK] 卡包分池 —— 张数恒定、选择有约束、老口径逐位不变")
+	else:
+		_log("[NG] 有 %d 项未过 —— 见上方 FAIL 行" % _fail)
+	_log("=".repeat(78))
+	return _fail == 0
+
+
+# ---------------------------------------------------------------------------
+#  A 数据表结构
+# ---------------------------------------------------------------------------
+func _test_a_table() -> void:
+	_log("")
+	_log("--- [A] 数据表：7 包 × 6 张，无空卡 / 无漏卡 / 强化有宿主 ---")
+	var errs := _Packs.validate()
+	_ok("A1 validate() 无错误", errs.is_empty(), str(errs))
+	_eq_int("A2 卡包数", _Packs.PACKS.size(), 8)
+	_eq_int("A3 每局携带包数", _Packs.PICKS_PER_RUN, 3)
+	_eq_int("A4 每包张数", _Packs.CARDS_PER_PACK, 6)
+	# 并集 = 玩家池全集（排除 RerollD）；v0.2 新增 6 第二塔 + 6 第二强化 + 4 真实伤害 = 30 张
+	var all := _Packs.all_cards()
+	_eq_int("A5 并集张数（14 旧卡 + 12 第二塔/强化 + 4 真实 = 30）", all.size(), 30)
+	var missing: Array = []
+	for nm in _ShopAI.CARD_NAMES:
+		var s := String(nm)
+		if s == "RerollD":
+			continue
+		if not all.has(s):
+			missing.append(s)
+	for nm in _TD.EXT_WEIGHTS.keys():
+		if not all.has(String(nm)):
+			missing.append(String(nm))
+	_ok("A6 玩家池每张卡都有归属", missing.is_empty(), str(missing))
+	_ok("A7 不含 RerollD", not all.has("RerollD"))
+	# 塔与强化成对（每个包内至少有一座塔）
+	var bad_pairs: Array = []
+	for p in _Packs.PACKS:
+		var has_tower := false
+		for nm in (p["cards"] as Array):
+			if _TD.TOWERS.has(String(nm)) or _TD.TOWERS_EXT.has(String(nm)):
+				has_tower = true
+		if not has_tower:
+			bad_pairs.append(String(p["id"]))
+	_ok("A8 每包至少含 1 座塔（否则整包都是「投不出去的强化」）", bad_pairs.is_empty(), str(bad_pairs))
+	# 权重可查（现查，不在卡包表里二次定义）
+	var bad_w: Array = []
+	for nm in all:
+		if _Packs.card_weight(String(nm)) <= 0.0:
+			bad_w.append(String(nm))
+	_ok("A9 每张卡权重 > 0（金标本 / 扩展表现查）", bad_w.is_empty(), str(bad_w))
+
+
+# ---------------------------------------------------------------------------
+#  B 解锁口径
+# ---------------------------------------------------------------------------
+func _test_b_unlock() -> void:
+	_log("")
+	_log("--- [B] 解锁：最佳波次 → 已解锁包 → 必须选几包 ---")
+	# 包表：core0 / cinder0 / rime0 / pierce6 / arc12 / sunder16 / hex18
+	_eq_int("B1 W0 解锁包数", _Packs.unlocked_ids(0).size(), 3)
+	_eq_int("B2 W5 解锁包数", _Packs.unlocked_ids(5).size(), 3)
+	_eq_int("B3 W6 解锁包数（穿甲包）", _Packs.unlocked_ids(6).size(), 4)
+	_eq_int("B4 W11 解锁包数", _Packs.unlocked_ids(11).size(), 4)
+	_eq_int("B5 W12 解锁包数（电弧包）", _Packs.unlocked_ids(12).size(), 5)
+	_eq_int("B6 W15 解锁包数", _Packs.unlocked_ids(15).size(), 5)
+	_eq_int("B7 W16 解锁包数（破甲包）", _Packs.unlocked_ids(16).size(), 6)
+	_eq_int("B8 W17 解锁包数", _Packs.unlocked_ids(17).size(), 6)
+	_eq_int("B9 W18 解锁包数（咒术包）", _Packs.unlocked_ids(18).size(), 7)
+	_eq_int("B10 W20 解锁包数（湮灭包）", _Packs.unlocked_ids(20).size(), 8)
+	_eq_int("B11 3 包时「必须选」= 3（无选择余地，全带）", _Packs.required_picks(0), 3)
+	_ok("B12 3 包时不需要弹界面", not _Packs.needs_selection(0))
+	_ok("B13 4 包时需要选（4 > 3）", _Packs.needs_selection(6))
+	_ok("B14 5 包时需要选", _Packs.needs_selection(12))
+	_eq_int("B15 已解锁 5 包时「必须选」仍是 3", _Packs.required_picks(12), 3)
+	# 进度层：record_run 只升不降
+	_RunMeta.reset_progress()
+	_RunMeta.record_run(false, 7)
+	_eq_int("B16 失败也推进：最佳波次 = 7", _RunMeta.best_wave(), 7)
+	_RunMeta.record_run(false, 3)
+	_eq_int("B17 最佳波次只升不降", _RunMeta.best_wave(), 7)
+	var fresh: Array = _RunMeta.record_run(true, 12)
+	_eq_int("B18 胜场累计", _RunMeta.wins(), 1)
+	_eq_int("B19 本局新解锁 1 包（电弧）", fresh.size(), 1)
+	_ok("B20 新解锁的是电弧包", fresh.size() == 1 and String(fresh[0]) == "arc")
+
+
+# ---------------------------------------------------------------------------
+#  C 选择规整
+# ---------------------------------------------------------------------------
+func _test_c_normalize() -> void:
+	_log("")
+	_log("--- [C] 选择规整：未知 / 未解锁 / 重复 / 超量 ---")
+	var n1 := _Packs.normalize(["rime", "core", "cinder"], 0)
+	_eq_arr("C1 顺序按包序（core→cinder→rime）", n1, ["core", "cinder", "rime"])
+	var n2 := _Packs.normalize(["core", "nope", "core", "cinder"], 0)
+	_eq_arr("C2 丢弃未知 / 重复", n2, ["core", "cinder"])
+	var n3 := _Packs.normalize(["core", "cinder", "rime", "pierce", "arc"], 0)
+	_eq_int("C3 未解锁的包被剔除（W0 只有 3 包）", n3.size(), 3)
+	var n4 := _Packs.normalize(["core", "cinder", "rime", "pierce"], 12)
+	_eq_int("C4 超量截断到 required=3", n4.size(), 3)
+	_eq_arr("C5 截断按包序（留下前 3 个）", n4, ["core", "cinder", "rime"])
+	_ok("C6 合法选择通过校验", _Packs.is_valid_selection(["core", "cinder", "rime"], 0))
+	_ok("C7 不足 3 包不合法", not _Packs.is_valid_selection(["core", "cinder"], 0))
+	_ok("C8 含未解锁包不合法", not _Packs.is_valid_selection(["pierce", "core", "cinder"], 0))
+
+
+# ---------------------------------------------------------------------------
+#  D 卡池派生
+# ---------------------------------------------------------------------------
+func _test_d_pool() -> void:
+	_log("")
+	_log("--- [D] 卡池 = 所选包并集（顺序 / 权重 / 总和 / 骨架卡）---")
+	_ShopRuntime.set_active_packs(["core", "cinder", "arc"])
+	var names: Array = _ShopRuntime.player_card_names()
+	# core = [Arrow,Cannon,Frost,ScrapUp,FireUp,FrostUp] + cinder = [Cannon,Ember,FireUp,FireUp2,ScrapUp,Arrow]
+	#   + arc = [Tesla,Bolt,ShkUp,ShkUp2,ScrapUp,Arrow] → 去重后按包序
+	_eq_arr("D1 卡池顺序 = 包序 → 包内序（去重）",
+		names,
+		["Arrow", "Cannon", "Frost", "ScrapUp", "FireUp", "FrostUp",
+		 "Ember", "FireUp2", "Tesla", "Bolt", "ShkUp", "ShkUp2"])
+	_eq_int("D2 卡池张数 = 3 包并集去重后 12 张", names.size(), 12)
+	# 权重和 = 各卡权重之和（现查，不硬编码）
+	var want := 0.0
+	for nm in names:
+		want += _Packs.card_weight(String(nm))
+	_eq_float("D3 权重和 = 各卡权重之和", _ShopRuntime.player_pool_total(), want)
+	_eq_int("D4 权重条数与卡数一致", _ShopRuntime.player_card_weights().size(), names.size())
+	# 换包必须立即生效（静态缓存清理）；顺序只跟包序走，不跟"点选顺序"走
+	_ShopRuntime.set_active_packs(["pierce", "arc", "core"])
+	_eq_arr("D7 换包后卡池立即变化（按包序）", _ShopRuntime.player_card_names(),
+		["Arrow", "Cannon", "Frost", "ScrapUp", "FireUp", "FrostUp",
+		 "Lance", "Javelin", "PirUp", "PirUp2", "Tesla", "Bolt", "ShkUp", "ShkUp2"])
+	# 与扩展包开关同时开：卡包模式优先，扩展包不叠加（卡包表已含全部卡）
+	_ShopRuntime.set_extended_pack(true)
+	var n_ext_on := _ShopRuntime.player_card_names().size()
+	_ShopRuntime.set_extended_pack(false)
+	var n_ext_off := _ShopRuntime.player_card_names().size()
+	_eq_int("D8 卡包模式下 extended_pack 不影响卡池（开/关一致）", n_ext_on, n_ext_off)
+	_ShopRuntime.set_active_packs([])
+	# 骨架卡 = 塔 + 强化（排除经济 ScrapUp）
+	var skel := _Packs.skeleton_cards(["cinder"])
+	_eq_arr("D9 骨架卡 = 包内塔+强化（熔炉包）", skel,
+		["Cannon", "Ember", "FireUp", "FireUp2"])
+
+
+# ---------------------------------------------------------------------------
+#  E 老口径不破（默认 / 扩展包）
+# ---------------------------------------------------------------------------
+func _test_e_legacy() -> void:
+	_log("")
+	_log("--- [E] 未选包（老口径）：6 张 / 0.905 · 扩展包 14 张 / 1.575 ---")
+	_ShopRuntime.set_active_packs([])
+	_eq_int("E1 默认玩家池 6 张", _ShopRuntime.player_card_names().size(), 6)
+	_eq_float("E2 默认权重和 0.905", _ShopRuntime.player_pool_total(), POOL_TOTAL_6)
+	_ShopRuntime.set_extended_pack(true)
+	# 🔴 扩展包张数 = 6 基础 + EXT_CARD_ORDER 条数（并行会话可能继续扩，动态现查不自燃）
+	var exp_n := 6 + _ShopRuntime.EXT_CARD_ORDER.size()
+	var exp_total := 0.905
+	for nm in _ShopRuntime.EXT_CARD_ORDER:
+		exp_total += _Packs.card_weight(String(nm))
+	_eq_int("E3 扩展包张数 = 6 + 扩展卡序", _ShopRuntime.player_card_names().size(), exp_n)
+	_eq_float("E4 扩展包权重和 = 0.905 + Σ扩展卡权重", _ShopRuntime.player_pool_total(), exp_total)
+	_ShopRuntime.set_extended_pack(false)
+	_eq_int("E5 关掉扩展包回 6 张", _ShopRuntime.player_card_names().size(), 6)
+
+
+# ---------------------------------------------------------------------------
+#  F 发牌：offers 必须落在所选池内
+# ---------------------------------------------------------------------------
+func _test_f_deal() -> void:
+	_log("")
+	_log("--- [F] 真 runtime 连开 8 波：offers ⊆ 所选池；pity 不越池；刷新保底 ---")
+	_ShopRuntime.set_active_packs(["core", "cinder", "rime"])
+	var rt = _ShopRuntime.new()
+	rt.setup("B", 20260930)
+	var pool: Array = _ShopRuntime.player_card_names().duplicate()
+	var bad: Array = []
+	for w in range(1, 9):
+		rt.start_wave(w)
+		for nm in rt.offers:
+			var s := String(nm)
+			if s == "":
+				continue
+			if not pool.has(s):
+				bad.append("W%d:%s" % [w, s])
+	_ok("F1 8 波商品位全部在所选池内", bad.is_empty(), str(bad))
+	_eq_int("F2 每波恒 3 位", rt.offers.size(), 3)
+
+	# pity 越池：选不含「火」的包组合（pierce+arc+sunder），即便主塔是 Cannon 也不得把 FireUp 写进商店
+	_ShopRuntime.set_active_packs(["pierce", "arc", "sunder"])
+	var rt2 = _ShopRuntime.new()
+	rt2.setup("B", 20260930)
+	var shop: Array = ["Arrow", "Arrow", "Arrow"]
+	rt2._apply_pity(shop, "FireUp")
+	_ok("F3 池外保底卡不写入商店（FireUp 不在本局池）", not shop.has("FireUp"), str(shop))
+	# 池内保底：选含「火」的包（cinder），FireUp 在池内应照常写入
+	_ShopRuntime.set_active_packs(["cinder", "pierce", "arc"])
+	var rt3 = _ShopRuntime.new()
+	rt3.setup("B", 20260930)
+	var shop2: Array = ["Arrow", "Arrow", "Arrow"]
+	rt3._apply_pity(shop2, "FireUp")
+	_ok("F4 池内保底卡照常写入", shop2.has("FireUp"), str(shop2))
+
+	# 刷新保底：卡包模式下，若刷新 3 张里无骨架卡，强制补一张骨架卡（塔/强化）
+	_ShopRuntime.set_active_packs(["cinder"])
+	var rt4 = _ShopRuntime.new()
+	rt4.setup("B", 20260930)
+	var skel := _Packs.skeleton_cards(["cinder"])
+	rt4.offers = ["ScrapUp", "ScrapUp", "Arrow"]  # 全是非骨架卡（经济+泛用）
+	rt4.scrap = 1000.0
+	rt4.rerolls = 0
+	var before: Array = rt4.offers.duplicate()
+	var ok_reroll: bool = rt4.reroll()
+	_ok("F5 卡包模式刷新成功", ok_reroll)
+	var has_skel := false
+	for nm in rt4.offers:
+		if skel.has(String(nm)):
+			has_skel = true
+	_ok("F6 刷新保底补入骨架卡", has_skel, str(rt4.offers))
+	_ShopRuntime.set_active_packs([])
+
+
+# ---------------------------------------------------------------------------
+#  G 界面结构
+# ---------------------------------------------------------------------------
+func _collect(n: Node, out: Array, type_check: String) -> Array:
+	for ch in n.get_children():
+		if type_check == "button" and ch is Button:
+			out.append(ch)
+		elif type_check == "label" and ch is Label:
+			out.append(ch)
+		_collect(ch, out, type_check)
+	return out
+
+
+func _test_g_ui() -> void:
+	_log("")
+	_log("--- [G] 选包界面：7 位同尺寸 / 四态自定义 / ≥16px / 锁定态禁用 ---")
+	_RunMeta.reset_progress()
+	_RunMeta.record_run(false, 6)          # 最佳波次 6 → 解锁 4 包（需要选择）
+	var ov = _PackUI.new()
+	ov._build()
+	_eq_int("G1 卡包位数量", ov._tiles.size(), 8)
+	ov.open()
+	_eq_int("G2 打开后需要选 3 包", _Packs.required_picks(_RunMeta.best_wave()), 3)
+
+	var sizes: Array = []
+	for t in ov._tiles:
+		sizes.append((t["btn"] as Button).custom_minimum_size)
+	var same := true
+	for s in sizes:
+		if s != sizes[0]:
+			same = false
+	_ok("G3 8 个卡包位尺寸完全一致（X3）", same, str(sizes))
+
+	var btns: Array = _collect(ov, [], "button")
+	_eq_int("G4 卡包位 + 开始按钮", btns.size(), 9)
+	var missing: Array = []
+	for b in btns:
+		for st in ["normal", "hover", "pressed", "disabled"]:
+			if not (b as Button).has_theme_stylebox_override(st):
+				missing.append("%s/%s" % [String((b as Button).text), st])
+	_ok("G5 全部按钮 × 4 态均自定义（无系统默认控件）", missing.is_empty(), str(missing))
+
+	var small: Array = []
+	for l in _collect(ov, [], "label"):
+		var fs := int((l as Label).get_theme_font_size("font_size"))
+		if fs > 0 and fs < FONT_MIN:
+			small.append("%s=%d" % [String((l as Label).text).substr(0, 8), fs])
+	_ok("G6 文本 ≥16px", small.is_empty(), str(small))
+
+	# 锁定态：最佳波次 6 时只有 4 包可用，其余包必须禁用
+	var locked_ok := true
+	var locked_n := 0
+	for t in ov._tiles:
+		var pid := String(t["id"])
+		var unlocked: Array = _Packs.unlocked_ids(_RunMeta.best_wave())
+		var b: Button = t["btn"]
+		if not unlocked.has(pid):
+			locked_n += 1
+			if not b.disabled:
+				locked_ok = false
+		elif b.disabled:
+			locked_ok = false
+	_eq_int("G7 锁定的包数 = 4（电弧/破甲/咒术/湮灭）", locked_n, 4)
+	_ok("G8 锁定态禁用 / 解锁态可用", locked_ok)
+
+	# 交互：选满 3 包才能开始；第 4 个被拒绝
+	ov._sel = []
+	ov._on_tile_pressed("core")
+	ov._on_tile_pressed("cinder")
+	ov._on_tile_pressed("rime")
+	_eq_int("G9 点 3 个包 → 选中 3", ov._sel.size(), 3)
+	_ok("G10 选满后开始按钮可用", not ov._start.disabled)
+	ov._on_tile_pressed("pierce")
+	_eq_int("G11 第 4 个包被拒绝（仍 3 个）", ov._sel.size(), 3)
+	ov._on_tile_pressed("core")
+	_eq_int("G12 再点一次取消（2 个）", ov._sel.size(), 2)
+	_ok("G13 不足 3 包时开始按钮禁用", ov._start.disabled)
+
+	# 确认 → 落盘到内存 → 发出信号
+	ov._on_tile_pressed("core")
+	var got: Array = []
+	ov.packs_confirmed.connect(func(p: Array) -> void: got.append_array(p))
+	ov._on_start_pressed()
+	_eq_int("G14 确认后发出 selected 3 包", got.size(), 3)
+	_eq_arr("G15 记忆上次选包", _RunMeta.selection(), ["core", "cinder", "rime"])
+	_ok("G16 确认后界面隐藏", not ov.visible)
+	ov.free()
+	_RunMeta.reset_progress()
