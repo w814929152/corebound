@@ -1,0 +1,75 @@
+extends RefCounted
+##
+## 触发型塔效果（Tower Effects）—— 卡包只收建筑后的**升级路线**
+## ---------------------------------------------------------------------------
+## 用户口径（2026-11-07）：「类似塔的效果 —— 回合开始时 / 防御塔上场时 /
+##   防御塔死亡时**增加等级**」。明确否掉两种做法：光环被动加等级、三合一升星。
+##
+## 🔴 三条触发时机（与 `tower_data.TOWERS_EXT[].effect.on` 一一对应）：
+##   · `enter`   —— 塔被放到格子上（玩家落子）→ 一次性；
+##   · `prepare` —— 每波开始（`WaveDirector.start_wave`）→ 每波一次；
+##   · `death`   —— 塔 HP 归零进入 Disabled 中间态 → 一次性。
+##
+## 🔴 等级写在哪：直接改 `player.towers[i].h`（与合成 / 强化层同一字段），
+##   因此伤害（`h^0.6`）、塔 HP（`h^0.6`）、共鸣门槛（h≥3）全部自动跟随。
+##
+## 🔴 封顶 `LEVEL_CAP = 3`：触发只把塔往上涨到 3 级，不会无限滚雪球。
+##
+## 🔴 为什么死亡触发**当波不生效**：`damage_engine` 的 dps 在波首算死（battle 循环
+##   等价性的前提，见 `wave_director` 文件头）。阵亡加成写进 h → 下一波 dps 才读到。
+##   这是刻意口径，不是 bug（见 §测试 H4）。
+##
+## 🔴 金标本零扰动：金标本走 `wave_sim` + 只买 `TOWERS` 基础塔，本文件的触发塔
+##   全在 `TOWERS_EXT`；且 `apply_trigger` 对没有 effect 的塔是纯 no-op。
+##
+## ⚠️ G6：headless 无 `global_script_class_cache` → 不写 `class_name`，调用方 preload。
+##
+
+const _TD := preload("res://scripts/data/tower_data.gd")
+
+## 触发加等级的封顶（塔等级上限）。
+const LEVEL_CAP := 3
+
+
+## 结算一次触发。`trigger` ∈ {enter, prepare, death}。
+##   `ctx.tower` = 事件源塔（enter/death 必须给；prepare 不需要）。
+##   返回实际发生变化的塔数（0 = 没有触发源 / 全部已封顶）。
+static func apply_trigger(player, trigger: String, ctx: Dictionary = {}) -> int:
+	if player == null:
+		return 0
+	var towers: Array = player.towers
+	if towers.is_empty():
+		return 0
+
+	var ev_tower = ctx.get("tower", null)
+	var changed := 0
+	for t in towers:
+		var e: Dictionary = _TD.tower_effect(String(t.ctype))
+		if e.is_empty() or String(e.get("on", "")) != trigger:
+			continue
+		# enter / death 只认「本次事件的那座塔」，避免同一波里互相触发
+		if trigger != "prepare" and ev_tower != null and t != ev_tower:
+			continue
+		var lv := int(e.get("lv", 1))
+		var scope := String(e.get("scope", "self"))
+		if scope == "self":
+			changed += _add_level(t, lv)
+		else:
+			for t2 in towers:
+				if t2 == t and trigger == "death":
+					continue                       # 阵亡的塔自己不再吃加成
+				changed += _add_level(t2, lv)
+	return changed
+
+
+## 给单座塔加等级（封顶 LEVEL_CAP；Disabled 塔不吃加成）。
+static func _add_level(t, lv: int) -> int:
+	if t == null or lv <= 0:
+		return 0
+	if bool(t.disabled):
+		return 0
+	var cur := int(t.h)
+	if cur >= LEVEL_CAP:
+		return 0
+	t.h = mini(cur + lv, LEVEL_CAP)
+	return 1

@@ -50,6 +50,8 @@ const _Geo6 := preload("res://scripts/geo/geo6.gd")
 const _Geo := preload("res://scripts/geo/geo.gd")
 const _BuildGrid := preload("res://scripts/geo/build_grid.gd")
 const _TSM := preload("res://scripts/engine/time_state_machine.gd")
+## 🆕 触发型建筑（2026-11-07）：登场时加等级。
+const _TowerEffects := preload("res://scripts/engine/tower_effects.gd")
 
 
 # ---------------------------------------------------------------------------
@@ -1029,6 +1031,13 @@ func confirm_placement_at(pos: Vector2) -> bool:
 	if _placing_index < pending_cost.size():
 		paid = float(pending_cost[_placing_index])
 	_add_invested(slot, paid)
+
+	# 🆕 触发型建筑 · 登场（`enter`）：落子后立即结算。
+	#   🔴 同级再落（"up"）也算一次登场 —— 玩家每次投入一张卡就该有一次触发。
+	for _t in player.towers:
+		if int(_t.slot) == slot:
+			_TowerEffects.apply_trigger(player, "enter", {"tower": _t})
+			break
 
 	pending.remove_at(_placing_index)
 	pending_cost.remove_at(_placing_index)

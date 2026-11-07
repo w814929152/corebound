@@ -28,6 +28,9 @@ const _RunMeta := preload("res://scripts/gameplay/run_meta.gd")
 const _ShopRuntime := preload("res://scripts/gameplay/shop_runtime.gd")
 const _ShopAI := preload("res://scripts/engine/shop_ai.gd")
 const _TD := preload("res://scripts/data/tower_data.gd")
+const _PS := preload("res://scripts/engine/player_state.gd")
+## 🆕 触发型建筑（登场 / 整备 / 阵亡 加等级）
+const _TowerEffects := preload("res://scripts/engine/tower_effects.gd")
 const _PackUI := preload("res://scripts/ui/pack_select_overlay.gd")
 
 ## 老口径常量（与 `run_ext_pack_asserts.gd` 同值，改动前基线）
@@ -90,6 +93,7 @@ func run_all() -> bool:
 	_test_e_legacy()
 	_test_f_deal()
 	_test_g_ui()
+	_test_h_triggers()
 
 	# 🔴 收尾：把静态状态还原成默认，避免污染同进程内的后续套件
 	_ShopRuntime.set_active_packs([])
@@ -231,14 +235,14 @@ func _test_d_pool() -> void:
 	_log("--- [D] 卡池 = 所选包并集（顺序 / 权重 / 总和 / 骨架卡）---")
 	_ShopRuntime.set_active_packs(["core", "cinder", "arc"])
 	var names: Array = _ShopRuntime.player_card_names()
-	# core      = [Arrow,Cannon,Frost,Lance,Tesla,Oblivion]
-	# cinder    = [Cannon,Ember,Maul,Sunder,Arrow,Javelin]
+	# core      = [Arrow,Cannon,Frost,Lance,Tesla,Vanguard]
+	# cinder    = [Cannon,Ember,Maul,Sunder,Arrow,Drillmaster]
 	# arc       = [Tesla,Bolt,Ember,Maul,Icicle,Frost]
 	#   → 去重后按包序
 	_eq_arr("D1 卡池顺序 = 包序 → 包内序（去重）",
 		names,
-		["Arrow", "Cannon", "Frost", "Lance", "Tesla", "Oblivion",
-		 "Ember", "Maul", "Sunder", "Javelin", "Bolt", "Icicle"])
+		["Arrow", "Cannon", "Frost", "Lance", "Tesla", "Vanguard",
+		 "Ember", "Maul", "Sunder", "Drillmaster", "Bolt", "Icicle"])
 	_eq_int("D2 卡池张数 = 3 包并集去重后 12 张", names.size(), 12)
 	# 权重和 = 各卡权重之和（现查，不硬编码）
 	var want := 0.0
@@ -249,8 +253,8 @@ func _test_d_pool() -> void:
 	# 换包必须立即生效（静态缓存清理）；顺序只跟包序走，不跟"点选顺序"走
 	_ShopRuntime.set_active_packs(["pierce", "arc", "core"])
 	_eq_arr("D7 换包后卡池立即变化（按包序）", _ShopRuntime.player_card_names(),
-		["Arrow", "Cannon", "Frost", "Lance", "Tesla", "Oblivion",
-		 "Javelin", "Void", "Bolt", "Ember", "Maul", "Icicle"])
+		["Arrow", "Cannon", "Frost", "Lance", "Tesla", "Vanguard",
+		 "Javelin", "Oblivion", "Void", "Bolt", "Ember", "Maul", "Icicle"])
 	# 与扩展包开关同时开：卡包模式优先，扩展包不叠加（卡包表已含全部卡）
 	_ShopRuntime.set_extended_pack(true)
 	var n_ext_on := _ShopRuntime.player_card_names().size()
@@ -441,3 +445,47 @@ func _test_g_ui() -> void:
 	_ok("G16 确认后界面隐藏", not ov.visible)
 	ov.free()
 	_RunMeta.reset_progress()
+
+# ---------------------------------------------------------------------------
+#  H 触发型建筑：登场 / 整备 / 阵亡 加等级（2026-11-07）
+# ---------------------------------------------------------------------------
+## 🔴 用户口径：「类似塔的效果 —— 回合开始时 / 防御塔上场时 / 防御塔死亡时增加等级」。
+##   本段钉住三件事：①三种时机各自触发；②只影响该影响的塔；③等级封顶 3。
+func _test_h_triggers() -> void:
+	_log("")
+	_log("--- [H] 触发型建筑：登场 / 整备 / 阵亡 加等级（封顶 3）---")
+
+	var p = _PS.new()
+	p.path = "B"
+	p.towers = []
+	p.towers.append(_PS.make_tower(0, "Vanguard", 1, {}))
+	p.towers.append(_PS.make_tower(1, "Arrow", 1, {}))
+	p.towers.append(_PS.make_tower(2, "Drillmaster", 1, {}))
+
+	# ① 登场：只加自己
+	var n1 := _TowerEffects.apply_trigger(p, "enter", {"tower": p.towers[0]})
+	_eq_int("H1 登场只触发 1 座塔", n1, 1)
+	_eq_int("H2 先锋升到 2 级", int(p.towers[0].h), 2)
+	_eq_int("H3 登场不影响其它塔", int(p.towers[1].h), 1)
+
+	# ② 整备：每波开始全场 +1
+	var n2 := _TowerEffects.apply_trigger(p, "prepare")
+	_eq_int("H4 整备触发全场 3 座", n2, 3)
+	_eq_int("H5 整备后先锋封顶 3 级", int(p.towers[0].h), 3)
+	_eq_int("H6 整备后箭塔 2 级", int(p.towers[1].h), 2)
+
+	# ③ 封顶：再来一次只升还没到 3 的
+	var n3 := _TowerEffects.apply_trigger(p, "prepare")
+	_eq_int("H7 封顶后只升未满级的 2 座", n3, 2)
+	_eq_int("H8 箭塔升到 3 级后停住", int(p.towers[1].h), 3)
+
+	# ④ 阵亡：只升其它塔，死者自己不吃
+	var p2 = _PS.new()
+	p2.path = "B"
+	p2.towers = []
+	p2.towers.append(_PS.make_tower(0, "Martyr", 1, {}))
+	p2.towers.append(_PS.make_tower(1, "Arrow", 1, {}))
+	var n4 := _TowerEffects.apply_trigger(p2, "death", {"tower": p2.towers[0]})
+	_eq_int("H9 阵亡触发 1 座其它塔", n4, 1)
+	_eq_int("H10 箭塔升到 2 级", int(p2.towers[1].h), 2)
+	_eq_int("H11 阵亡的塔自身不加级", int(p2.towers[0].h), 1)

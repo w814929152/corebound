@@ -1,4 +1,4 @@
-extends RefCounted
+﻿extends RefCounted
 ##
 ## 卡包（Card Pack）—— 玩家路线卡池的**流派编排单位**
 ## ---------------------------------------------------------------------------
@@ -68,12 +68,12 @@ static var all_packs_open: bool = true
 const PACKS: Array = [
 	{
 		"id": "core", "name": "泛用包", "tag_line": "三类型基础 · 无流派承诺",
-		"cards": ["Arrow", "Cannon", "Frost", "Lance", "Tesla", "Oblivion"],
+		"cards": ["Arrow", "Cannon", "Frost", "Lance", "Tesla", "Vanguard"],
 		"unlock_wave": 0,
 	},
 	{
 		"id": "cinder", "name": "熔炉包", "tag_line": "物理群伤 · 破甲收尾",
-		"cards": ["Cannon", "Ember", "Maul", "Sunder", "Arrow", "Javelin"],
+		"cards": ["Cannon", "Ember", "Maul", "Sunder", "Arrow", "Drillmaster"],
 		"unlock_wave": 0,
 	},
 	{
@@ -98,7 +98,7 @@ const PACKS: Array = [
 	},
 	{
 		"id": "hex", "name": "咒术包", "tag_line": "魔法清场 · 真实收尾",
-		"cards": ["Hex", "Rune", "Frost", "Icicle", "Oblivion", "Void"],
+		"cards": ["Hex", "Rune", "Frost", "Icicle", "Oblivion", "Martyr"],
 		"unlock_wave": 18,
 	},
 	{

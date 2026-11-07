@@ -58,6 +58,8 @@ const _MonsterData := preload("res://scripts/data/monster_data.gd")
 const _Monster := preload("res://scripts/gameplay/monster.gd")
 ## 🆕 战斗类型系统 —— 只在 combat_types_enabled 时按抗性分池结算（默认关 → 逐位不变）。
 const _CombatTypes := preload("res://scripts/data/combat_types.gd")
+## 🆕 触发型建筑（2026-11-07）：整备（每波）/ 阵亡 时给塔加等级。
+const _TowerEffects := preload("res://scripts/engine/tower_effects.gd")
 ## 🔒 V-8：复用批处理镜像的**诊断量容器工厂** —— 复活诊断字典与 `wave_sim_aggro` 共用
 ##   同一份 schema（键名/初值逐位相同）→ 实时↔批处理逐位比对才能直接对键取值，
 ##   也杜绝"两边各写一份 schema、改了一边忘了另一边"的漂移。🔴 只调它的 static 工厂，
@@ -281,6 +283,9 @@ func start_wave(p_w: int) -> void:
 	t_reach = float(ms["t_reach"])
 	var D := float(ms["D"])
 	# 🔴 R1：本波打的是**上波买出来的构筑** → 波首算一次 DPS，波内恒定（与金标本同）
+	# 🆕 触发型建筑 · 整备（`prepare`）：每波开始加等级 —— 🔴 必须在 `dps_only` **之前**，
+	#    这样本波 dps 就能吃到「整备」升级。金标本路径不含触发塔 → 零扰动。
+	_TowerEffects.apply_trigger(player, "prepare")
 	dps = _DE.dps_only(player, cfg, geo)
 	# 🆕 战斗类型：波首算一次按攻击类型拆分的 DPS 池（🔴 默认关 → 不消费，逐位不变）。
 	_phys_dps = 0.0
@@ -592,6 +597,9 @@ func _damage_tower(m, sapper_mult: float) -> void:
 		if _revive_mode() >= 9:
 			_death_snapshot(t)
 		t.disabled = true          # 进入 Disabled 中间态（断输出不断链）
+		# 🆕 触发型建筑 · 阵亡（`death`）：本塔死亡时给其它塔加等级。
+		#   🔴 放在 dps 重算**之前** → 后续子步立刻吃到新等级（不用等下一波）。
+		_TowerEffects.apply_trigger(player, "death", {"tower": t})
 		# 🔴 塔死亡 → 全场 DPS 立即下降（disabled 乘数生效）。本波 dps 是波首算的
 		#    常量，此处重算让**下一子步**的集火用新 DPS（批处理镜像同处理 → 逐位一致）。
 		dps = _DE.dps_only(player, cfg, geo)

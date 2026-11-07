@@ -1,4 +1,4 @@
-extends RefCounted
+﻿extends RefCounted
 ##
 ## headless 断言 —— 扩展包（Extended Pack）· 新塔 / 新强化 / 玩家卡池开关
 ##
@@ -93,10 +93,10 @@ func _test_a_tables() -> void:
 	# 🔴 v0.3：TOWERS_EXT = 4 扩展塔（Lance/Tesla/Sunder/Hex）+ 6 流派第二塔
 	#   （Ember/Icicle/Javelin/Bolt/Maul/Rune）+ 2 真实伤害塔（Oblivion/Void）= 12；
 	#   EXT_WEIGHTS 额外含 6 第二强化 + 2 真实强化（TrueUp/TrueUp2）= 24。
-	_check_int("A1 TOWERS_EXT 塔数", _TD.TOWERS_EXT.size(), 12)
+	_check_int("A1 TOWERS_EXT 塔数", _TD.TOWERS_EXT.size(), 15)
 	_check_int("A2 REINF_EXT 强化数", _TD.REINF_EXT.size(), 5)
 	_check_int("A2b REINF_EXT2 第二强化数", _TD.REINF_EXT2.size(), 7)
-	_check_int("A3 EXT_WEIGHTS 权重条数", _TD.EXT_WEIGHTS.size(), 24)
+	_check_int("A3 EXT_WEIGHTS 权重条数", _TD.EXT_WEIGHTS.size(), 27)
 	# 卡序与权重表必须一一对应（漏一条 = 抽卡时权重查不到 → 崩）
 	var missing := 0
 	for nm in _ShopRuntime.EXT_CARD_ORDER:

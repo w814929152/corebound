@@ -92,6 +92,25 @@ const TOWERS_EXT := {
 	"Rune": {"dps": 5.0, "tag": "hex", "aoe": true, "slow": 0.00, "rng": 17.0},
 
 	# ═══════════════════════════════════════════════════════════════════════════
+	# 🆕 触发型建筑（2026-11-07 · 卡包只收建筑后的升级路线）
+	#   用户口径：「类似塔的效果 —— **回合开始时** / **防御塔上场时** / **防御塔死亡时** 增加等级」。
+	#   （明确否掉两种做法：光环被动加等级、三合一升星。）
+	#   实现 = 事件触发的一次性 +等级，`effect.on` 三选一，`effect.scope` = self / all。
+	#   🔴 等级封顶 `TowerEffects.LEVEL_CAP = 3`（触发不会无限叠）。
+	#   🔴 只走**玩家路线**（`wave_director` / `shop_runtime`）；金标本走 `wave_sim` 且
+	#      只买 `TOWERS` 基础塔 → 本表不进金标本 → 逐位零扰动。
+	#   🔴 死亡触发在**当波不生效**（dps 在波首已算死）→ 下一波吃到，见 `tower_effects.gd`。
+	# 登场：自身 +1 级（落子即比同名塔高一级，抢开局节奏）。
+	"Vanguard": {"dps": 8.0, "tag": "", "aoe": false, "slow": 0.00, "rng": 18.0,
+		"effect": {"on": "enter", "lv": 1, "scope": "self"}},
+	# 整备：每波开始全场 +1 级（慢速滚雪球，逼玩家先立教官再开波）。
+	"Drillmaster": {"dps": 5.0, "tag": "", "aoe": false, "slow": 0.00, "rng": 17.0,
+		"effect": {"on": "prepare", "lv": 1, "scope": "all"}},
+	# 阵亡：本塔死亡时全场 +1 级（用塔位换等级，下一波生效）。
+	"Martyr": {"dps": 6.0, "tag": "", "aoe": false, "slow": 0.00, "rng": 16.0,
+		"effect": {"on": "death", "lv": 1, "scope": "all"}},
+
+	# ═══════════════════════════════════════════════════════════════════════════
 	# 🆕 真实伤害（2026-11-07 · combat-types GDD v0.3）：第三种攻击类型「真实」。
 	#   真实伤害**无视一切抗性**（不吃物抗/魔抗，也不受破甲影响），打谁都全额结算。
 	#   定位 = 克制「高抗性怪」（Tank 物抗 0.30 / Rush 魔抗 0.20）的通用解。
@@ -166,6 +185,10 @@ const EXT_WEIGHTS := {
 	"Void": 0.09,
 	"TrueUp": 0.075,
 	"TrueUp2": 0.075,
+	# 🆕 触发型建筑（2026-11-07）：0.09（与真实塔同级，稀有度偏高 —— 是构筑支点）。
+	"Vanguard": 0.09,
+	"Drillmaster": 0.09,
+	"Martyr": 0.09,
 }
 
 
@@ -191,6 +214,15 @@ static func tower_slow(ctype: String) -> float:
 
 static func tower_rng(ctype: String) -> float:
 	return float(_tower_def(ctype)["rng"])
+
+
+## 🆕 触发型建筑：返回 `{"on": enter|prepare|death, "lv": int, "scope": self|all}`；
+##   普通塔 / 未知塔返回 `{}`（调用方据此跳过，零开销）。
+static func tower_effect(ctype: String) -> Dictionary:
+	if not TOWERS_EXT.has(ctype):
+		return {}
+	var e = TOWERS_EXT[ctype].get("effect", {})
+	return e if e is Dictionary else {}
 
 
 ## 强化卡 tag 查表：先主表、再扩展表（同 `_tower_def` 的兼容策略）。

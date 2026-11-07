@@ -52,13 +52,13 @@ v0.2 的关键突破：**从「选几张卡」升级为「选一条流派」**�
 
 | 包 | id | 建筑卡（6 张） | 伤害构成 | 解锁 |
 |---|---|---|---|---|
-| 泛用包 | `core` | Arrow · Cannon · Frost · Lance · Tesla · Oblivion | 物理/魔法/真实各二，无流派承诺 | 默认 |
-| 熔炉包 | `cinder` | Cannon · Ember · Maul · Sunder · Arrow · Javelin | 物理群伤 + 削物抗 | 默认 |
+| 泛用包 | `core` | Arrow · Cannon · Frost · Lance · Tesla · **Vanguard** | 三类型基础 + 登场升级 | 默认 |
+| 熔炉包 | `cinder` | Cannon · Ember · Maul · Sunder · Arrow · **Drillmaster** | 物理群伤 + 整备升级 | 默认 |
 | 霜序包 | `rime` | Frost · Icicle · Tesla · Bolt · Hex · Rune | 全魔法：减速 + 削魔抗 | 默认 |
 | 穿甲包 | `pierce` | Lance · Javelin · Arrow · Cannon · Oblivion · Void | 远程单体 + 真实补刀 | ≥ 6 |
 | 电弧包 | `arc` | Tesla · Bolt · Ember · Maul · Icicle · Frost | 近身群伤 + 减速 | ≥ 12 |
 | 破甲包 | `sunder` | Sunder · Maul · Cannon · Ember · Javelin · Hex | 削抗 + 物理倾泻 | ≥ 16 |
-| 咒术包 | `hex` | Hex · Rune · Frost · Icicle · Oblivion · Void | 魔法清场 + 真实收尾 | ≥ 18 |
+| 咒术包 | `hex` | Hex · Rune · Frost · Icicle · Oblivion · **Martyr** | 魔法清场 + 阵亡升级 | ≥ 18 |
 | 湮灭包 | `true` | Oblivion · Void · Arrow · Frost · Sunder · Hex | 真实穿透 + 削抗辅助 | ≥ 20 |
 
 ### 2.0 为什么可以「一张塔出现在多个包里」
