@@ -70,43 +70,43 @@ static var all_packs_open: bool = true
 ##      代码与数据保留（金标本路径仍在用），只是不再进任何卡包。
 const PACKS: Array = [
 	{
-		"id": "core", "name": "泛用包", "tag_line": "物理单体 · 物理群伤 · 魔法减速 · 经济",
-		"cards": ["Arrow", "Cannon", "Frost", "Scout", "Kinetic", "Foundry"],
+		"id": "core", "name": "泛用包", "tag_line": "经济滚雪球 · 赏金 · 类型转换",
+		"cards": ["Foundry", "Arrow", "Cannon", "Frost", "Scout", "Kinetic"],
 		"unlock_wave": 0,
 	},
 	{
-		"id": "cinder", "name": "熔炉包", "tag_line": "火：灼烧 / 群伤 / 登场 / 觉醒",
-		"cards": ["Ember", "Maul", "Vanguard", "Blaze", "Cinder", "Pyre"],
+		"id": "cinder", "name": "熔炉包", "tag_line": "火：登场升级 · 自爆 · 觉醒",
+		"cards": ["Vanguard", "Ember", "Blaze", "Cinder", "Pyre", "Maul"],
 		"unlock_wave": 0,
 	},
 	{
-		"id": "rime", "name": "霜序包", "tag_line": "冰：减速梯度 + 整备升级",
-		"cards": ["Icicle", "Drillmaster", "Glacier", "Hail", "Permafrost", "Purity"],
+		"id": "rime", "name": "霜序包", "tag_line": "冰：整备升级 · 减速控场",
+		"cards": ["Drillmaster", "Icicle", "Glacier", "Hail", "Permafrost", "Purity"],
 		"unlock_wave": 0,
 	},
 	{
-		"id": "pierce", "name": "穿甲包", "tag_line": "远程梯度 + 阵亡升级",
-		"cards": ["Lance", "Javelin", "Martyr", "Ballista", "Sniper", "Arcane"],
+		"id": "pierce", "name": "穿甲包", "tag_line": "远程贯穿 · 阵亡升级 · 转魔法",
+		"cards": ["Martyr", "Lance", "Javelin", "Ballista", "Sniper", "Arcane"],
 		"unlock_wave": 6,
 	},
 	{
-		"id": "arc", "name": "电弧包", "tag_line": "电：单体到群伤的梯度",
-		"cards": ["Tesla", "Bolt", "Storm", "Arc", "Spark", "Thunder"],
+		"id": "arc", "name": "电弧包", "tag_line": "电：弹射链 · 击杀升级",
+		"cards": ["Thunder", "Tesla", "Bolt", "Storm", "Arc", "Spark"],
 		"unlock_wave": 12,
 	},
 	{
-		"id": "sunder", "name": "破甲包", "tag_line": "削物抗光环 + 物理群伤",
-		"cards": ["Sunder", "Breaker", "Shatter", "Ruin", "Drummer", "Quake"],
+		"id": "sunder", "name": "破甲包", "tag_line": "削物抗 · 攻速/防御光环",
+		"cards": ["Drummer", "Sunder", "Breaker", "Shatter", "Ruin", "Quake"],
 		"unlock_wave": 18,
 	},
 	{
-		"id": "hex", "name": "咒术包", "tag_line": "削魔抗光环 + 魔法清场",
-		"cards": ["Hex", "Rune", "Curse", "Plague", "Wither", "Omen"],
+		"id": "hex", "name": "咒术包", "tag_line": "削魔抗 · 攻击光环 · DoT/回复",
+		"cards": ["Omen", "Hex", "Rune", "Curse", "Plague", "Wither"],
 		"unlock_wave": 24,
 	},
 	{
-		"id": "true", "name": "湮灭包", "tag_line": "真实穿透 + 觉醒",
-		"cards": ["Oblivion", "Void", "Exile", "Null", "Rift", "Necro"],
+		"id": "true", "name": "湮灭包", "tag_line": "真实 · 击杀升级 · 召唤 · 觉醒",
+		"cards": ["Null", "Oblivion", "Void", "Exile", "Rift", "Necro"],
 		"unlock_wave": 30,
 	},
 ]

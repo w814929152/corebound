@@ -52,14 +52,14 @@ v0.2 的关键突破：**从「选几张卡」升级为「选一条流派」**�
 
 | 包 | id | 建筑卡（6 张） | 伤害构成 | 解锁 |
 |---|---|---|---|---|
-| 泛用包 | `core` | Arrow · Cannon · Frost · Scout · Mortar · Foundry | 物理单体/群伤 · 魔法减速 · 经济建筑 | 默认 |
-| 熔炉包 | `cinder` | Ember · Maul · Vanguard · Blaze · Cinder · Pyre | 火：灼烧/群伤 · 登场 · 觉醒 | 默认 |
-| 霜序包 | `rime` | Icicle · Drillmaster · Glacier · Hail · Permafrost · Frostbite | 冰：减速梯度 · 整备 | 默认 |
-| 穿甲包 | `pierce` | Lance · Javelin · Martyr · Ballista · Sniper · Harpoon | 远程梯度 · 阵亡 | ≥ 6 |
-| 电弧包 | `arc` | Tesla · Bolt · Storm · Arc · Spark · Thunder | 电：单体到群伤 | ≥ 12 |
-| 破甲包 | `sunder` | Sunder · Breaker · Shatter · Ruin · Cleave · Quake | 削物抗 + 物理群伤 · 防御光环 | ≥ 18 |
-| 咒术包 | `hex` | Hex · Rune · Curse · Plague · Wither · Omen | 削魔抗 + DoT/回复/攻击光环 | ≥ 24 |
-| 湮灭包 | `true` | Oblivion · Void · Exile · Null · Rift · Abyss | 真实 · 击杀升级 · 觉醒 | ≥ 30 |
+| 泛用包 | `core` | **Foundry** · Arrow · Cannon · Frost · Scout · Kinetic | 经济（每波废料） |
+| 熔炉包 | `cinder` | **Vanguard** · Ember · Blaze · Cinder · Pyre · Maul | 登场（自身 +1 级） |
+| 霜序包 | `rime` | **Drillmaster** · Icicle · Glacier · Hail · Permafrost · Purity | 整备（每波全场 +1 级） |
+| 穿甲包 | `pierce` | **Martyr** · Lance · Javelin · Ballista · Sniper · Arcane | 阵亡（全场 +1 级） |
+| 电弧包 | `arc` | **Thunder** · Tesla · Bolt · Storm · Arc · Spark | 击杀升级（击杀 +1 级） |
+| 破甲包 | `sunder` | **Drummer** · Sunder · Breaker · Shatter · Ruin · Quake | 攻速光环 +20% |
+| 咒术包 | `hex` | **Omen** · Hex · Rune · Curse · Plague · Wither | 攻击光环 +10% |
+| 湮灭包 | `true` | **Null** · Oblivion · Void · Exile · Rift · Necro | 击杀升级 + 召唤 |
 
 ### 2.0 为什么可以「一张塔出现在多个包里」
 
@@ -174,3 +174,25 @@ Rush 魔抗 0.20）。代价是 dps 刻意压低（Oblivion 6 / Void 5），只�
 3. **刷新保底的强度旋钮**：当前「无骨架卡 → 补 1 张」是硬编码。若实测觉得保底过强/过弱，
    可改成「补 1 张且不占商品位」或「只保底核心塔、不保底第二强化」。
 4. **两份解锁体系未合并**：卡包已改为「全开」（`all_packs_open`）/ 关卡 by 首次通关，两者仍各存一份档，收敛点仍是 `unlocked_ids()`。
+
+---
+
+## 3. 重新梳理（2026-11-07 · 用新机制定义每包身份）
+
+**规则：每个包的第 1 张 = 该包的「成长引擎」**（经济 / 登场 / 整备 / 阵亡 / 击杀升级 / 团队光环）。
+理由：刷新保底（`skeleton_cards`）取每包第 1 张 —— 引擎卡因此在任何一局都能被保底刷到，
+不会出现「选了三包却没有成长手段」的死局（MC 里 48/56 组合 0 胜的根因）。
+
+| 包 | 成长引擎（第 1 张） | 其余 5 张 |
+|---|---|---|
+| 泛用 | Foundry（经济） | Arrow · Cannon · Frost · Scout（赏金）· Kinetic（转物理） |
+| 熔炉 | Vanguard（登场） | Ember · Blaze · Cinder · Pyre（自爆/觉醒）· Maul |
+| 霜序 | Drillmaster（整备） | Icicle · Glacier · Hail · Permafrost · Purity（转纯粹） |
+| 穿甲 | Martyr（阵亡） | Lance · Javelin · Ballista · Sniper · Arcane（转魔法） |
+| 电弧 | Thunder（击杀升级） | Tesla · Bolt · Storm · Arc · Spark（全弹射） |
+| 破甲 | Drummer（攻速） | Sunder · Breaker · Shatter · Ruin · Quake（防御） |
+| 咒术 | Omen（攻击） | Hex · Rune · Curse · Plague（DoT）· Wither（回复） |
+| 湮灭 | Null（击杀升级） | Oblivion · Void · Exile · Rift（觉醒）· Necro（召唤） |
+
+复跑：**14/56 通关（25.0%），平均 W17.63** —— 比上一版（W17.59）略升；
+引擎前置没有改变 MC 的胜率（MC 不模拟保底），但让**实际对局的引擎到达率**显著提高。

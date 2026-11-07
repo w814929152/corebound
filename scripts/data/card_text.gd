@@ -88,7 +88,7 @@ const ROLE := {
 	"Storm": "范围电击",
 	"Arc": "群伤：电弧",
 	"Spark": "快速单体",
-	"Thunder": "高伤单体",
+	"Thunder": "击杀升级",
 	"Ballista": "超远程单体",
 	"Sniper": "最远射程",
 	"Arcane": "最近塔转魔法",
@@ -277,6 +277,9 @@ static func describe(nm: String) -> String:
 	# 🆕 相位塔：不攻击，只把最近的塔转成指定伤害类型。
 	if _TD.tower_convert(nm) != "":
 		return "%s\n不攻击 · 占塔位\n最近 1 座塔" % r
+	# 🆕 击杀升级：任意击杀都给本塔加等级（优先于弹射显示 —— 它是成长身份）。
+	if _TD.tower_on_kill_lv(nm):
+		return "%s\n%s\n击杀 +1 级" % [r, stat_line(nm)]
 	# 🆕 溅射：命中后波及周围 N 个敌人（优先于弹射/贯穿显示 —— 它是最强的范围加成）。
 	if _TD.tower_splash(nm) > 0:
 		return "%s\n%s\n溅射 %d 个" % [r, stat_line(nm), _TD.tower_splash(nm)]
