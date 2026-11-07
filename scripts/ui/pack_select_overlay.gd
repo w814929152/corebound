@@ -221,6 +221,8 @@ func _refresh() -> void:
 		_Packs.CARDS_PER_PACK, req, req * _Packs.CARDS_PER_PACK]
 	if nxt > 0:
 		_head.text += "\n最佳波次 W%d · 到达 W%d 解锁下一个卡包" % [best, nxt]
+	elif nxt < 0:
+		_head.text += "\n全部 %d 个卡包开放 · 本局任选 %d 包" % [unlocked.size(), req]
 	else:
 		_head.text += "\n最佳波次 W%d · 卡包已全部解锁" % best
 

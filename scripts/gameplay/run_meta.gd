@@ -171,6 +171,9 @@ static func reset_progress() -> void:
 ## 下一包还差多少波（UI 用；全部解锁 → -1）。
 static func next_unlock_wave() -> int:
 	_ensure_loaded()
+	# 🔴 全部卡包开放时没有「下一个解锁」→ -1（UI 据此显示「全部开放」而不是编个波次）。
+	if _Packs.all_packs_open:
+		return -1
 	for p in _Packs.PACKS:
 		var uw := int(p["unlock_wave"])
 		if _best_wave < uw:

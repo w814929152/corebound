@@ -156,33 +156,38 @@ func _test_a_table() -> void:
 # ---------------------------------------------------------------------------
 func _test_b_unlock() -> void:
 	_log("")
-	_log("--- [B] 解锁：最佳波次 → 已解锁包 → 必须选几包 ---")
-	# 包表：core0 / cinder0 / rime0 / pierce6 / arc12 / sunder16 / hex18
-	_eq_int("B1 W0 解锁包数", _Packs.unlocked_ids(0).size(), 3)
-	_eq_int("B2 W5 解锁包数", _Packs.unlocked_ids(5).size(), 3)
-	_eq_int("B3 W6 解锁包数（穿甲包）", _Packs.unlocked_ids(6).size(), 4)
-	_eq_int("B4 W11 解锁包数", _Packs.unlocked_ids(11).size(), 4)
-	_eq_int("B5 W12 解锁包数（电弧包）", _Packs.unlocked_ids(12).size(), 5)
-	_eq_int("B6 W15 解锁包数", _Packs.unlocked_ids(15).size(), 5)
-	_eq_int("B7 W16 解锁包数（破甲包）", _Packs.unlocked_ids(16).size(), 6)
-	_eq_int("B8 W17 解锁包数", _Packs.unlocked_ids(17).size(), 6)
-	_eq_int("B9 W18 解锁包数（咒术包）", _Packs.unlocked_ids(18).size(), 7)
-	_eq_int("B10 W20 解锁包数（湮灭包）", _Packs.unlocked_ids(20).size(), 8)
-	_eq_int("B11 3 包时「必须选」= 3（无选择余地，全带）", _Packs.required_picks(0), 3)
-	_ok("B12 3 包时不需要弹界面", not _Packs.needs_selection(0))
-	_ok("B13 4 包时需要选（4 > 3）", _Packs.needs_selection(6))
-	_ok("B14 5 包时需要选", _Packs.needs_selection(12))
-	_eq_int("B15 已解锁 5 包时「必须选」仍是 3", _Packs.required_picks(12), 3)
-	# 进度层：record_run 只升不降
+	_log("--- [B] 解锁口径：默认全开（2026-11-07 拍板）· 回滚开关下按最佳波次 ---")
+	# ① 默认口径：8 包全开，W0 就能任选 3 包（内容一次全可见，选包 = 选流派）
+	_Packs.all_packs_open = true
+	_eq_int("B1 全开：W0 已解锁 8 包", _Packs.unlocked_ids(0).size(), 8)
+	_eq_int("B2 全开：W0「必须选」= 3", _Packs.required_picks(0), 3)
+	_ok("B3 全开：开局需要弹选包界面", _Packs.needs_selection(0))
+	_ok("B4 全开：任意波次都是 8 包",
+		_Packs.unlocked_ids(7).size() == 8 and _Packs.unlocked_ids(20).size() == 8)
+	_eq_int("B5 全开：没有「下一个解锁波次」", _RunMeta.next_unlock_wave(), -1)
+
+	# ② 老口径（开关关闭）：数据曲线与判定原样保留，一行回滚即可复活
+	_Packs.all_packs_open = false
+	_eq_int("B6 老口径 W0 解锁 3 包", _Packs.unlocked_ids(0).size(), 3)
+	_eq_int("B7 老口径 W6 → 4 包（穿甲）", _Packs.unlocked_ids(6).size(), 4)
+	_eq_int("B8 老口径 W12 → 5 包（电弧）", _Packs.unlocked_ids(12).size(), 5)
+	_eq_int("B9 老口径 W16 → 6 包（破甲）", _Packs.unlocked_ids(16).size(), 6)
+	_eq_int("B10 老口径 W18 → 7 包（咒术）", _Packs.unlocked_ids(18).size(), 7)
+	_eq_int("B11 老口径 W20 → 8 包（湮灭）", _Packs.unlocked_ids(20).size(), 8)
+	_ok("B12 老口径 3 包时不用选", not _Packs.needs_selection(0))
+	_ok("B13 老口径 4 包时需要选", _Packs.needs_selection(6))
+	_eq_int("B14 老口径 5 包时「必须选」仍是 3", _Packs.required_picks(12), 3)
+	_Packs.all_packs_open = true
+
+	# ③ 进度层：record_run 只升不降；全开下不再产生「新解锁卡包」
 	_RunMeta.reset_progress()
 	_RunMeta.record_run(false, 7)
-	_eq_int("B16 失败也推进：最佳波次 = 7", _RunMeta.best_wave(), 7)
+	_eq_int("B15 失败也推进：最佳波次 = 7", _RunMeta.best_wave(), 7)
 	_RunMeta.record_run(false, 3)
-	_eq_int("B17 最佳波次只升不降", _RunMeta.best_wave(), 7)
+	_eq_int("B16 最佳波次只升不降", _RunMeta.best_wave(), 7)
 	var fresh: Array = _RunMeta.record_run(true, 12)
-	_eq_int("B18 胜场累计", _RunMeta.wins(), 1)
-	_eq_int("B19 本局新解锁 1 包（电弧）", fresh.size(), 1)
-	_ok("B20 新解锁的是电弧包", fresh.size() == 1 and String(fresh[0]) == "arc")
+	_eq_int("B17 胜场累计", _RunMeta.wins(), 1)
+	_eq_int("B18 全开下不再有「新解锁卡包」", fresh.size(), 0)
 
 
 # ---------------------------------------------------------------------------
@@ -195,14 +200,20 @@ func _test_c_normalize() -> void:
 	_eq_arr("C1 顺序按包序（core→cinder→rime）", n1, ["core", "cinder", "rime"])
 	var n2 := _Packs.normalize(["core", "nope", "core", "cinder"], 0)
 	_eq_arr("C2 丢弃未知 / 重复", n2, ["core", "cinder"])
+	# 「未解锁剔除」只在老口径下有意义（默认全开时 8 包都合法）
+	_Packs.all_packs_open = false
 	var n3 := _Packs.normalize(["core", "cinder", "rime", "pierce", "arc"], 0)
-	_eq_int("C3 未解锁的包被剔除（W0 只有 3 包）", n3.size(), 3)
+	_eq_int("C3 未解锁的包被剔除（老口径 W0 只有 3 包）", n3.size(), 3)
+	_ok("C8 含未解锁包不合法（老口径）",
+		not _Packs.is_valid_selection(["pierce", "core", "cinder"], 0))
+	_Packs.all_packs_open = true
 	var n4 := _Packs.normalize(["core", "cinder", "rime", "pierce"], 12)
 	_eq_int("C4 超量截断到 required=3", n4.size(), 3)
 	_eq_arr("C5 截断按包序（留下前 3 个）", n4, ["core", "cinder", "rime"])
 	_ok("C6 合法选择通过校验", _Packs.is_valid_selection(["core", "cinder", "rime"], 0))
 	_ok("C7 不足 3 包不合法", not _Packs.is_valid_selection(["core", "cinder"], 0))
-	_ok("C8 含未解锁包不合法", not _Packs.is_valid_selection(["pierce", "core", "cinder"], 0))
+	_ok("C9 全开：任意 3 包都合法（含原本锁定的穿甲包）",
+		_Packs.is_valid_selection(["core", "cinder", "pierce"], 0))
 
 
 # ---------------------------------------------------------------------------
@@ -336,7 +347,7 @@ func _collect(n: Node, out: Array, type_check: String) -> Array:
 
 func _test_g_ui() -> void:
 	_log("")
-	_log("--- [G] 选包界面：7 位同尺寸 / 四态自定义 / ≥16px / 锁定态禁用 ---")
+	_log("--- [G] 选包界面：8 位同尺寸 / 四态自定义 / ≥16px / 锁定态禁用 ---")
 	_RunMeta.reset_progress()
 	_RunMeta.record_run(false, 6)          # 最佳波次 6 → 解锁 4 包（需要选择）
 	var ov = _PackUI.new()
@@ -370,7 +381,16 @@ func _test_g_ui() -> void:
 			small.append("%s=%d" % [String((l as Label).text).substr(0, 8), fs])
 	_ok("G6 文本 ≥16px", small.is_empty(), str(small))
 
-	# 锁定态：最佳波次 6 时只有 4 包可用，其余包必须禁用
+	# 默认口径：8 包全开 → 全部可用
+	var any_locked := false
+	for t in ov._tiles:
+		if (t["btn"] as Button).disabled:
+			any_locked = true
+	_ok("G7 全开：8 个卡包位全部可用", not any_locked)
+
+	# 老口径回滚：锁定态仍然禁用（最佳波次 6 → 4 包可用）
+	_Packs.all_packs_open = false
+	ov._refresh()
 	var locked_ok := true
 	var locked_n := 0
 	for t in ov._tiles:
@@ -383,8 +403,10 @@ func _test_g_ui() -> void:
 				locked_ok = false
 		elif b.disabled:
 			locked_ok = false
-	_eq_int("G7 锁定的包数 = 4（电弧/破甲/咒术/湮灭）", locked_n, 4)
-	_ok("G8 锁定态禁用 / 解锁态可用", locked_ok)
+	_eq_int("G7b 老口径：锁定的包数 = 4（电弧/破甲/咒术/湮灭）", locked_n, 4)
+	_ok("G8 老口径：锁定态禁用 / 解锁态可用", locked_ok)
+	_Packs.all_packs_open = true
+	ov._refresh()
 
 	# 交互：选满 3 包才能开始；第 4 个被拒绝
 	ov._sel = []

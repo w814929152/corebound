@@ -39,6 +39,15 @@ const PICKS_PER_RUN := 3
 ## 每包固定张数（自测断言钉死；UI 按它算「本局卡池 N 张」）。
 const CARDS_PER_PACK := 6
 
+## 🔴 2026-11-07 用户拍板（B 方案）：**全部卡包开局即开放** —— 选包 = 选流派，
+##   不再用「历史最佳波次」逐包解锁（那是早期为了「失败也有产出」设计的节奏阀）。
+##   · 打开：8 包全部可选，每局任选 3 包（build 自由组合，内容一次全可见）；
+##   · 关闭（改 false）：回到「最佳波次解锁」老口径，`unlock_wave` 数据原样保留；
+##   · `unlock_wave` 字段**不删**——它是设计资产，也是老口径回滚的依据；
+##     只有 `unlocked_ids()` / `next_unlock_wave()` 认这个开关。
+##   ⚠️ 用 `static var` 而非 const：headless 断言需要临时切回老口径验一遍解锁曲线。
+static var all_packs_open: bool = true
+
 ## 卡包定义。
 ##   顺序 = UI 从左到右 = 卡池内卡序（`PyRandom.choices()` 的累积权重按此顺序拼）。
 ##   `unlock_wave` = 历史最佳波次达到该值即解锁（局外进度见 `run_meta.gd`）。
@@ -162,10 +171,11 @@ static func unlock_wave(pack_id: String) -> int:
 
 
 ## 历史最佳波次 → 已解锁的包 id（保持包序）。
+##   🔴 `all_packs_open` = true 时**不看最佳波次**，8 包全给（见文件头的拍板注释）。
 static func unlocked_ids(best_wave: int) -> Array:
 	var out: Array = []
 	for p in PACKS:
-		if best_wave >= int(p["unlock_wave"]):
+		if all_packs_open or best_wave >= int(p["unlock_wave"]):
 			out.append(String(p["id"]))
 	return out
 
