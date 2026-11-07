@@ -53,6 +53,9 @@ const TestSuiteTutorial := preload("res://tests/run_tutorial_asserts.gd")
 const TestSuiteExtPack := preload("res://tests/run_ext_pack_asserts.gd")
 const TestSuiteUIStyle := preload("res://tests/run_ui_style_asserts.gd")
 const TestSuiteTowerLevel := preload("res://tests/run_tower_level_asserts.gd")
+const TestSuiteCardPack := preload("res://tests/run_card_pack_asserts.gd")
+const TestSuiteCampaign := preload("res://tests/run_campaign_asserts.gd")
+const TestSuiteCombatTypes := preload("res://tests/run_combat_types_asserts.gd")
 const _Geo := preload("res://scripts/geo/geo.gd")
 const _SpaceModel := preload("res://scripts/geo/space_model.gd")
 
@@ -118,7 +121,8 @@ func _initialize() -> void:
 		if (a.begins_with("slice") or a.begins_with("t1") or a == "v0radial"
 				or a == "radial" or a == "geo8" or a == "radial8" or a == "radial8diag"
 				or a == "repair8" or a == "aggro_golive" or a == "tutorial"
-				or a == "extpack" or a == "uistyle" or a == "tlv"):
+				or a == "extpack" or a == "uistyle" or a == "tlv"
+				or a == "cardpack" or a == "campaign" or a == "combat_types"):
 			only = a
 
 	var ok := true
@@ -174,6 +178,15 @@ func _initialize() -> void:
 	# 🆕 塔等级牌（2026-11-07）：等级可读 + 只读快照 + 层序（纯逻辑，秒级）。
 	if only == "" or only == "tlv":
 		ok = TestSuiteTowerLevel.new().run_all() and ok
+	# 🆕 卡包（2026-11-07）：分池 / 选包 / 解锁 / 发牌域（纯逻辑 + 一次真 runtime，秒级）。
+	if only == "" or only == "cardpack":
+		ok = TestSuiteCardPack.new().run_all() and ok
+	# 🆕 关卡推进（2026-11-07）：推进链 / 解锁 / Ember / 存档（纯逻辑，秒级）。
+	if only == "" or only == "campaign":
+		ok = TestSuiteCampaign.new().run_all() and ok
+	# 🆕 战斗类型（2026-11-07）：物理/魔法/真实三类型 + 抗性 + 破甲（纯逻辑 + 一次真 runtime，秒级）。
+	if only == "" or only == "combat_types":
+		ok = TestSuiteCombatTypes.new().run_all() and ok
 	# 🔴 第五刀 · 三轴合并镜像退化逐位守护（独立入口，**不进**默认无参回归 → 九段聚合读数逐位不变）。
 	if only == "aggro_golive":
 		ok = TestSuiteAggroGolive.new().run_all() and ok
