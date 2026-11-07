@@ -19,10 +19,12 @@ extends SceneTree
 const _Cfg := preload("res://scripts/engine/mvp_config.gd")
 const _TSM := preload("res://scripts/engine/time_state_machine.gd")
 
-# UI 优化轮：商品位尺寸随卡片内容重排上调（`shop_overlay.gd` 的 `SLOT_SIZE`）。
-# 本冒烟按**像素**反查三个商品位，故必须与实现常量同步。
-const SLOT_W := 168.0
-const SLOT_H := 244.0
+# 商品位尺寸**直接取实现常量**（`shop_overlay.gd` 的 `SLOT_SIZE`）——
+# 本冒烟按**像素**反查三个商品位，以前手抄两份常量，改了实现忘了改测试就静默 45/46。
+# 🔴 现在单一来源：实现改了这里自动跟随，不再有第二份数字。
+const _ShopUI := preload("res://scripts/ui/shop_overlay.gd")
+const SLOT_W := _ShopUI.SLOT_SIZE.x
+const SLOT_H := _ShopUI.SLOT_SIZE.y
 
 
 class Driver extends Node:

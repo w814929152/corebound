@@ -23,6 +23,7 @@ const _Cfg := preload("res://scripts/engine/mvp_config.gd")
 const _TSM := preload("res://scripts/engine/time_state_machine.gd")
 const _ShopLayout := preload("res://scripts/ui/shop_layout.gd")
 const _Style := preload("res://scripts/ui/ui_style.gd")
+const _CardText := preload("res://scripts/data/card_text.gd")
 
 const SLOT_COUNT := 3        # 恒为 3（A4：保底不新增第 4 位）
 
@@ -37,10 +38,18 @@ const C_DIM := Color(0.55, 0.57, 0.60, 1.0)    # H1 买不起：价格灰（🔴
 const C_TEXT := Color(0.88, 0.90, 0.92, 1.0)
 const C_WARN := Color(0.86, 0.20, 0.20, 1.0)   # E5：刷新买不起 → 价格标红
 
-# 🆕 卡片高度随内容重排后上调（原 150×190 放不下「卡名 26px + 价格 + 备注 + 双按钮」）。
-#    🔴 X3：仍由**这一个常量**决定，三位共用；`tests/run_slice4_scene_smoke.gd` 的
-#    SLOT_W/SLOT_H 必须同步（该冒烟按像素反查三个位）。
-const SLOT_SIZE := Vector2(168.0, 244.0)       # 🔴 三个位完全一致（X3）
+# 卡片高度随内容重排后上调（原 150×190 放不下「卡名 26px + 价格 + 备注 + 双按钮」）。
+#   🆕 197 → 340：卡面新增**效果描述块**（恒 3 行，见 `_slot_desc`）——
+#      改造前卡上只有「卡名 + 卡种」，玩家看不出 FireUp 和 Cannon 分别干什么。
+#      描述块用 `card_text.gd` 派生的 3 行文字（定位 / 数值 / 流程），
+#      高度**固定**（三个位完全一致 → X3），不在运行时随文字长短伸缩。
+#   🔴 X3：仍由**这一个常量**决定，三位共用；`tests/run_slice4_scene_smoke.gd` 的
+#      SLOT_W/SLOT_H 必须同步（该冒烟按像素反查三个位）。
+const SLOT_SIZE := Vector2(168.0, 352.0)       # 🔴 三个位完全一致（X3）
+## 描述块行数（恒 3 行 → 三个位等高同构）；
+## 16px 字号实测行高 25px（Godot 默认字体 ascent+descent），3 行 = 75px。
+const DESC_LINES := 3
+const DESC_LINE_H := 25.0
 
 ## 顶部数值区（原为一行超长拼接串，改为 3 列网格 → 可扫读）
 const STAT_KEYS: Array = ["废料", "主塔塔位", "塔位", "强化槽", "全局槽"]
@@ -55,6 +64,7 @@ var _slots: Array = []        # Array[PanelContainer]
 var _slot_name: Array = []    # Array[Label]
 var _slot_kind: Array = []
 var _slot_price: Array = []
+var _slot_desc: Array = []    # 🆕 效果描述块（恒 3 行，`card_text.gd` 派生）
 var _slot_note: Array = []
 var _slot_buy: Array = []     # Array[Button]
 var _slot_lock: Array = []
@@ -220,6 +230,12 @@ func _build() -> void:
 		slots_row.add_child(slot)
 		_slots.append(slot)
 
+	# 🆕 购买流程提示：**按卡种**说一次（三种卡各一行），不占卡面高度。
+	#   改造前这类「买后要去哪」的信息完全缺失 —— 玩家买了建筑卡不知道要再进安全窗落子。
+	var flow := _Style.label(_CardText.FLOW_HINT, _Style.FONT_MIN, _Style.C_TEXT_DIM)
+	flow.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	inner.add_child(flow)
+
 	# ---- 刷新按钮（E5：买不起置灰 + 价格标红）----
 	_reroll_btn = Button.new()
 	_reroll_btn.text = "刷新 R"
@@ -318,10 +334,17 @@ func _make_slot(_i: int) -> PanelContainer:
 
 	vb.add_child(_Style.hline(0.12))
 
-	# 事实备注（H2/H3/H4/H5/H6/H9）
+	# 🆕 效果描述块（§5.2 L2 文字；比备注亮一档 —— 它是「这张卡干什么」的正面信息，
+	#   备注只是条件事实）。🔴 高度固定 DESC_LINES 行：三个位的描述块**等高同构**（X3）。
+	var desc := _Style.label("", _Style.FONT_MIN, _Style.C_TEXT)
+	desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	desc.custom_minimum_size = Vector2(0.0, DESC_LINE_H * float(DESC_LINES))
+	vb.add_child(desc)
+	_slot_desc.append(desc)
+
+	# 事实备注（H2/H3/H4/H5/H6/H9）—— 只在有事实时占位（min 0），否则不占高度
 	var note := _Style.label("", _Style.FONT_MIN, _Style.C_TEXT_DIM)
 	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	note.custom_minimum_size = Vector2(0.0, 42.0)
 	vb.add_child(note)
 	_slot_note.append(note)
 
@@ -366,6 +389,7 @@ func _refresh_shop() -> void:
 			_slot_name[i].text = "—"
 			_slot_kind[i].text = "—"
 			_slot_price[i].text = "--"
+			_slot_desc[i].text = ""
 			_slot_note[i].text = ""
 			_slots[i].add_theme_stylebox_override("panel", _Style.card("dim"))
 			_slot_buy[i].disabled = true
@@ -394,11 +418,14 @@ func _refresh_shop() -> void:
 			_slot_name[i].text = "—"
 			_slot_kind[i].text = "此位无卡"
 			_slot_price[i].text = ""
+			_slot_desc[i].text = ""
 			_slot_note[i].text = String(s["notes"][i])
 			_slot_price[i].add_theme_color_override("font_color", C_DIM)
 			_slots[i].add_theme_stylebox_override("panel", _Style.card("dim"))
 		else:
 			_slot_name[i].text = nm
+			# 🆕 效果描述块：卡名 + 卡种之外，告诉玩家「这张卡干什么」（恒 3 行）
+			_slot_desc[i].text = _CardText.describe(nm)
 			# H2：Tag 协同 → 卡种行加标记（视觉编码不写推荐类词）
 			var kind_txt := String(s["kinds"][i])
 			if bool(hl.get("tag_synergy", false)):

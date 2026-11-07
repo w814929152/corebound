@@ -15,6 +15,9 @@ extends RefCounted
 ##    E 无占位文案：玩家界面里不得残留「后续切片 / 🟡」这类开发占位
 ##    F 调色板：`ui_style.gd` 的色值逐字等于 art-bible §2.2 登记值（防二次发明颜色）
 ##    G 抽屉布局：`drawer_width` 读数不变（32% / 最小 560）—— UI 改版不得动双焦点比例
+##    H 弹窗：结算 / 回收确认 / 受损塔处置同样不得用系统默认控件
+##    I 卡面描述：每张卡都必须回答「这张卡干什么」——恒 3 行、数值现取自 SSOT、
+##      无强弱评价词（C-3 / SR-R2）、无占位痕迹
 ##
 ## 跑法：
 ##   <godot> --headless --path . --script res://tests/run_tests.gd -- uistyle
@@ -28,6 +31,8 @@ const _ShopLayout := preload("res://scripts/ui/shop_layout.gd")
 const _Result := preload("res://scripts/ui/result_overlay.gd")
 const _Salvage := preload("res://scripts/ui/salvage_confirm_dialog.gd")
 const _DisabledDialog := preload("res://scripts/ui/disabled_tower_dialog.gd")
+const _CardText := preload("res://scripts/data/card_text.gd")
+const _TD := preload("res://scripts/data/tower_data.gd")
 
 const FONT_MIN := 16
 
@@ -50,6 +55,7 @@ func run_all() -> bool:
 	_test_f_palette()
 	_test_g_drawer_layout()
 	_test_h_dialogs()
+	_test_i_card_text()
 
 	_log("")
 	_log("=".repeat(78))
@@ -314,10 +320,128 @@ func _check_all_buttons(tag: String, root: Node) -> void:
 
 
 # ---------------------------------------------------------------------------
+#  I 卡面描述（「这张卡干什么」—— 改造前卡上只有卡名 + 卡种，玩家看不出差别）
+# ---------------------------------------------------------------------------
+## 🔴 三条口径，缺一条就会退回原缺陷：
+##   ① **每张会被发出的卡**都必须有非空描述（`RerollD` 被 D-4 排除出玩家池，不在此列）；
+##   ② 描述恒 `DESC_LINES` 行 —— 三个商品位的描述块等高，X3「不得用布局暗示」；
+##   ③ 数值**现取自 SSOT** 而非手抄 —— 改 `TOWERS` 后卡面自动跟随，不可能写「dps 10」跑「11」。
+func _test_i_card_text() -> void:
+	_log("")
+	_log("--- [I] 卡面描述：每张卡都说明「干什么」（恒 3 行 · 数值派生 · 无评价词）---")
+
+	# 会被玩家看到的全部卡（RerollD 已被 D-4 永久排除出玩家池 → 不要求描述）
+	var cards: Array = []
+	for nm in _TD.TOWERS:
+		cards.append(String(nm))
+	for nm in _TD.TOWERS_EXT:
+		cards.append(String(nm))
+	for nm in _TD.REINF:
+		cards.append(String(nm))
+	for nm in _TD.REINF_EXT:
+		cards.append(String(nm))
+	cards.append("ScrapUp")
+	_check_int("待验卡数 = 主表 3 + 扩展 2 + 强化 4 + 全局 1", cards.size(), 10)
+
+	var empty: Array = []
+	var bad_lines: Array = []
+	var banned: Array = []
+	for nm in cards:
+		var d := _CardText.describe(nm)
+		if d.strip_edges() == "":
+			empty.append(nm)
+			continue
+		var n := d.split("\n").size()
+		if n != _Shop.DESC_LINES:
+			bad_lines.append("%s=%d行" % [nm, n])
+		for w in ["推荐", "最优", "必买", "首选", "best", "recommend", "suggest"]:
+			if d.findn(w) >= 0:
+				banned.append("%s:%s" % [nm, w])
+	_check("%d 张卡全部有非空描述%s" % [cards.size(), "" if empty.is_empty() else " → 空: " + str(empty)],
+		empty.is_empty())
+	_check("描述恒 %d 行（三位等高同构 · X3）%s" % [
+		_Shop.DESC_LINES, "" if bad_lines.is_empty() else " → " + str(bad_lines)], bad_lines.is_empty())
+	_check("描述零强弱评价词（C-3 / SR-R2）%s" % ("" if banned.is_empty() else " → " + str(banned)),
+		banned.is_empty())
+
+	# ---- 数值派生：卡面数字必须就是表里的数字（改表自动跟随，杜绝手抄漂移）----
+	var drift: Array = []
+	for nm in ["Arrow", "Cannon", "Frost", "Lance", "Tesla"]:
+		var def: Dictionary = _TD.TOWERS[nm] if _TD.TOWERS.has(nm) else _TD.TOWERS_EXT[nm]
+		var line := _CardText.stat_line(nm)
+		var want_dps := "伤害 %s" % _CardText._num(float(def["dps"]))
+		var want_rng := "射程 %s" % _CardText._num(float(def["rng"]))
+		if line.find(want_dps) < 0 or line.find(want_rng) < 0:
+			drift.append("%s→%s" % [nm, line])
+	_check("5 张塔卡的伤害 / 射程逐字取自 TOWERS（TOWERS_EXT）%s" % (
+		"" if drift.is_empty() else " → " + str(drift)), drift.is_empty())
+	# 溅射 / 减速 / 标记分别落在第 1 / 3 行（第 2 行只放伤害·射程，否则超 9 汉字必然二次换行）
+	_check("Cannon 描述写明「溅射」（aoe=true）",
+		_CardText.describe("Cannon").find("溅射") >= 0)
+	_check("Frost 描述写明「减速 30%」（slow=0.30）",
+		_CardText.describe("Frost").find("减速 30%") >= 0)
+	_check("Tesla 描述写明「减速」（slow=0.10）",
+		_CardText.describe("Tesla").find("减速") >= 0)
+	_check("Arrow 描述**不含**「溅射」（aoe=false）",
+		_CardText.describe("Arrow").find("溅射") < 0)
+	_check("塔卡第 2 行只含伤害 / 射程（不含溅射 / 减速 / 标记）",
+		_CardText.stat_line("Cannon").find("溅射") < 0
+		and _CardText.stat_line("Frost").find("减速") < 0
+		and _CardText.stat_line("Cannon").find("标记") < 0)
+	# 版式硬约束：每行 ≤9 汉字（实测 155px 内宽 / 16px 字号），否则描述块会二次换行
+	var over: Array = []
+	for nm in cards:
+		for line in _CardText.describe(nm).split("\n"):
+			if _display_width(String(line)) > 9.0:
+				over.append("%s: 「%s」=%.1f 字" % [nm, String(line), _display_width(String(line))])
+	_check("每行 ≤9 汉字（版式硬约束 · 超出即二次换行）%s" % (
+		"" if over.is_empty() else " → " + str(over)), over.is_empty())
+
+	# ---- 强化卡「可强化：xxx」也派生自 tag（新增同 tag 塔自动被包含）----
+	for pair in [["FireUp", "Cannon"], ["FrostUp", "Frost"], ["PirUp", "Lance"], ["ShkUp", "Tesla"]]:
+		var card := String(pair[0])
+		var host := String(pair[1])
+		var d2 := _CardText.describe(card)
+		_check("%s 的「可强化」点名 %s" % [card, host], d2.find(host) >= 0)
+	_check("FireUp 不会误点名 Frost（tag 不同）", _CardText.describe("FireUp").find("Frost") < 0)
+	_check("全局卡 ScrapUp 写明 +20% 与 3 层上限",
+		_CardText.describe("ScrapUp").find("+20%") >= 0
+		and _CardText.describe("ScrapUp").find("上限3层") >= 0)
+
+	# ---- 未知卡 / 空位：返回空串（卡片尺寸不变，不塞噪声占位）----
+	_check("未知卡描述为空串（不发明内容）", _CardText.describe("NoSuchCard") == "")
+	_check("空卡名描述为空串", _CardText.describe("") == "")
+
+	# ---- UI 接线：3 个位都挂了描述 Label，且预留高度一致（等高同构）----
+	var shop := _make_shop()
+	_check_int("3 个商品位都有描述 Label", shop._slot_desc.size(), 3)
+	var h0: float = (shop._slot_desc[0] as Label).custom_minimum_size.y
+	var same_h := true
+	for l in shop._slot_desc:
+		if not is_equal_approx((l as Label).custom_minimum_size.y, h0):
+			same_h = false
+	_check("3 个描述块预留高度完全一致（%.0fpx）" % h0, same_h)
+	_check("描述块预留高度 ≥ %d 行 × %.0fpx" % [_Shop.DESC_LINES, _Shop.DESC_LINE_H],
+		h0 >= _Shop.DESC_LINE_H * float(_Shop.DESC_LINES))
+	_check("描述块字号 ≥ %dpx（§9.1 P0）" % FONT_MIN,
+		int((shop._slot_desc[0] as Label).get_theme_font_size("font_size")) >= FONT_MIN)
+	shop.free()
+
+
+# ---------------------------------------------------------------------------
 #  断言助手
 # ---------------------------------------------------------------------------
 func _close(a: Color, b: Color) -> bool:
 	return absf(a.r - b.r) < 0.002 and absf(a.g - b.g) < 0.002 and absf(a.b - b.b) < 0.002
+
+
+## 估算显示宽度（单位 = 一个 16px 汉字宽）：CJK / 全角 = 1.0，ASCII = 0.5。
+##   用于卡面版式的「每行 ≤9 字」硬约束（商品位内宽实测 155px ÷ 16px ≈ 9.7）。
+func _display_width(s: String) -> float:
+	var w := 0.0
+	for i in s.length():
+		w += 0.5 if s.unicode_at(i) < 128 else 1.0
+	return w
 
 
 func _check(name: String, ok: bool) -> void:
