@@ -1,4 +1,4 @@
-extends RefCounted
+﻿extends RefCounted
 ##
 ## 卡面文案表 —— 「这张卡到底干什么」（纯文案层 / **只读**数值 SSOT）
 ## ---------------------------------------------------------------------------
@@ -74,6 +74,37 @@ const ROLE := {
 	"Vanguard": "登场：自身 +1 级",
 	"Drillmaster": "整备：全场 +1 级",
 	"Martyr": "阵亡：全场 +1 级",
+	# ---- 🆕 卡包扩充（2026-11-07 · 48 张卡）----
+	"Scout": "快速单体",
+	"Mortar": "超远程溅射",
+	"Foundry": "经济：每波产废料",
+	"Blaze": "近距持续灼烧",
+	"Cinder": "单体点火",
+	"Pyre": "群伤：升级增强",
+	"Glacier": "强减速",
+	"Hail": "范围减速",
+	"Permafrost": "持续减速",
+	"Frostbite": "减速 + 单体",
+	"Storm": "范围电击",
+	"Arc": "群伤：电弧",
+	"Spark": "快速单体",
+	"Thunder": "高伤单体",
+	"Ballista": "超远程单体",
+	"Sniper": "最远射程",
+	"Harpoon": "近身穿刺",
+	"Breaker": "削物抗：群伤",
+	"Shatter": "削物抗：单体",
+	"Ruin": "削物抗：重击",
+	"Cleave": "横扫群伤",
+	"Quake": "防御光环 +15%",
+	"Curse": "削魔抗：单体",
+	"Plague": "全场持续掉血",
+	"Wither": "每秒回复塔生命",
+	"Omen": "攻击光环 +10%",
+	"Exile": "真实单体",
+	"Null": "击杀升级",
+	"Rift": "真实：升级增强",
+	"Abyss": "真实群伤 + 减速",
 	# ---- 单塔效果卡：L1 强化谁 / L2 点名 / L3 叠层规则 ----
 	"FireUp": "强化「火」系塔",
 	"FrostUp": "强化「冰」系塔",
@@ -236,6 +267,9 @@ static func describe(nm: String) -> String:
 	var r := role(nm)
 	if r == "":
 		return ""
+	# 🆕 经济建筑：不攻击，每波按比例补贴废料（不能用「伤害 0 · 射程 0」那行）。
+	if _TD.tower_income(nm) > 0.0:
+		return "%s\n每波 +%d%% 废料\n占 1 个塔位" % [r, int(round(_TD.tower_income(nm) * 100.0))]
 	if _TD.TOWERS.has(nm) or _TD.TOWERS_EXT.has(nm):
 		return "%s\n%s\n%s" % [r, stat_line(nm), mark_line(nm)]
 	if _TD.REINF.has(nm) or _TD.REINF_EXT.has(nm) or _TD.REINF_EXT2.has(nm):

@@ -1449,13 +1449,19 @@ func simulate_wave_result(w: int) -> Dictionary:
 	return _WaveSim.simulate_wave(player, w, cfg, geo)
 
 
-## R3：收入 = 本波击杀废铁 × (1 + income_mult)。
+## R3：收入 = 本波击杀废铁 × (1 + income_mult + 经济建筑加成)。
+##   🆕 经济建筑（Foundry）：每座 +15% 废料，与 ScrapUp 的 income_mult 同口径相加。
+##   🔴 金标本不买 Foundry（`TOWERS_EXT` 才有的卡）→ 加成恒 0 → 逐位不变。
 ## 🔴 切片8续3（可玩 MVP）：核心 HP 扣减**不再**在此处 —— 实时战斗里 `WaveDirector`
 ##   已在漏怪当刻把 `player.core_hp` 扣到单一数据源上（E-W3 实时失败判定 + HUD 实时读数）。
 ##   若此处再按 `core_damage` 扣一次就是**双重扣血**（金标本 `run_loop` 是独立本地变量、
 ##   不走本函数，故不受影响）。本函数只入积分账。
 func grant_wave_result(res: Dictionary) -> void:
-	scrap += float(res["scrap_earned"]) * (1.0 + float(player.income_mult))
+	var inc := 0.0
+	if player != null:
+		for t in player.towers:
+			inc += _TD.tower_income(String(t.ctype))
+	scrap += float(res["scrap_earned"]) * (1.0 + float(player.income_mult) + inc)
 
 
 # ---------------------------------------------------------------------------

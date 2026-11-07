@@ -1,4 +1,4 @@
-class_name TowerData
+﻿class_name TowerData
 extends RefCounted
 ##
 ## 塔原型 / 强化卡 / 价格 —— 移植自 design/phase2/numeric-sim/corebound_sim_v03.py
@@ -90,6 +90,61 @@ const TOWERS_EXT := {
 	"Maul": {"dps": 7.0, "tag": "sunder", "aoe": true, "slow": 0.00, "rng": 16.0},
 	# 咒术 · 第二塔：aoe 魔法（Hex 是单体破魔光环，这是群体魔法清场）。
 	"Rune": {"dps": 5.0, "tag": "hex", "aoe": true, "slow": 0.00, "rng": 17.0},
+
+	# ═══════════════════════════════════════════════════════════════════════════
+	# 🆕 卡包扩充（2026-11-07 · 「一卡一包」）：48 张卡铺满 8 包 × 6 张。
+	#   机制取自 `mechanic-source-index.md` 已整理的两作机制，挑**能落地**的：
+	#     登场 / 整备 / 牺牲（见下方触发建筑）、觉醒、经济建筑、减抗光环扩展。
+	#   🔴 全部只进玩家路线（卡包），金标本只读 `TOWERS` → 逐位零扰动。
+	# ═══════════════════════════════════════════════════════════════════════════
+	# ---- 泛用包补位（快 / 远 / 经济）----
+	"Scout": {"dps": 6.0, "tag": "", "aoe": false, "slow": 0.00, "rng": 24.0},
+	"Mortar": {"dps": 9.0, "tag": "", "aoe": true, "slow": 0.10, "rng": 30.0},
+	# 经济建筑（梦符祭「收益」位）：自己不攻击，每波结算时按比例补贴废料。
+	"Foundry": {"dps": 0.0, "tag": "", "aoe": false, "slow": 0.00, "rng": 0.0,
+		"income": 0.15},
+	# ---- 熔炉包补位（火：燃烧 / 尸爆 / 觉醒）----
+	"Blaze": {"dps": 7.0, "tag": "fire", "aoe": true, "slow": 0.05, "rng": 15.0},
+	"Cinder": {"dps": 9.0, "tag": "fire", "aoe": false, "slow": 0.00, "rng": 17.0},
+	# 觉醒：升到 3 级后伤害 +30%（梦符祭「觉醒」的可落地版本）。
+	"Pyre": {"dps": 6.0, "tag": "fire", "aoe": true, "slow": 0.00, "rng": 16.0,
+		"awaken": true},
+	# ---- 霜序包补位（冰：减速梯度）----
+	"Glacier": {"dps": 5.0, "tag": "frost", "aoe": false, "slow": 0.50, "rng": 18.0},
+	"Hail": {"dps": 4.0, "tag": "frost", "aoe": true, "slow": 0.25, "rng": 20.0},
+	"Permafrost": {"dps": 3.0, "tag": "frost", "aoe": true, "slow": 0.35, "rng": 22.0},
+	"Frostbite": {"dps": 7.0, "tag": "frost", "aoe": false, "slow": 0.20, "rng": 14.0},
+	# ---- 电弧包补位（电：从单体到群伤）----
+	"Storm": {"dps": 7.0, "tag": "shock", "aoe": true, "slow": 0.05, "rng": 18.0},
+	"Arc": {"dps": 9.0, "tag": "shock", "aoe": true, "slow": 0.00, "rng": 17.0},
+	"Spark": {"dps": 8.0, "tag": "shock", "aoe": false, "slow": 0.00, "rng": 20.0},
+	"Thunder": {"dps": 10.0, "tag": "shock", "aoe": false, "slow": 0.00, "rng": 22.0},
+	# ---- 穿甲包补位（远程梯度）----
+	"Ballista": {"dps": 12.0, "tag": "pierce", "aoe": false, "slow": 0.00, "rng": 30.0},
+	"Sniper": {"dps": 10.0, "tag": "pierce", "aoe": false, "slow": 0.10, "rng": 34.0},
+	"Harpoon": {"dps": 9.0, "tag": "pierce", "aoe": false, "slow": 0.00, "rng": 15.0},
+	# ---- 破甲包补位（削物抗光环扩展：tag=sunder 自动计入 `SUNDER_TYPES`）----
+	"Breaker": {"dps": 8.0, "tag": "sunder", "aoe": true, "slow": 0.00, "rng": 18.0},
+	"Shatter": {"dps": 7.0, "tag": "sunder", "aoe": false, "slow": 0.00, "rng": 20.0},
+	"Ruin": {"dps": 9.0, "tag": "sunder", "aoe": true, "slow": 0.00, "rng": 16.0},
+	"Cleave": {"dps": 8.0, "tag": "", "aoe": true, "slow": 0.00, "rng": 15.0},
+	"Quake": {"dps": 5.0, "tag": "", "aoe": true, "slow": 0.15, "rng": 18.0,
+		"buff_def": 0.15},
+	# ---- 咒术包补位（削魔抗光环扩展：tag=hex 自动计入 `SUNDER_TYPES`）----
+	"Curse": {"dps": 7.0, "tag": "hex", "aoe": false, "slow": 0.00, "rng": 19.0},
+	"Plague": {"dps": 4.0, "tag": "hex", "aoe": true, "slow": 0.00, "rng": 20.0,
+		"dot": 4.0},
+	"Wither": {"dps": 5.0, "tag": "", "aoe": true, "slow": 0.00, "rng": 17.0,
+		"heal": 1.5},
+	"Omen": {"dps": 5.0, "tag": "", "aoe": false, "slow": 0.00, "rng": 21.0,
+		"buff_atk": 0.10},
+	# ---- 湮灭包补位（真实伤害）----
+	"Exile": {"dps": 7.0, "tag": "true", "aoe": false, "slow": 0.00, "rng": 18.0},
+	"Null": {"dps": 6.0, "tag": "true", "aoe": true, "slow": 0.00, "rng": 16.0,
+		"on_kill_lv": true},
+	"Rift": {"dps": 8.0, "tag": "true", "aoe": false, "slow": 0.00, "rng": 22.0,
+		"awaken": true},
+	"Abyss": {"dps": 5.0, "tag": "true", "aoe": true, "slow": 0.10, "rng": 20.0},
 
 	# ═══════════════════════════════════════════════════════════════════════════
 	# 🆕 触发型建筑（2026-11-07 · 卡包只收建筑后的升级路线）
@@ -189,6 +244,37 @@ const EXT_WEIGHTS := {
 	"Vanguard": 0.09,
 	"Drillmaster": 0.09,
 	"Martyr": 0.09,
+	# 🆕 卡包扩充（48 张卡 · 一卡一包）：按「越万金油越常见、越极端越稀有」排。
+	"Scout": 0.11,
+	"Mortar": 0.08,
+	"Foundry": 0.07,
+	"Blaze": 0.10,
+	"Cinder": 0.10,
+	"Pyre": 0.08,
+	"Glacier": 0.09,
+	"Hail": 0.10,
+	"Permafrost": 0.09,
+	"Frostbite": 0.11,
+	"Storm": 0.10,
+	"Arc": 0.09,
+	"Spark": 0.11,
+	"Thunder": 0.09,
+	"Ballista": 0.08,
+	"Sniper": 0.07,
+	"Harpoon": 0.11,
+	"Breaker": 0.09,
+	"Shatter": 0.10,
+	"Ruin": 0.08,
+	"Cleave": 0.10,
+	"Quake": 0.10,
+	"Curse": 0.09,
+	"Plague": 0.09,
+	"Wither": 0.10,
+	"Omen": 0.09,
+	"Exile": 0.09,
+	"Null": 0.09,
+	"Rift": 0.08,
+	"Abyss": 0.08,
 }
 
 
@@ -223,6 +309,55 @@ static func tower_effect(ctype: String) -> Dictionary:
 		return {}
 	var e = TOWERS_EXT[ctype].get("effect", {})
 	return e if e is Dictionary else {}
+
+
+## 🆕 经济建筑：每波额外补贴的废料比例（0 = 不产出）。
+static func tower_income(ctype: String) -> float:
+	if not TOWERS_EXT.has(ctype):
+		return 0.0
+	return float(TOWERS_EXT[ctype].get("income", 0.0))
+
+
+## 🆕 觉醒：升到 3 级后伤害 +30%（见 `damage_engine` 的 B7 之后）。
+static func tower_awaken(ctype: String) -> bool:
+	if not TOWERS_EXT.has(ctype):
+		return false
+	return bool(TOWERS_EXT[ctype].get("awaken", false))
+
+
+## 🆕 攻击光环：全场塔 dps +X（累加，封顶在 `TowerEffects`）。
+static func tower_buff_atk(ctype: String) -> float:
+	if not TOWERS_EXT.has(ctype):
+		return 0.0
+	return float(TOWERS_EXT[ctype].get("buff_atk", 0.0))
+
+
+## 🆕 防御光环：全场塔最大生命 +X。
+static func tower_buff_def(ctype: String) -> float:
+	if not TOWERS_EXT.has(ctype):
+		return 0.0
+	return float(TOWERS_EXT[ctype].get("buff_def", 0.0))
+
+
+## 🆕 回复：每秒为全场塔恢复的生命（0 = 不回复）。
+static func tower_heal(ctype: String) -> float:
+	if not TOWERS_EXT.has(ctype):
+		return 0.0
+	return float(TOWERS_EXT[ctype].get("heal", 0.0))
+
+
+## 🆕 持续掉血：每秒对全场怪物造成的无视抗性伤害。
+static func tower_dot(ctype: String) -> float:
+	if not TOWERS_EXT.has(ctype):
+		return 0.0
+	return float(TOWERS_EXT[ctype].get("dot", 0.0))
+
+
+## 🆕 击杀升级：任意怪物被击杀时，本塔 +1 级（封顶 3）。
+static func tower_on_kill_lv(ctype: String) -> bool:
+	if not TOWERS_EXT.has(ctype):
+		return false
+	return bool(TOWERS_EXT[ctype].get("on_kill_lv", false))
 
 
 ## 强化卡 tag 查表：先主表、再扩展表（同 `_tower_def` 的兼容策略）。

@@ -96,3 +96,37 @@
 - **更多时机**：`kill`（击杀）、`wave_clear`（清波）、`adjacent_death`（邻塔阵亡）——
   `effect.on` 加一个枚举值即可，钩子点已明确。
 - **数值未校准**：三张塔的 dps 与 `lv` 都是首版估值，未跑 MC。
+
+---
+
+## 7. 第二批机制（2026-11-07 · 用户点名：攻击 / 防御 / 回复 / 持续掉血 / 击杀升级）
+
+> 需求：「可以增加的机制比如增加攻击，增加防御，回复生命，持续掉血，击杀升级等等」。
+> 全部做成**建筑自带效果**，改的都是玩家路线；金标本的塔不带这些字段 → 逐位零扰动。
+
+| 机制 | 字段 | 卡 | 效果 | 实现点 |
+|---|---|---|---|---|
+| **增加攻击** | `buff_atk` | **Omen 凶兆** | 全场塔 dps +10%（可叠，封顶 +60%） | `damage_engine` 逐塔乘 `(1+Σ)` |
+| **增加防御** | `buff_def` | **Quake 震地** | 全场塔最大生命 +15%（封顶 +60%） | `wave_director._init_tower_hp` / 复活处 |
+| **回复生命** | `heal` | **Wither 枯萎** | 每秒为全场塔恢复 1.5 生命 | `wave_director._substep` ②c |
+| **持续掉血** | `dot` | **Plague 瘟疫** | 每秒对全场怪物造成 4 点无视抗性伤害 | `wave_director._substep` ②b |
+| **击杀升级** | `on_kill_lv` | **Null 归零** | 任意怪物被击杀 → 本塔 +1 级（封顶 3） | `_apply_pool_live` 击杀处 |
+
+### 7.1 口径说明
+
+- **攻击 / 防御光环按「座」累加，不按等级**：升级只放大该塔自身输出，光环量恒定，
+  避免「升一级光环翻倍」的复利失控（封顶 0.60）。
+- **回复与持续掉血都是「每秒」结算**（`_WaveSim.DT` 口径），只在**实时战斗**里生效：
+  批处理镜像（金标本 / MC）不含这些塔，不存在两边分叉。
+- **击杀升级不区分击杀者**：聚合池模型没有逐塔归属，任一击杀都让 `on_kill_lv` 塔 +1，
+  封顶 3 级 —— 与「登场 / 整备 / 阵亡」共用 `LEVEL_CAP`。
+
+### 7.2 卡池总览（48 张 · 8 包 × 6 张 · 一卡一包）
+
+- 基础 18 张：Arrow / Cannon / Frost / Lance / Javelin / Tesla / Bolt / Sunder / Maul /
+  Hex / Rune / Ember / Icicle / Oblivion / Void + Vanguard / Drillmaster / Martyr
+- 扩充 30 张：Scout / Mortar / Foundry / Blaze / Cinder / Pyre / Glacier / Hail / Permafrost /
+  Frostbite / Storm / Arc / Spark / Thunder / Ballista / Sniper / Harpoon / Breaker / Shatter /
+  Ruin / Cleave / Quake / Curse / Plague / Wither / Omen / Exile / Null / Rift / Abyss
+- 机制分布：登场 1 / 整备 1 / 牺牲 1 / 觉醒 2 / 经济 1 / 攻击光环 1 / 防御光环 1 /
+  回复 1 / DoT 1 / 击杀升级 1 / 减抗光环 8（Sunder/Breaker/Shatter/Ruin/Curse/Plague/Hex）

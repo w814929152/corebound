@@ -207,6 +207,13 @@ static func compute_dps(player, cfg: Dictionary, geo = null) -> Dictionary:
 
 	var decay := float(cfg["softcap_decay"])
 
+	# 🆕 攻击光环（2026-11-07 · Omen 等）：全场 dps ×(1 + Σ)，封顶 0.6。
+	#   🔴 金标本的塔都不带 buff_atk → 恒 0 → 本段不影响任何既有数值（逐位不变）。
+	var atk_buff := 0.0
+	for _t in ts:
+		atk_buff += _TowerData.tower_buff_atk(String(_t.ctype))
+	atk_buff = minf(atk_buff, 0.6)
+
 	# -----------------------------------------------------------------------
 	# 阶段 B：逐塔（顺序固定 —— R-1）
 	# -----------------------------------------------------------------------
@@ -266,6 +273,13 @@ static func compute_dps(player, cfg: Dictionary, geo = null) -> Dictionary:
 		#    塔进入 Disabled 中间态 → 断输出不断链（E-T 口径）→ 本塔 dps 归零。
 		#    🔴 MVP `disabled` 恒 false → 该乘数恒 1.0 → 对定稿 DPS 逐位零影响。
 		dps_i *= 0.0 if bool(t.disabled) else 1.0
+		# 🆕 觉醒（2026-11-07 · 卡包 48 张里的「觉醒」机制）：升到 3 级后 ×1.3。
+		#   🔴 金标本的塔都不带 awaken → 本分支不进入 → 判据链逐位不变。
+		if float(h[i]) >= 3.0 and _TowerData.tower_awaken(ctype):
+			dps_i *= 1.3
+		# 🆕 攻击光环（见上；金标本恒 0）
+		if atk_buff > 0.0:
+			dps_i *= 1.0 + atk_buff
 		per_tower.append({
 			"base": base, "stack": stack, "syn": syn, "res": res,
 			"focus": foc, "allin": ali, "cov": cov, "dps": dps_i,

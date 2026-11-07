@@ -1,4 +1,4 @@
-﻿extends RefCounted
+extends RefCounted
 ##
 ## 卡包（Card Pack）—— 玩家路线卡池的**流派编排单位**
 ## ---------------------------------------------------------------------------
@@ -34,10 +34,11 @@
 const _TD := preload("res://scripts/data/tower_data.gd")
 const _ShopAI := preload("res://scripts/engine/shop_ai.gd")
 
-## 🔴 每局可携带的卡包数：3 包 × 6 张**建筑**（并集去重后约 9~12 张塔）。
+## 🔴 每局可携带的卡包数：3 包 × 6 张**建筑** = **18 座塔**（一卡一包，无需去重）。
 const PICKS_PER_RUN := 3
 
 ## 每包固定张数（自测断言钉死；UI 按它算「本局卡池 N 张」）。
+##   🔴 6 = 48 张卡 ÷ 8 包 的结果，见 `PACKS` 上方注释。
 const CARDS_PER_PACK := 6
 
 ## 🔴 2026-11-07 用户拍板（B 方案）：**全部卡包开局即开放** —— 选包 = 选流派，
@@ -55,65 +56,67 @@ static var all_packs_open: bool = true
 ##     🔴 用「最佳波次」而不是「通关次数」：打不过也应该有推进（campaign-progression §3
 ##        「失败即产出」）—— 否则首次通关前的内容永远看不见。
 ##
-## 每包 6 张 = 一条**能独立成型的建筑线**（2026-11-07 调整：卡包**只收建筑卡**）：
-##   · 全部 6 张都是塔：没有强化卡、没有经济卡、没有全局卡。
-##   · 🔴 选包 = 选「塔的调色板」：决定本局能造哪几座塔，打法由**塔的类型 / 伤害类型 /
-##      站位**决定，而不是靠强化卡叠数值。
-##   · 🔴 一张塔可以出现在多个包里（`is_shared_card` 对所有塔返回 true）——
-##      塔是「建筑类型」，不是「一次性卡牌」；跨包共享是刻意设计（基础塔人人可用）。
-##   · 🔴 包的身份 = **伤害构成**：物理 / 魔法 / 真实，配合单体 / 群伤 / 减速 / 削抗。
-##      tag 现在只影响 Sunder / Hex 的破抗光环（与 combat-types GDD 一致）。
+## 每包 6 张 = 一条**建筑线**（2026-11-07：卡包只收建筑 + **一张卡只属于一个包**）：
+##   · 全部是塔：没有强化卡、没有经济卡、没有全局卡。
+##   · 🔴 **每张卡只出现在一个卡包里**（`is_shared_card` 恒 false，`validate()` 会拦重复）。
+##     48 张卡 / 每包 6 张 = 8 包，正好一卡一包、不重不漏。
+##   · 8 包 × 6 张 = 48 个卡位 = 全部塔。每局选 3 包 = **18 座塔**。
+##   · 🔴 48 张怎么来的：用户要求「不要减少总卡的数量，数量不够就增加卡的数量和机制」。
+##     原有 18 张（15 塔 + 3 触发建筑）+ **新增 30 张**（见 `tower_data.gd` 的扩充段，
+##     机制取自 `mechanic-source-index.md`：登场 / 整备 / 牺牲 / 觉醒 / 经济 / 减抗光环扩展）。
+##   · 🔴 包的身份 = **伤害构成 + 升级触发**：物理 / 魔法 / 真实，配合单体 / 群伤 / 减速 /
+##     削抗 / 登场·整备·阵亡。tag 只影响 Sunder / Hex 的破抗光环。
 ##   · ⚠️ 强化卡 / 经济卡（FireUp… / ScrapUp）**暂时退出玩家池**，效果层后续再加：
 ##      代码与数据保留（金标本路径仍在用），只是不再进任何卡包。
 const PACKS: Array = [
 	{
-		"id": "core", "name": "泛用包", "tag_line": "三类型基础 · 无流派承诺",
-		"cards": ["Arrow", "Cannon", "Frost", "Lance", "Tesla", "Vanguard"],
+		"id": "core", "name": "泛用包", "tag_line": "物理单体 · 物理群伤 · 魔法减速 · 经济",
+		"cards": ["Arrow", "Cannon", "Frost", "Scout", "Mortar", "Foundry"],
 		"unlock_wave": 0,
 	},
 	{
-		"id": "cinder", "name": "熔炉包", "tag_line": "物理群伤 · 破甲收尾",
-		"cards": ["Cannon", "Ember", "Maul", "Sunder", "Arrow", "Drillmaster"],
+		"id": "cinder", "name": "熔炉包", "tag_line": "火：灼烧 / 群伤 / 登场 / 觉醒",
+		"cards": ["Ember", "Maul", "Vanguard", "Blaze", "Cinder", "Pyre"],
 		"unlock_wave": 0,
 	},
 	{
-		"id": "rime", "name": "霜序包", "tag_line": "魔法减速 · 控场清场",
-		"cards": ["Frost", "Icicle", "Tesla", "Bolt", "Hex", "Rune"],
+		"id": "rime", "name": "霜序包", "tag_line": "冰：减速梯度 + 整备升级",
+		"cards": ["Icicle", "Drillmaster", "Glacier", "Hail", "Permafrost", "Frostbite"],
 		"unlock_wave": 0,
 	},
 	{
-		"id": "pierce", "name": "穿甲包", "tag_line": "远程单体 · 真实补刀",
-		"cards": ["Lance", "Javelin", "Arrow", "Cannon", "Oblivion", "Void"],
+		"id": "pierce", "name": "穿甲包", "tag_line": "远程梯度 + 阵亡升级",
+		"cards": ["Lance", "Javelin", "Martyr", "Ballista", "Sniper", "Harpoon"],
 		"unlock_wave": 6,
 	},
 	{
-		"id": "arc", "name": "电弧包", "tag_line": "近身爆发 · 群伤压制",
-		"cards": ["Tesla", "Bolt", "Ember", "Maul", "Icicle", "Frost"],
+		"id": "arc", "name": "电弧包", "tag_line": "电：单体到群伤的梯度",
+		"cards": ["Tesla", "Bolt", "Storm", "Arc", "Spark", "Thunder"],
 		"unlock_wave": 12,
 	},
 	{
-		"id": "sunder", "name": "破甲包", "tag_line": "削物抗 · 物理倾泻",
-		"cards": ["Sunder", "Maul", "Cannon", "Ember", "Javelin", "Hex"],
-		"unlock_wave": 16,
-	},
-	{
-		"id": "hex", "name": "咒术包", "tag_line": "魔法清场 · 真实收尾",
-		"cards": ["Hex", "Rune", "Frost", "Icicle", "Oblivion", "Martyr"],
+		"id": "sunder", "name": "破甲包", "tag_line": "削物抗光环 + 物理群伤",
+		"cards": ["Sunder", "Breaker", "Shatter", "Ruin", "Cleave", "Quake"],
 		"unlock_wave": 18,
 	},
 	{
-		"id": "true", "name": "湮灭包", "tag_line": "真实穿透 · 克制高抗",
-		"cards": ["Oblivion", "Void", "Arrow", "Frost", "Sunder", "Hex"],
-		"unlock_wave": 20,
+		"id": "hex", "name": "咒术包", "tag_line": "削魔抗光环 + 魔法清场",
+		"cards": ["Hex", "Rune", "Curse", "Plague", "Wither", "Omen"],
+		"unlock_wave": 24,
+	},
+	{
+		"id": "true", "name": "湮灭包", "tag_line": "真实穿透 + 觉醒",
+		"cards": ["Oblivion", "Void", "Exile", "Null", "Rift", "Abyss"],
+		"unlock_wave": 30,
 	},
 ]
 
 
-## 跨包共享：**所有建筑卡都可以跨包重复**（塔是建筑类型，不是一次性卡牌）。
-##   保留这个函数是为了让 `validate()` 与旧调用点的语义不变：
-##   「卡跨包重复」在建筑-only 口径下不是错误，只有「非建筑卡混进卡包」才是错误。
+## 🔴 2026-11-07 用户拍板：**一张卡只能出现在一个卡包里**。
+##   所以这里恒返回 false；`validate()` 会把任何跨包重复判成结构错误。
 static func is_shared_card(nm: String) -> bool:
-	return _TD.TOWERS.has(nm) or _TD.TOWERS_EXT.has(nm)
+	# 保留函数签名（调用点不变），但建筑-only + 一卡一包口径下不存在共享卡。
+	return false
 
 
 
@@ -196,19 +199,19 @@ static func card_weight(card: String) -> float:
 	return 0.0
 
 
-## 🆕 本局「骨架卡」= 所选包里每包的**前 2 张**（流派核心塔 + 第二塔）。
+## 🆕 本局「骨架卡」= 所选包里每包的**第 1 张**（流派核心塔）。
 ##   刷新保底（`shop_runtime._apply_reroll_pity`）用这个集合判定：手动刷新若 3 张里
-##   一张骨架卡都没有，强制补一张，保证「本局主打的塔」不被共享基础塔淹没。
-##   🔴 为什么取「前 2 张」而不是全包：建筑-only 口径下整包都是塔，若全算骨架，
-##      保底永远命中 = 等于没有保底。前 2 张是包的身份卡（见 PACKS 注释）。
+##   一张骨架卡都没有，强制补一张，保证「本局主打的塔」不被稀释。
+##   🔴 每包只有 3 张，取第 1 张 = 包的身份卡（见 PACKS 注释）。
 static func skeleton_cards(sel: Array) -> Array:
 	var out: Array = []
 	for pid in sel:
 		var cards := cards_of(String(pid))
-		for i in mini(2, cards.size()):
-			var s := String(cards[i])
-			if not out.has(s):
-				out.append(s)
+		if cards.is_empty():
+			continue
+		var s := String(cards[0])
+		if not out.has(s):
+			out.append(s)
 	return out
 
 
@@ -262,12 +265,11 @@ static func is_valid_selection(sel: Array, best_wave: int) -> bool:
 ##   ③ 每张卡都能查到权重（= 不是幽灵卡）；
 ##   ④ 不含 RerollD（空卡，玩家池历来排除）；
 ##   ⑤ 每座塔都要有包可归（否则它永远抽不到 = 死内容）；
-##   ⑥ unlock_wave 按包序单调不降（UI 的"第 N 包起解锁"读起来才顺）。
-##   🔴 跨包重复不再是错误：塔是建筑类型，同一座塔可以出现在多个包里
-##      （见 `is_shared_card()`）。
+##   ⑥ unlock_wave 按包序单调不降（UI 的"第 N 包起解锁"读起来才顺）；
+##   ⑦ 🔴 **一张卡只能出现在一个卡包里**（2026-11-07 拍板 —— 包的身份由此成立）。
 static func validate() -> Array:
 	var errs: Array = []
-	var seen := {}
+	var seen := {}                      # 卡 → 所属包 id
 	var prev_unlock := -1
 	for p in PACKS:
 		var pid := String(p.get("id", ""))
@@ -288,6 +290,11 @@ static func validate() -> Array:
 				continue
 			if not (_TD.TOWERS.has(s) or _TD.TOWERS_EXT.has(s)):
 				errs.append("卡包 %s 的 %s 不是建筑卡（卡包只收建筑）" % [pid, s])
+				continue
+			# ⑦ 一卡一包
+			if seen.has(s):
+				errs.append("卡 %s 同时出现在 %s 与 %s（一张卡只能属于一个包）" % [
+					s, String(seen[s]), pid])
 				continue
 			seen[s] = pid
 			if card_weight(s) <= 0.0:

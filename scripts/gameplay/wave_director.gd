@@ -1,4 +1,4 @@
-extends Node
+﻿extends Node
 ##
 ## 波次导演 `WaveDirector` —— GDD `wave-spawner` v0.2 §3.4 · 🔴 **时间轴权威**
 ##
@@ -334,9 +334,11 @@ func _init_tower_hp() -> void:
 	if player == null:
 		return
 	var exp := float(cfg.get("tower_stack_exp", 0.6))
+	# 🆕 防御光环：全场塔 max HP ×(1+Σ)。金标本无此类塔 → 1.0（逐位不变）。
+	var def_mult := 1.0 + _TowerEffects.def_bonus(player)
 	for t in player.towers:
 		if not bool(t.disabled):
-			t.hp_max = _MonsterData.tower_hp(int(t.h), exp)
+			t.hp_max = _MonsterData.tower_hp(int(t.h), exp) * def_mult
 			t.hp = t.hp_max
 
 
@@ -442,9 +444,20 @@ func _substep() -> void:
 				kills += 1
 				scrap_earned += spk
 				emit_signal("monster_killed", m)
+				# 🆕 击杀升级：任意击杀都让 on_kill_lv 的塔 +1 级（封顶 3）
+				_TowerEffects.on_kill(player)
 			else:
 				m.hp = float(m.hp) - dmg
 				dmg = 0.0
+
+	# ---- ②b 🆕 持续掉血（DoT）：无视抗性的全场每秒伤害（Plague 等）。
+	#   🔴 金标本无 dot 塔 → 0 → 本段不进入（逐位不变）。
+	var _dot := _TowerEffects.dot_dps(player)
+	if _dot > 0.0:
+		_apply_pool_live(_dot * _WaveSim.DT, _CombatTypes.TRUE, 0.0)
+
+	# ---- ②c 🆕 回复：每秒为塔恢复生命（Wither 等）；塔满血则无变化。
+	_TowerEffects.regen(player, _WaveSim.DT)
 
 	# ---- ③ 前进：判死 / 漏怪（原地压缩，保持相对顺序）----
 	#   🔒 T1：AggroTower 态怪物**停下**（t_remain 冻结，不前进、不漏怪）。
@@ -697,7 +710,7 @@ func _wave_start_revive() -> void:
 func _try_revive(t, exp: float) -> bool:
 	var k_max := int(cfg.get("revive_k_per_wave", 1))
 	if bool(t.death_valid) and bool(t.death_exposed) and (not bool(t.death_carry)):
-		t.hp_max = _MonsterData.tower_hp(int(t.h), exp)
+		t.hp_max = _MonsterData.tower_hp(int(t.h), exp) * (1.0 + _TowerEffects.def_bonus(player))
 		if _clear_disabled(int(t.slot)):
 			t.revive_used_w = int(t.revive_used_w) + 1
 			t.revived_ever = int(t.revived_ever) + 1
@@ -857,6 +870,8 @@ func _apply_pool_live(dmg: float, dmg_type: String, reduction: float = 0.0) -> v
 			kills += 1
 			scrap_earned += spk
 			emit_signal("monster_killed", m)
+			# 🆕 击杀升级：任意击杀都让 on_kill_lv 的塔 +1 级（封顶 3）
+			_TowerEffects.on_kill(player)
 		else:
 			m.hp = float(m.hp) - eff
 			dmg = 0.0

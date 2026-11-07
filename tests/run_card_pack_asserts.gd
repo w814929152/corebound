@@ -1,4 +1,4 @@
-extends RefCounted
+﻿extends RefCounted
 ##
 ## headless 断言 —— 卡包（Card Pack）· 分池 / 选包 / 解锁 / 发牌
 ##
@@ -116,7 +116,7 @@ func run_all() -> bool:
 # ---------------------------------------------------------------------------
 func _test_a_table() -> void:
 	_log("")
-	_log("--- [A] 数据表：8 包 × 6 张**建筑卡**，无空卡 / 无漏塔 / 无效果卡 ---")
+	_log("--- [A] 数据表：8 包 × 6 张**建筑卡**，一卡一包 / 无漏塔 / 无效果卡 ---")
 	var errs := _Packs.validate()
 	_ok("A1 validate() 无错误", errs.is_empty(), str(errs))
 	_eq_int("A2 卡包数", _Packs.PACKS.size(), 8)
@@ -143,6 +143,18 @@ func _test_a_table() -> void:
 				non_tower.append("%s/%s" % [String(p["id"]), s])
 	_ok("A6b 卡包内 0 张效果卡（强化 / 经济 / 全局都不许进包）",
 		non_tower.is_empty(), str(non_tower))
+	# 🔴 一卡一包：同一张卡不得出现在两个包里
+	var seen_pack := {}
+	var dup: Array = []
+	for p in _Packs.PACKS:
+		for nm in (p["cards"] as Array):
+			var s := String(nm)
+			if seen_pack.has(s):
+				dup.append("%s@%s/%s" % [s, String(seen_pack[s]), String(p["id"])])
+			else:
+				seen_pack[s] = String(p["id"])
+	_ok("A6c 一张卡只属于一个包%s" % ("" if dup.is_empty() else " → " + str(dup)), dup.is_empty())
+	_eq_int("A6d 卡位总数 = 8 包 × 6 张", seen_pack.size(), 48)
 	_ok("A7 不含 RerollD", not all.has("RerollD"))
 	# 塔与强化成对（每个包内至少有一座塔）
 	var bad_pairs: Array = []
@@ -182,9 +194,9 @@ func _test_b_unlock() -> void:
 	_eq_int("B6 老口径 W0 解锁 3 包", _Packs.unlocked_ids(0).size(), 3)
 	_eq_int("B7 老口径 W6 → 4 包（穿甲）", _Packs.unlocked_ids(6).size(), 4)
 	_eq_int("B8 老口径 W12 → 5 包（电弧）", _Packs.unlocked_ids(12).size(), 5)
-	_eq_int("B9 老口径 W16 → 6 包（破甲）", _Packs.unlocked_ids(16).size(), 6)
-	_eq_int("B10 老口径 W18 → 7 包（咒术）", _Packs.unlocked_ids(18).size(), 7)
-	_eq_int("B11 老口径 W20 → 8 包（湮灭）", _Packs.unlocked_ids(20).size(), 8)
+	_eq_int("B9 老口径 W18 → 6 包（破甲）", _Packs.unlocked_ids(18).size(), 6)
+	_eq_int("B10 老口径 W24 → 7 包（咒术）", _Packs.unlocked_ids(24).size(), 7)
+	_eq_int("B11 老口径 W30 → 8 包（湮灭）", _Packs.unlocked_ids(30).size(), 8)
 	_ok("B12 老口径 3 包时不用选", not _Packs.needs_selection(0))
 	_ok("B13 老口径 4 包时需要选", _Packs.needs_selection(6))
 	_eq_int("B14 老口径 5 包时「必须选」仍是 3", _Packs.required_picks(12), 3)
@@ -235,15 +247,15 @@ func _test_d_pool() -> void:
 	_log("--- [D] 卡池 = 所选包并集（顺序 / 权重 / 总和 / 骨架卡）---")
 	_ShopRuntime.set_active_packs(["core", "cinder", "arc"])
 	var names: Array = _ShopRuntime.player_card_names()
-	# core      = [Arrow,Cannon,Frost,Lance,Tesla,Vanguard]
-	# cinder    = [Cannon,Ember,Maul,Sunder,Arrow,Drillmaster]
-	# arc       = [Tesla,Bolt,Ember,Maul,Icicle,Frost]
-	#   → 去重后按包序
-	_eq_arr("D1 卡池顺序 = 包序 → 包内序（去重）",
+	# core   = [Arrow,Cannon,Frost,Scout,Mortar,Foundry]
+	# cinder = [Ember,Maul,Vanguard,Blaze,Cinder,Pyre]
+	# arc    = [Tesla,Bolt,Storm,Arc,Spark,Thunder]
+	_eq_arr("D1 卡池顺序 = 包序 → 包内序（一卡一包，无需去重）",
 		names,
-		["Arrow", "Cannon", "Frost", "Lance", "Tesla", "Vanguard",
-		 "Ember", "Maul", "Sunder", "Drillmaster", "Bolt", "Icicle"])
-	_eq_int("D2 卡池张数 = 3 包并集去重后 12 张", names.size(), 12)
+		["Arrow", "Cannon", "Frost", "Scout", "Mortar", "Foundry",
+		 "Ember", "Maul", "Vanguard", "Blaze", "Cinder", "Pyre",
+		 "Tesla", "Bolt", "Storm", "Arc", "Spark", "Thunder"])
+	_eq_int("D2 卡池张数 = 3 包 × 6 张 = 18", names.size(), 18)
 	# 权重和 = 各卡权重之和（现查，不硬编码）
 	var want := 0.0
 	for nm in names:
@@ -253,8 +265,9 @@ func _test_d_pool() -> void:
 	# 换包必须立即生效（静态缓存清理）；顺序只跟包序走，不跟"点选顺序"走
 	_ShopRuntime.set_active_packs(["pierce", "arc", "core"])
 	_eq_arr("D7 换包后卡池立即变化（按包序）", _ShopRuntime.player_card_names(),
-		["Arrow", "Cannon", "Frost", "Lance", "Tesla", "Vanguard",
-		 "Javelin", "Oblivion", "Void", "Bolt", "Ember", "Maul", "Icicle"])
+		["Arrow", "Cannon", "Frost", "Scout", "Mortar", "Foundry",
+		 "Lance", "Javelin", "Martyr", "Ballista", "Sniper", "Harpoon",
+		 "Tesla", "Bolt", "Storm", "Arc", "Spark", "Thunder"])
 	# 与扩展包开关同时开：卡包模式优先，扩展包不叠加（卡包表已含全部卡）
 	_ShopRuntime.set_extended_pack(true)
 	var n_ext_on := _ShopRuntime.player_card_names().size()
@@ -262,12 +275,12 @@ func _test_d_pool() -> void:
 	var n_ext_off := _ShopRuntime.player_card_names().size()
 	_eq_int("D8 卡包模式下 extended_pack 不影响卡池（开/关一致）", n_ext_on, n_ext_off)
 	_ShopRuntime.set_active_packs([])
-	# 骨架卡 = 每包前 2 张（流派身份塔）；建筑-only 口径下不再有强化卡
+	# 骨架卡 = 每包第 1 张（流派身份塔）
 	var skel := _Packs.skeleton_cards(["cinder"])
-	_eq_arr("D9 骨架卡 = 包内前 2 张（熔炉包 = Cannon + Ember）", skel,
-		["Cannon", "Ember"])
+	_eq_arr("D9 骨架卡 = 包内第 1 张（熔炉包 = Ember）", skel,
+		["Ember"])
 	var skel3 := _Packs.skeleton_cards(["core", "rime"])
-	_eq_int("D10 骨架卡跨包去重（2 包 × 2 张）", skel3.size(), 4)
+	_eq_int("D10 骨架卡跨包去重（2 包 × 1 张）", skel3.size(), 2)
 
 
 # ---------------------------------------------------------------------------
@@ -333,7 +346,7 @@ func _test_f_deal() -> void:
 	var rt4 = _ShopRuntime.new()
 	rt4.setup("B", 20260930)
 	var skel := _Packs.skeleton_cards(["cinder"])
-	rt4.offers = ["Maul", "Javelin", "Sunder"]  # 全是非骨架卡（骨架 = Cannon / Ember）
+	rt4.offers = ["Maul", "Vanguard", "Blaze"]  # 全是非骨架卡（骨架 = Ember）
 	rt4.scrap = 1000.0
 	rt4.rerolls = 0
 	var ok_reroll: bool = rt4.reroll()

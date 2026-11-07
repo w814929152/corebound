@@ -65,6 +65,15 @@ const TOWER_DMG_TYPE := {
 	# 🆕 真实伤害（combat-types GDD v0.3）：无视一切抗性。
 	"Oblivion": TRUE,     # 湮灭：真实伤害主塔（无视物抗/魔抗）
 	"Void":     TRUE,     # 虚无：真实伤害第二塔（aoe，无视抗性）
+	# 🆕 卡包扩充（2026-11-07 · 48 张卡）：按 tag 归属补攻击类型，与同系主塔对齐。
+	"Blaze": PHYSICAL, "Cinder": PHYSICAL, "Pyre": PHYSICAL,
+	"Glacier": MAGIC, "Hail": MAGIC, "Permafrost": MAGIC, "Frostbite": MAGIC,
+	"Storm": MAGIC, "Arc": MAGIC, "Spark": MAGIC, "Thunder": MAGIC,
+	"Breaker": PHYSICAL, "Shatter": PHYSICAL, "Ruin": PHYSICAL,
+	"Cleave": PHYSICAL, "Quake": PHYSICAL,
+	"Curse": MAGIC, "Plague": MAGIC, "Wither": MAGIC, "Omen": MAGIC,
+	"Exile": TRUE, "Null": TRUE, "Rift": TRUE, "Abyss": TRUE,
+	"Scout": PHYSICAL, "Mortar": PHYSICAL,
 }
 
 ## 塔的攻击类型查表。未知塔兜底 = 物理（保守，且与「默认无类型影响」一致）。
@@ -152,9 +161,16 @@ const ARMOR_REDUCT_PER_TOWER := 0.10   # 单座破甲塔减抗量（百分比点
 const ARMOR_REDUCT_CAP := 0.30         # 破甲量封顶（= Tank 物抗 0.30，天然对齐）
 
 ## 破甲塔 → 减抗的目标类型（Sunder 减物抗 / Hex 减魔抗）。
+##   🆕 卡包扩充：同 tag 的破甲系建筑一并计入（Breaker/Shatter/Ruin 减物抗，
+##   Curse/Plague 减魔抗）—— 光环量仍受 `ARMOR_REDUCT_CAP` 封顶，不会叠爆。
 const SUNDER_TYPES := {
 	"Sunder": PHYSICAL,
 	"Hex":    MAGIC,
+	"Breaker": PHYSICAL,
+	"Shatter": PHYSICAL,
+	"Ruin":    PHYSICAL,
+	"Curse":   MAGIC,
+	"Plague":  MAGIC,
 }
 
 ## 某塔是否为破甲塔（否则返回空串 ""）。

@@ -73,3 +73,68 @@ static func _add_level(t, lv: int) -> int:
 		return 0
 	t.h = mini(cur + lv, LEVEL_CAP)
 	return 1
+
+
+# ---------------------------------------------------------------------------
+#  🆕 持续型团队增益（2026-11-07 第二批机制）
+# ---------------------------------------------------------------------------
+## 光环类加成封顶（攻击 / 防御各 60%，避免叠满后数值失控）。
+const BUFF_CAP := 0.60
+
+
+## 攻击光环：全场塔 dps 加成（累加，封顶 BUFF_CAP）。
+static func atk_bonus(player) -> float:
+	if player == null:
+		return 0.0
+	var s := 0.0
+	for t in player.towers:
+		s += _TD.tower_buff_atk(String(t.ctype))
+	return minf(s, BUFF_CAP)
+
+
+## 防御光环：全场塔最大生命加成（累加，封顶 BUFF_CAP）。
+static func def_bonus(player) -> float:
+	if player == null:
+		return 0.0
+	var s := 0.0
+	for t in player.towers:
+		s += _TD.tower_buff_def(String(t.ctype))
+	return minf(s, BUFF_CAP)
+
+
+## 持续掉血：全场每秒对怪物造成（无视抗性）的伤害总量。
+static func dot_dps(player) -> float:
+	if player == null:
+		return 0.0
+	var s := 0.0
+	for t in player.towers:
+		if bool(t.disabled):
+			continue
+		s += _TD.tower_dot(String(t.ctype))
+	return s
+
+
+## 回复：每秒为未 Disabled 的塔恢复生命（封顶 hp_max）。
+static func regen(player, dt: float) -> void:
+	if player == null or dt <= 0.0:
+		return
+	var heal := 0.0
+	for t in player.towers:
+		heal += _TD.tower_heal(String(t.ctype))
+	if heal <= 0.0:
+		return
+	for t in player.towers:
+		if bool(t.disabled):
+			continue
+		t.hp = minf(float(t.hp_max), float(t.hp) + heal * dt)
+
+
+## 击杀升级：任意怪物被击杀 → 带 `on_kill_lv` 的塔 +1 级（封顶 LEVEL_CAP）。
+static func on_kill(player) -> int:
+	if player == null:
+		return 0
+	var n := 0
+	for t in player.towers:
+		if _TD.tower_on_kill_lv(String(t.ctype)):
+			n += _add_level(t, 1)
+	return n
