@@ -60,6 +60,7 @@ const _Monster := preload("res://scripts/gameplay/monster.gd")
 const _CombatTypes := preload("res://scripts/data/combat_types.gd")
 ## 🆕 触发型建筑（2026-11-07）：整备（每波）/ 阵亡 时给塔加等级。
 const _TowerEffects := preload("res://scripts/engine/tower_effects.gd")
+const _TD := preload("res://scripts/data/tower_data.gd")
 ## 🔒 V-8：复用批处理镜像的**诊断量容器工厂** —— 复活诊断字典与 `wave_sim_aggro` 共用
 ##   同一份 schema（键名/初值逐位相同）→ 实时↔批处理逐位比对才能直接对键取值，
 ##   也杜绝"两边各写一份 schema、改了一边忘了另一边"的漂移。🔴 只调它的 static 工厂，
@@ -444,7 +445,7 @@ func _substep() -> void:
 				kills += 1
 				scrap_earned += spk
 				emit_signal("monster_killed", m)
-				# 🆕 击杀升级：任意击杀都让 on_kill_lv 的塔 +1 级（封顶 3）
+				# 🆕 击杀升级：任意击杀都让 on_kill_lv 的塔 +1 级（封顶 8）
 				_TowerEffects.on_kill(player)
 			else:
 				m.hp = float(m.hp) - dmg
@@ -613,6 +614,8 @@ func _damage_tower(m, sapper_mult: float) -> void:
 		# 🆕 触发型建筑 · 阵亡（`death`）：本塔死亡时给其它塔加等级。
 		#   🔴 放在 dps 重算**之前** → 后续子步立刻吃到新等级（不用等下一波）。
 		_TowerEffects.apply_trigger(player, "death", {"tower": t})
+		# 🆕 死亡爆炸（Pyre 等）：对周围敌人造成一次大额真实伤害。
+		_death_explode(t)
 		# 🔴 塔死亡 → 全场 DPS 立即下降（disabled 乘数生效）。本波 dps 是波首算的
 		#    常量，此处重算让**下一子步**的集火用新 DPS（批处理镜像同处理 → 逐位一致）。
 		dps = _DE.dps_only(player, cfg, geo)
@@ -850,6 +853,35 @@ func _stable_sort_by_remain() -> void:
 
 ## 🆕 战斗类型：单一类型伤害池的实时集火（🔴 仅 combat_types_enabled 时调用）。
 ##   🔴 与 `WaveSim._apply_pool` 语义同构（同 SSOT `CombatTypes` → 实时↔批处理逐位等价）。
+## 🆕 死亡爆炸（2026-11-07）：塔阵亡时对半径内敌人造成一次真实伤害（无视抗性）。
+##   🔴 只有玩家路线会出现带 `death_blast` 的塔；金标本无此字段 → 不触发（逐位不变）。
+func _death_explode(t) -> void:
+	var blast := _TD.tower_death_blast(String(t.ctype))
+	if blast <= 0.0:
+		return
+	var radius := _TD.tower_death_blast_r(String(t.ctype))
+	var tp := Vector2.ZERO
+	var has_pos := false
+	if geo != null:
+		var slots: Array = geo.slots
+		var si := int(t.slot)
+		if si >= 0 and si < slots.size() and slots[si] is Vector2:
+			tp = slots[si]
+			has_pos = true
+	for m in monsters:
+		if float(m.hp) <= 0.0:
+			continue
+		if has_pos:
+			var mp: Vector2 = m.pos(v0_)
+			if mp.distance_to(tp) > radius:
+				continue
+		m.hp = maxf(0.0, float(m.hp) - blast)
+		if float(m.hp) <= 0.0:
+			kills += 1
+			scrap_earned += spk
+			emit_signal("monster_killed", m)
+			_TowerEffects.on_kill(player)
+
 ##   每只怪按**有效抗性**（静态抗性 − 破甲量）减免，溢出结转；击杀走 `monster_killed` 信号。
 func _apply_pool_live(dmg: float, dmg_type: String, reduction: float = 0.0) -> void:
 	if dmg <= 0.0:
@@ -870,7 +902,7 @@ func _apply_pool_live(dmg: float, dmg_type: String, reduction: float = 0.0) -> v
 			kills += 1
 			scrap_earned += spk
 			emit_signal("monster_killed", m)
-			# 🆕 击杀升级：任意击杀都让 on_kill_lv 的塔 +1 级（封顶 3）
+			# 🆕 击杀升级：任意击杀都让 on_kill_lv 的塔 +1 级（封顶 8）
 			_TowerEffects.on_kill(player)
 		else:
 			m.hp = float(m.hp) - eff

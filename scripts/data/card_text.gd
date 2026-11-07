@@ -80,7 +80,7 @@ const ROLE := {
 	"Foundry": "经济：每波产废料",
 	"Blaze": "近距持续灼烧",
 	"Cinder": "单体点火",
-	"Pyre": "群伤：升级增强",
+	"Pyre": "阵亡：爆炸 40",
 	"Glacier": "强减速",
 	"Hail": "范围减速",
 	"Permafrost": "持续减速",

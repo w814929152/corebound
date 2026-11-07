@@ -1,4 +1,4 @@
-class_name TowerData
+﻿class_name TowerData
 extends RefCounted
 ##
 ## 塔原型 / 强化卡 / 价格 —— 移植自 design/phase2/numeric-sim/corebound_sim_v03.py
@@ -110,7 +110,7 @@ const TOWERS_EXT := {
 	"Cinder": {"dps": 9.0, "tag": "fire", "aoe": false, "slow": 0.00, "rng": 17.0, "splash": 2},
 	# 觉醒：升到 3 级后伤害 +30%（梦符祭「觉醒」的可落地版本）。
 	"Pyre": {"dps": 6.0, "tag": "fire", "aoe": true, "slow": 0.00, "rng": 16.0,
-		"awaken": true},
+		"awaken": true, "death_blast": 40.0, "death_blast_r": 6.0},
 	# ---- 霜序包补位（冰：减速梯度）----
 	"Glacier": {"dps": 5.0, "tag": "frost", "aoe": false, "slow": 0.50, "rng": 18.0},
 	"Hail": {"dps": 4.0, "tag": "frost", "aoe": true, "slow": 0.25, "rng": 20.0},
@@ -399,6 +399,20 @@ static func tower_convert(ctype: String) -> String:
 	if not TOWERS_EXT.has(ctype):
 		return ""
 	return String(TOWERS_EXT[ctype].get("convert", ""))
+
+
+## 🆕 死亡爆炸：塔阵亡时对周围敌人造成的伤害（0 = 无爆炸）。
+static func tower_death_blast(ctype: String) -> float:
+	if not TOWERS_EXT.has(ctype):
+		return 0.0
+	return float(TOWERS_EXT[ctype].get("death_blast", 0.0))
+
+
+## 🆕 死亡爆炸半径（世界单位）。
+static func tower_death_blast_r(ctype: String) -> float:
+	if not TOWERS_EXT.has(ctype):
+		return 0.0
+	return float(TOWERS_EXT[ctype].get("death_blast_r", 0.0))
 
 
 ## 🆕 赏金：存活时全队累计击杀 N 只 → 获得 X 废料（可重复触发）。

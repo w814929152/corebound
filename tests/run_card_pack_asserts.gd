@@ -104,6 +104,7 @@ func run_all() -> bool:
 	_test_l_splash()
 	_test_m_aspd()
 	_test_n_convert()
+	_test_o_death_blast()
 
 	# 🔴 收尾：把静态状态还原成默认，避免污染同进程内的后续套件
 	_ShopRuntime.set_active_packs([])
@@ -635,3 +636,15 @@ func _test_n_convert() -> void:
 	p2.n_hist_max = 1
 	var byt2: Dictionary = _DE.compute_dps(p2, cfg, geo).get("dps_by_type", {})
 	_ok("N8 无相位塔时物理池 > 0", float(byt2.get("physical", 0.0)) > 0.0)
+
+# ---------------------------------------------------------------------------
+#  O 死亡爆炸：塔阵亡时对周围敌人造成大额伤害（2026-11-07）
+# ---------------------------------------------------------------------------
+func _test_o_death_blast() -> void:
+	_log("")
+	_log("--- [O] 死亡爆炸：阵亡时对周围造成大量伤害 ---")
+	_ok("O1 Pyre 爆炸伤害 = 40", absf(_TD.tower_death_blast("Pyre") - 40.0) < 1e-9)
+	_ok("O2 Pyre 爆炸半径 = 6.0", absf(_TD.tower_death_blast_r("Pyre") - 6.0) < 1e-9)
+	_ok("O3 普通塔无爆炸（Arrow）", absf(_TD.tower_death_blast("Arrow")) < 1e-9)
+	_ok("O4 Rift 不带爆炸（只有 Pyre 有）", absf(_TD.tower_death_blast("Rift")) < 1e-9)
+	_ok("O5 Pyre 卡面写明「阵亡：爆炸 40」", _CardText.describe("Pyre").find("阵亡：爆炸 40") >= 0)
