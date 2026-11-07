@@ -1,4 +1,4 @@
-# 触发型建筑（Tower Triggers）—— 登场 / 整备 / 阵亡 加等级
+﻿# 触发型建筑（Tower Triggers）—— 登场 / 整备 / 阵亡 加等级
 
 > 需求（2026-11-07）：「新增让塔升级的方式，比如相同的塔合成，或者其他塔的效果，
 > 来丰富卡包内容」→ 明确口径：「按照王者万象棋里的增加等级方式，
@@ -116,6 +116,7 @@
 | **赏金** | `bounty_kills` / `bounty_scrap` | **Scout 斥候** | 存活时全队每累计 10 杀 → +6 废料（可重复） | `tower_effects.on_kill` → 波末 `grant_wave_result` 入账 |
 | **弹射** | `bounce` | **Tesla/Bolt/Storm/Arc/Spark/Thunder** | 子弹可跳弹 N 次，每次 +20% 等效输出 | `damage_engine` 逐塔乘 `(1+0.2N)` |
 | **贯穿** | `pierce` | **Lance/Javelin/Ballista/Sniper/Harpoon** | 子弹可穿透 N 个敌人，每个 +25% 等效输出 | `damage_engine` 逐塔乘 `(1+0.25N)` |
+| **溅射** | `splash` | **Cinder/Omen/Wither/Spark/Frostbite/Harpoon/Curse/Exile** | 命中后波及周围 N 个敌人，每个 +40% 等效输出 | `damage_engine` 逐塔乘 `(1+0.4N)` |
 
 ### 7.1 口径说明
 

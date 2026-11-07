@@ -290,6 +290,11 @@ static func compute_dps(player, cfg: Dictionary, geo = null) -> Dictionary:
 		var _prc := _TowerData.tower_pierce(ctype)
 		if _prc > 0:
 			dps_i *= 1.0 + 0.25 * float(_prc)
+		# 🆕 溅射（2026-11-07）：命中后波及周围 N 个敌人，每个 +40% 等效输出。
+		#   🔴 金标本三张基础塔不带 splash → 逐位不变。
+		var _spl := _TowerData.tower_splash(ctype)
+		if _spl > 0:
+			dps_i *= 1.0 + 0.40 * float(_spl)
 		per_tower.append({
 			"base": base, "stack": stack, "syn": syn, "res": res,
 			"focus": foc, "allin": ali, "cov": cov, "dps": dps_i,

@@ -98,6 +98,7 @@ func run_all() -> bool:
 	_test_i_bounty()
 	_test_j_bounce()
 	_test_k_pierce()
+	_test_l_splash()
 
 	# 🔴 收尾：把静态状态还原成默认，避免污染同进程内的后续套件
 	_ShopRuntime.set_active_packs([])
@@ -566,3 +567,16 @@ func _test_k_pierce() -> void:
 	_eq_int("K4 非穿刺塔无贯穿（Arrow）", _TD.tower_pierce("Arrow"), 0)
 	_ok("K5 Ballista 卡面写明「贯穿 3 个」", _CardText.describe("Ballista").find("贯穿 3 个") >= 0)
 	_ok("K6 无贯穿塔卡面不出现「贯穿」", _CardText.describe("Arrow").find("贯穿") < 0)
+
+# ---------------------------------------------------------------------------
+#  L 溅射：命中后对周围一定范围内的敌人造成伤害（2026-11-07）
+# ---------------------------------------------------------------------------
+func _test_l_splash() -> void:
+	_log("")
+	_log("--- [L] 溅射：命中后波及周围 N 个敌人 ---")
+	_eq_int("L1 Cinder 溅射 2 个", _TD.tower_splash("Cinder"), 2)
+	_eq_int("L2 Omen 溅射 2 个", _TD.tower_splash("Omen"), 2)
+	_eq_int("L3 Curse 溅射 1 个", _TD.tower_splash("Curse"), 1)
+	_eq_int("L4 非溅射塔（Arrow）", _TD.tower_splash("Arrow"), 0)
+	_ok("L5 Cinder 卡面写明「溅射 2 个」", _CardText.describe("Cinder").find("溅射 2 个") >= 0)
+	_ok("L6 基础塔 Frost 不带溅射（金标本口径不动）", _TD.tower_splash("Frost") == 0)

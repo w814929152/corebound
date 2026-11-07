@@ -1,4 +1,4 @@
-class_name TowerData
+﻿class_name TowerData
 extends RefCounted
 ##
 ## 塔原型 / 强化卡 / 价格 —— 移植自 design/phase2/numeric-sim/corebound_sim_v03.py
@@ -106,7 +106,7 @@ const TOWERS_EXT := {
 		"income": 0.15},
 	# ---- 熔炉包补位（火：燃烧 / 尸爆 / 觉醒）----
 	"Blaze": {"dps": 7.0, "tag": "fire", "aoe": true, "slow": 0.05, "rng": 15.0},
-	"Cinder": {"dps": 9.0, "tag": "fire", "aoe": false, "slow": 0.00, "rng": 17.0},
+	"Cinder": {"dps": 9.0, "tag": "fire", "aoe": false, "slow": 0.00, "rng": 17.0, "splash": 2},
 	# 觉醒：升到 3 级后伤害 +30%（梦符祭「觉醒」的可落地版本）。
 	"Pyre": {"dps": 6.0, "tag": "fire", "aoe": true, "slow": 0.00, "rng": 16.0,
 		"awaken": true},
@@ -114,16 +114,16 @@ const TOWERS_EXT := {
 	"Glacier": {"dps": 5.0, "tag": "frost", "aoe": false, "slow": 0.50, "rng": 18.0},
 	"Hail": {"dps": 4.0, "tag": "frost", "aoe": true, "slow": 0.25, "rng": 20.0},
 	"Permafrost": {"dps": 3.0, "tag": "frost", "aoe": true, "slow": 0.35, "rng": 22.0},
-	"Frostbite": {"dps": 7.0, "tag": "frost", "aoe": false, "slow": 0.20, "rng": 14.0},
+	"Frostbite": {"dps": 7.0, "tag": "frost", "aoe": false, "slow": 0.20, "rng": 14.0, "splash": 1},
 	# ---- 电弧包补位（电：从单体到群伤）----
 	"Storm": {"dps": 7.0, "tag": "shock", "aoe": true, "slow": 0.05, "rng": 18.0, "bounce": 2},
 	"Arc": {"dps": 9.0, "tag": "shock", "aoe": true, "slow": 0.00, "rng": 17.0, "bounce": 2},
-	"Spark": {"dps": 8.0, "tag": "shock", "aoe": false, "slow": 0.00, "rng": 20.0, "bounce": 1},
+	"Spark": {"dps": 8.0, "tag": "shock", "aoe": false, "slow": 0.00, "rng": 20.0, "bounce": 1, "splash": 1},
 	"Thunder": {"dps": 10.0, "tag": "shock", "aoe": false, "slow": 0.00, "rng": 22.0, "bounce": 1},
 	# ---- 穿甲包补位（远程梯度）----
 	"Ballista": {"dps": 12.0, "tag": "pierce", "aoe": false, "slow": 0.00, "rng": 30.0, "pierce": 3},
 	"Sniper": {"dps": 10.0, "tag": "pierce", "aoe": false, "slow": 0.10, "rng": 34.0, "pierce": 2},
-	"Harpoon": {"dps": 9.0, "tag": "pierce", "aoe": false, "slow": 0.00, "rng": 15.0, "pierce": 1},
+	"Harpoon": {"dps": 9.0, "tag": "pierce", "aoe": false, "slow": 0.00, "rng": 15.0, "pierce": 1, "splash": 1},
 	# ---- 破甲包补位（削物抗光环扩展：tag=sunder 自动计入 `SUNDER_TYPES`）----
 	"Breaker": {"dps": 8.0, "tag": "sunder", "aoe": true, "slow": 0.00, "rng": 18.0},
 	"Shatter": {"dps": 7.0, "tag": "sunder", "aoe": false, "slow": 0.00, "rng": 20.0},
@@ -132,15 +132,15 @@ const TOWERS_EXT := {
 	"Quake": {"dps": 5.0, "tag": "", "aoe": true, "slow": 0.15, "rng": 18.0,
 		"buff_def": 0.15},
 	# ---- 咒术包补位（削魔抗光环扩展：tag=hex 自动计入 `SUNDER_TYPES`）----
-	"Curse": {"dps": 7.0, "tag": "hex", "aoe": false, "slow": 0.00, "rng": 19.0},
+	"Curse": {"dps": 7.0, "tag": "hex", "aoe": false, "slow": 0.00, "rng": 19.0, "splash": 1},
 	"Plague": {"dps": 4.0, "tag": "hex", "aoe": true, "slow": 0.00, "rng": 20.0,
 		"dot": 4.0},
 	"Wither": {"dps": 5.0, "tag": "", "aoe": true, "slow": 0.00, "rng": 17.0,
-		"heal": 1.5},
+		"heal": 1.5, "splash": 2},
 	"Omen": {"dps": 5.0, "tag": "", "aoe": false, "slow": 0.00, "rng": 21.0,
-		"buff_atk": 0.10},
+		"buff_atk": 0.10, "splash": 2},
 	# ---- 湮灭包补位（真实伤害）----
-	"Exile": {"dps": 7.0, "tag": "true", "aoe": false, "slow": 0.00, "rng": 18.0},
+	"Exile": {"dps": 7.0, "tag": "true", "aoe": false, "slow": 0.00, "rng": 18.0, "splash": 1},
 	"Null": {"dps": 6.0, "tag": "true", "aoe": true, "slow": 0.00, "rng": 16.0,
 		"on_kill_lv": true},
 	"Rift": {"dps": 8.0, "tag": "true", "aoe": false, "slow": 0.00, "rng": 22.0,
@@ -373,6 +373,13 @@ static func tower_pierce(ctype: String) -> int:
 	if not TOWERS_EXT.has(ctype):
 		return 0
 	return int(TOWERS_EXT[ctype].get("pierce", 0))
+
+
+## 🆕 溅射：命中后波及的敌人数（每个 +40% 等效输出，见 damage_engine）。
+static func tower_splash(ctype: String) -> int:
+	if not TOWERS_EXT.has(ctype):
+		return 0
+	return int(TOWERS_EXT[ctype].get("splash", 0))
 
 
 ## 🆕 赏金：存活时全队累计击杀 N 只 → 获得 X 废料（可重复触发）。

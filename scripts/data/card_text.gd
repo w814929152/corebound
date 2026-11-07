@@ -274,6 +274,9 @@ static func describe(nm: String) -> String:
 	if _TD.tower_bounty_kills(nm) > 0:
 		return "%s\n%s\n每 %d 杀 +%d 废料" % [
 			r, stat_line(nm), _TD.tower_bounty_kills(nm), int(_TD.tower_bounty_scrap(nm))]
+	# 🆕 溅射：命中后波及周围 N 个敌人（优先于弹射/贯穿显示 —— 它是最强的范围加成）。
+	if _TD.tower_splash(nm) > 0:
+		return "%s\n%s\n溅射 %d 个" % [r, stat_line(nm), _TD.tower_splash(nm)]
 	# 🆕 弹射：第 3 行写跳弹次数（替代「标记」行，因为弹跳是更关键的取舍信息）。
 	if _TD.tower_bounce(nm) > 0:
 		return "%s\n%s\n弹射 %d 次" % [r, stat_line(nm), _TD.tower_bounce(nm)]
