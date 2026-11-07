@@ -22,10 +22,12 @@ const Campaign := preload("res://scripts/gameplay/campaign.gd")
 const CampaignData := preload("res://scripts/data/campaign_data.gd")
 const StageSelect := preload("res://scripts/ui/stage_select_overlay.gd")
 
-## 🆕 关卡推进总开关（默认关 = 与「无 meta」完全等价，金标本逐位不变）。
+## 🆕 关卡推进总开关（2026-11-07 起**实机默认开**：开局先在「裂隙航图」大地图选关）。
 ##    🔴 打开后：实机按「当前关卡」注入波数（wave_count）并在通关/失败时记账；
-##        关闭时：不注入波数（= 20 波金标本口径）、不记账。一行回滚 = 改回 false。
-const CAMPAIGN_ENABLED := false
+##        关闭时：不注入波数（= 20 波金标本口径）、不记账、不弹选关。一行回滚 = 改回 false。
+##    🔴 金标本零扰动：本开关只影响**窗口模式**的玩家路线；headless 分支与
+##        `--script` 测试路径永不进入 `_ready` 的 else 分支（见上）。
+const CAMPAIGN_ENABLED := true
 
 var _bs: Node = null
 var _pack_select: CanvasLayer = null
@@ -105,7 +107,10 @@ func _ready() -> void:
 		#   ② 结算"再来一局" → 先回选包界面（换构筑），选完再 `start_new_run()`；
 		#   ③ 首次进入 → 已解锁 ≤3 包直接开局（无选择余地），>3 包才弹界面。
 		bs.controller.run_finished.connect(_on_run_finished)
-		bs.controller.restart_hook = Callable(self, "_open_pack_select")
+		# 🆕 再来一局：关卡推进 ON → 先回「裂隙航图」重新选关（顺带看到新解锁的关）；
+		#    OFF → 老口径（直接回选包）。改动前二者都是直接选包。
+		bs.controller.restart_hook = Callable(self,
+			"_open_stage_select" if CAMPAIGN_ENABLED else "_open_pack_select")
 		_pack_select = PackSelect.new()
 		add_child(_pack_select)
 		_pack_select.packs_confirmed.connect(_on_packs_confirmed)

@@ -39,6 +39,7 @@ const _TD := preload("res://scripts/data/tower_data.gd")
 const _BuildGrid := preload("res://scripts/geo/build_grid.gd")
 const _Runtime := preload("res://scripts/gameplay/shop_runtime.gd")
 const _Cfg := preload("res://scripts/engine/mvp_config.gd")
+const _StageSelect := preload("res://scripts/ui/stage_select_overlay.gd")
 
 const FONT_MIN := 16
 
@@ -201,6 +202,25 @@ func _test_c_font_floor() -> void:
 	_check("【商店】%d 个 Label 全部 ≥16px%s" % [slabels.size(), "" if ssmall.is_empty() else " → " + str(ssmall)],
 		ssmall.is_empty())
 	shop.free()
+
+	# 🆕 大地图选关（裂隙航图）：全部文字走 `_Style.label` ⇒ 同样受 16px 下限约束。
+	#   画布上的节点名 / 章名是 `draw_string`（非 Label），字号由绘制常量钉死见下条。
+	var stage = _StageSelect.new()
+	stage._build()
+	var glabels: Array = _collect(stage, [], "label")
+	var gsmall: Array = []
+	for l in glabels:
+		var fs := int((l as Label).get_theme_font_size("font_size"))
+		if fs > 0 and fs < FONT_MIN:
+			gsmall.append("%s=%d" % [String((l as Label).text).substr(0, 10), fs])
+	_check("【航图】%d 个 Label 全部 ≥16px%s" % [glabels.size(), "" if gsmall.is_empty() else " → " + str(gsmall)],
+		gsmall.is_empty())
+	_check("【航图】零系统默认控件（画布自绘，不含 Button）",
+		_collect(stage, [], "button").is_empty())
+	_check("【航图】画布节点文字 ≥16px",
+		float(_StageSelect.NODE_LABEL_FONT) >= float(FONT_MIN)
+		and float(_StageSelect.CHAPTER_FONT) >= float(FONT_MIN))
+	stage.free()
 
 
 # ---------------------------------------------------------------------------

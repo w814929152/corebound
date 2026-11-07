@@ -30,6 +30,7 @@ const _WaveDirector := preload("res://scripts/gameplay/wave_director.gd")
 const _MapVariants := preload("res://scripts/data/map_variants.gd")
 const _SpaceModel := preload("res://scripts/geo/space_model.gd")
 const _BuildGrid := preload("res://scripts/geo/build_grid.gd")
+const _StageSelect := preload("res://scripts/ui/stage_select_overlay.gd")
 
 var _pass := 0
 var _fail := 0
@@ -50,6 +51,7 @@ func run_all() -> bool:
 	_test_max_wave()
 	_test_map_variants()
 	_test_map_switching()
+	_test_world_map()
 
 	_log("")
 	_log("-".repeat(78))
@@ -371,6 +373,109 @@ static func _dict_eq(a, b) -> bool:
 		if bool(a[k]) != bool(b[k]):
 			return false
 	return true
+
+
+# ---------------------------------------------------------------------------
+#  [9] 大地图选关（裂隙航图）
+# ---------------------------------------------------------------------------
+## 钉住「大地图 = 径向螺旋」的布局不变量 + 选关交互语义：
+##   · 10 个节点、互不重合、第一章在最外环、终局在核心；
+##   · 锁定关卡点不进去、不发信号、不改当前关；
+##   · 已解锁关卡进入 → 改当前关 + 发 1 次信号 + 关界面。
+func _test_world_map() -> void:
+	_log("")
+	_log("--- [9] 大地图选关（裂隙航图 · 径向螺旋布局）---")
+	var ov = _StageSelect.new()
+	ov._build()
+
+	var pts: Dictionary = ov.layout_points(_StageSelect.DESIGN_SIZE)
+	_check_int("航图节点数 = 关卡数", pts.size(), _CampaignData.STAGE_ORDER.size())
+
+	# 几何：终局在核心（地图正中），三章由外向内
+	var core := Vector2(_StageSelect.DESIGN_SIZE.x * 0.5, _StageSelect.DESIGN_SIZE.y * 0.47)
+	var d_final := Vector2(pts["4-1"]).distance_to(core)
+	_check("终局 4-1 落在核心（误差 < 0.5）", d_final < 0.5)
+	var d1 := Vector2(pts["1-1"]).distance_to(core)
+	var d2 := Vector2(pts["2-1"]).distance_to(core)
+	var d3 := Vector2(pts["3-1"]).distance_to(core)
+	_check("第一章在最外环（1-1 > 2-1 > 3-1）", d1 > d2 and d2 > d3 and d3 > d_final)
+	_check("三章章名齐全", _StageSelect.CHAPTER_TITLES.size() == 4)
+	_check("章色互不相同（形状外的第二通道）",
+		ov._chapter_color(1) != ov._chapter_color(2) and ov._chapter_color(2) != ov._chapter_color(3))
+
+	# 节点互不重合（10 个不同位置）
+	var seen: Dictionary = {}
+	for sid in _CampaignData.STAGE_ORDER:
+		var p: Vector2 = pts[String(sid)]
+		seen["%.3f,%.3f" % [p.x, p.y]] = true
+	_check_int("节点位置互不重合", seen.size(), pts.size())
+
+	# --- 交互：锁定关进不去 ---
+	var c = _Campaign.new()
+	var got: Array = []
+	ov.stage_selected.connect(func(sid: String) -> void: got.append(sid))
+	ov.open(c)
+	_check("开局焦点 = 当前关卡", ov.hovered() == "1-1")
+	_check("锁定关卡 enter_stage 返回 false", not ov.enter_stage("2-1"))
+	_check_int("锁定关卡不发 stage_selected", got.size(), 0)
+	_check("锁定关卡不改当前关", c.current_stage() == "1-1")
+	ov._hovered = "2-1"
+	ov._refresh_detail()
+	_check("锁定关卡详情提示「未解锁 · 先通关」",
+		ov._detail_state.text.contains("未解锁") and ov._detail_state.text.contains("先通关"))
+
+	# --- 交互：已解锁关可进 ---
+	_check("1-1（起点）可进入", ov.enter_stage("1-1"))
+	_check_int("进入发 1 次 stage_selected", got.size(), 1)
+	_check("进入后界面隐藏", not ov.visible)
+
+	# 通关 1-1 → 1-2 解锁 → 打开即可进
+	c.on_cleared("1-1")
+	ov.open(c)
+	_check("通关后焦点 = 当前关（1-1）", ov.hovered() == "1-1")
+	_check("1-2 已解锁可进入", ov.enter_stage("1-2"))
+	_check("进入后当前关 = 1-2", c.current_stage() == "1-2")
+	_check_int("累计 2 次 stage_selected", got.size(), 2)
+	_check("未知关卡拒绝", not ov.enter_stage("9-9"))
+
+	# --- 键盘焦点：沿推进链移动，越界不循环 ---
+	ov.open(c)
+	ov._step_hover(1)
+	_check("→ 焦点移到下一关", ov.hovered() == "1-3")
+	ov._step_hover(-1)
+	_check("← 焦点回到上一关", ov.hovered() == "1-2")
+	ov._hovered = "1-1"
+	ov._step_hover(-1)
+	_check("链首再往前不越界", ov.hovered() == "1-1")
+
+	# --- 鼠标：命中测试 → 悬停 / 点击进入（headless 直接喂 InputEvent）---
+	ov.open(c)
+	ov._points = pts
+	var mv := InputEventMouseMotion.new()
+	mv.position = Vector2(pts["1-2"])
+	ov._on_canvas_input(mv, ov._canvas)
+	_check("鼠标悬停命中节点", ov.hovered() == "1-2")
+
+	var before := got.size()
+	var click := InputEventMouseButton.new()
+	click.button_index = MOUSE_BUTTON_LEFT
+	click.pressed = true
+	click.position = Vector2(pts["1-2"])
+	ov._on_canvas_input(click, ov._canvas)
+	_check("点击已解锁节点进入", got.size() == before + 1)
+	_check("点击后当前关 = 1-2", c.current_stage() == "1-2")
+
+	# 锁定节点：点了等于没点（不弹错、不改状态）
+	ov.open(c)
+	ov._points = pts
+	var before2 := got.size()
+	var click_locked := InputEventMouseButton.new()
+	click_locked.button_index = MOUSE_BUTTON_LEFT
+	click_locked.pressed = true
+	click_locked.position = Vector2(pts["3-1"])
+	ov._on_canvas_input(click_locked, ov._canvas)
+	_check("点击锁定节点无反应", got.size() == before2)
+	_check("点击锁定节点不改当前关", c.current_stage() == "1-2")
 
 
 func _check(name: String, ok: bool) -> void:
