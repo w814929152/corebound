@@ -40,6 +40,8 @@ const _BuildGrid := preload("res://scripts/geo/build_grid.gd")
 const _Runtime := preload("res://scripts/gameplay/shop_runtime.gd")
 const _Cfg := preload("res://scripts/engine/mvp_config.gd")
 const _StageSelect := preload("res://scripts/ui/stage_select_overlay.gd")
+const _MainMenu := preload("res://scripts/ui/main_menu_overlay.gd")
+const _Packs := preload("res://scripts/data/card_packs.gd")
 
 const FONT_MIN := 16
 
@@ -65,6 +67,7 @@ func run_all() -> bool:
 	_test_i_card_text()
 	_test_j_placement_entry()
 	_test_k_free_placement()
+	_test_l_main_menu()
 
 	_log("")
 	_log("=".repeat(78))
@@ -692,6 +695,99 @@ func _test_k_free_placement() -> void:
 		int(snap["slots"].size()) == rt.geo.slots.size())
 	_check("snapshot 的 towers_max 取 tower_cap（%d）" % int(snap["towers_max"]),
 		int(snap["towers_max"]) == 3)
+
+# ---------------------------------------------------------------------------
+#  L 主界面 + 卡组图鉴（2026-11-07）
+# ---------------------------------------------------------------------------
+## 🔴 三条口径（缺一条主界面就会退化成"装饰页"）：
+##   ① 三个入口都存在，且按钮四态走 `ui_style`（§5.1 禁止系统默认控件）；
+##   ② 图鉴必须**一遍看到全部**：8 包 × 6 张 = 48 个卡位、覆盖 `all_cards()` 的每一张，
+##      未解锁包压暗但仍可见（解锁是节奏阀，不是内容保密）；
+##   ③ 每张卡的说明非空 —— 图鉴若只有卡名，等于把商店卡面的「这张卡干什么」又丢一次。
+func _test_l_main_menu() -> void:
+	_log("")
+	_log("--- [L] 主界面 / 卡组图鉴：入口可达 · 全部卡包可浏览 · 样式同口径 ---")
+
+	var menu: CanvasLayer = _MainMenu.new()
+	menu._build()
+
+	_check("【主界面】默认页 = 菜单", menu.current_page() == _MainMenu.PAGE_MENU)
+	_check_int("【主界面】三个入口（开始 / 图鉴 / 退出）", menu._menu_buttons.size(), 3)
+	var texts: Array = []
+	for b in menu._menu_buttons:
+		texts.append(String((b as Button).text))
+	_check("【主界面】入口文案 = 开始游戏 / 卡组图鉴 / 退出游戏",
+		texts == ["开始游戏", "卡组图鉴", "退出游戏"])
+	_check_all_buttons("主界面", menu)
+
+	# 字号（两个页面的 Label 一起查）
+	var small: Array = []
+	var labels: Array = _collect(menu, [], "label")
+	for l in labels:
+		var fs := int((l as Label).get_theme_font_size("font_size"))
+		if fs > 0 and fs < FONT_MIN:
+			small.append("%s=%d" % [String((l as Label).text).substr(0, 8), fs])
+	_check("【主界面】%d 个 Label 全部 ≥16px%s" % [labels.size(), "" if small.is_empty() else " → " + str(small)],
+		small.is_empty())
+
+	# 走「卡组图鉴」按钮路径（不是绕过 UI 直接调 show_library）
+	menu._activate(1)
+	_check("【图鉴】点击入口后切到图鉴页", menu.current_page() == _MainMenu.PAGE_LIBRARY)
+	_check_int("【图鉴】卡包块数 = PACKS 数", menu._pack_blocks.size(), _Packs.PACKS.size())
+
+	var want_slots := _Packs.PACKS.size() * _Packs.CARDS_PER_PACK
+	_check_int("【图鉴】卡位数 = 8 包 × 每包 6 张", menu._card_entries.size(), want_slots)
+
+	# 每个卡包块 = 6 张卡（结构对齐，不靠总数碰巧相等）
+	var bad_block: Array = []
+	for blk in menu._pack_blocks:
+		var n := ((blk as Dictionary)["cards"] as Array).size()
+		if n != _Packs.CARDS_PER_PACK:
+			bad_block.append("%s=%d" % [String((blk as Dictionary)["id"]), n])
+	_check("【图鉴】每包块恰好 %d 张卡%s" % [_Packs.CARDS_PER_PACK,
+		"" if bad_block.is_empty() else " → " + str(bad_block)], bad_block.is_empty())
+
+	# 覆盖全部玩家卡 + 每张卡有说明
+	var shown := {}
+	var empty_desc: Array = []
+	for e in menu._card_entries:
+		var nm := String((e as Dictionary)["card"])
+		shown[nm] = true
+		if String((e as Dictionary)["label"].text).strip_edges() == "":
+			empty_desc.append(nm)
+	var missing: Array = []
+	for nm in _Packs.all_cards():
+		if not shown.has(String(nm)):
+			missing.append(String(nm))
+	_check("【图鉴】覆盖全部 %d 张玩家卡%s" % [_Packs.all_cards().size(),
+		"" if missing.is_empty() else " → 缺 " + str(missing)], missing.is_empty())
+	_check("【图鉴】每张卡都有非空说明%s" % ("" if empty_desc.is_empty() else " → 空: " + str(empty_desc)),
+		empty_desc.is_empty())
+
+	menu.back_to_menu()
+	_check("【图鉴】返回后回到菜单页", menu.current_page() == _MainMenu.PAGE_MENU)
+
+	# 入口信号链路：开始游戏只发 `start_requested`（真正的流程由 boot.gd 决定）
+	var got_start := [false]
+	menu.start_requested.connect(func() -> void: got_start[0] = true)
+	menu._activate(0)
+	_check("【主界面】开始游戏发出 start_requested（不自己开流程）", got_start[0])
+
+	# 玩家界面不得残留开发占位
+	var all_text: Array = []
+	for b in _collect(menu, [], "button"):
+		all_text.append(String((b as Button).text))
+	for l in _collect(menu, [], "label"):
+		all_text.append(String((l as Label).text))
+	var hits: Array = []
+	for t in all_text:
+		for bad in ["后续切片", "🟡", "TODO", "占位", "[接口]"]:
+			if String(t).find(bad) >= 0:
+				hits.append(t)
+	_check("【主界面】文案零开发占位%s" % ("" if hits.is_empty() else " → " + str(hits)), hits.is_empty())
+
+	menu.free()
+
 
 func _close(a: Color, b: Color) -> bool:
 	return absf(a.r - b.r) < 0.002 and absf(a.g - b.g) < 0.002 and absf(a.b - b.b) < 0.002

@@ -21,6 +21,8 @@ const CardPacks := preload("res://scripts/data/card_packs.gd")
 const Campaign := preload("res://scripts/gameplay/campaign.gd")
 const CampaignData := preload("res://scripts/data/campaign_data.gd")
 const StageSelect := preload("res://scripts/ui/stage_select_overlay.gd")
+## 🆕 主界面（2026-11-07）：启动第一屏 —— 开始游戏 / 卡组图鉴 / 退出。
+const MainMenu := preload("res://scripts/ui/main_menu_overlay.gd")
 
 ## 🆕 关卡推进总开关（2026-11-07 起**实机默认开**：开局先在「裂隙航图」大地图选关）。
 ##    🔴 打开后：实机按「当前关卡」注入波数（wave_count）并在通关/失败时记账；
@@ -33,6 +35,7 @@ var _bs: Node = null
 var _pack_select: CanvasLayer = null
 var _campaign = null
 var _stage_select: CanvasLayer = null
+var _main_menu: CanvasLayer = null
 
 
 func _ready() -> void:
@@ -114,6 +117,14 @@ func _ready() -> void:
 		_pack_select = PackSelect.new()
 		add_child(_pack_select)
 		_pack_select.packs_confirmed.connect(_on_packs_confirmed)
+		# ---- 🆕 主界面（2026-11-07）：启动第一屏 ----
+		#   流程：主界面 →（开始游戏）→ 选关 → 选包 → 开局。
+		#   🔴 主界面自己**不写任何玩法状态**：只发 `start_requested`，由本文件决定
+		#      下面走哪条既有流程 —— 与 pack_select / stage_select 同一分层纪律。
+		_main_menu = MainMenu.new()
+		add_child(_main_menu)
+		_main_menu.start_requested.connect(_on_main_start)
+		_main_menu.quit_requested.connect(_on_main_quit)
 		# 🆕 关卡推进：加载存档（默认关 = 不注入波数，见 CAMPAIGN_ENABLED）。
 		if CAMPAIGN_ENABLED:
 			_campaign = Campaign.new()
@@ -123,9 +134,41 @@ func _ready() -> void:
 			_stage_select = StageSelect.new()
 			add_child(_stage_select)
 			_stage_select.stage_selected.connect(_on_stage_selected)
-			call_deferred("_open_stage_select")
-		else:
-			call_deferred("_open_pack_select")
+		# 🔴 启动第一屏一律是主界面（选关 / 选包由「开始游戏」触发）。
+		call_deferred("_open_main_menu")
+
+
+# ---------------------------------------------------------------------------
+#  主界面：启动第一屏
+# ---------------------------------------------------------------------------
+## 打开主界面。🔴 `--open-library` 是 UI 截帧探针（窗口模式直接落在图鉴页），
+##   不影响正常启动路径（不传参数时行为与改前逐位一致）。
+func _open_main_menu() -> void:
+	if _main_menu == null:
+		return
+	# 🔴 探针参数可能出现在 `--` 之后（此时只在 `get_cmdline_user_args()` 里），
+	#    所以两个列表都要查 —— 否则「传了参数却按默认路径走」，很难查。
+	if _has_cmd_flag("--open-library"):
+		_main_menu.show_library()
+	else:
+		_main_menu.open()
+
+
+func _has_cmd_flag(flag: String) -> bool:
+	return OS.get_cmdline_args().has(flag) or OS.get_cmdline_user_args().has(flag)
+
+
+func _on_main_start() -> void:
+	if _main_menu != null:
+		_main_menu.close()
+	if CAMPAIGN_ENABLED:
+		_open_stage_select()
+	else:
+		_open_pack_select()
+
+
+func _on_main_quit() -> void:
+	get_tree().quit(0)
 
 
 # ---------------------------------------------------------------------------
