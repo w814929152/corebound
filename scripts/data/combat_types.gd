@@ -1,4 +1,4 @@
-class_name CombatTypes
+﻿class_name CombatTypes
 extends RefCounted
 ##
 ## 战斗类型系统 —— 攻击类型（物理 / 魔法）× 防御抗性（物抗 / 魔抗）的 SSOT
@@ -70,7 +70,7 @@ const TOWER_DMG_TYPE := {
 	"Glacier": MAGIC, "Hail": MAGIC, "Permafrost": MAGIC, "Frostbite": MAGIC,
 	"Storm": MAGIC, "Arc": MAGIC, "Spark": MAGIC, "Thunder": MAGIC,
 	"Breaker": PHYSICAL, "Shatter": PHYSICAL, "Ruin": PHYSICAL,
-	"Cleave": PHYSICAL, "Quake": PHYSICAL,
+	"Drummer": PHYSICAL, "Quake": PHYSICAL,
 	"Curse": MAGIC, "Plague": MAGIC, "Wither": MAGIC, "Omen": MAGIC,
 	"Exile": TRUE, "Null": TRUE, "Rift": TRUE, "Abyss": TRUE,
 	"Scout": PHYSICAL, "Mortar": PHYSICAL,

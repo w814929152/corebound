@@ -1,4 +1,4 @@
-﻿class_name TowerData
+class_name TowerData
 extends RefCounted
 ##
 ## 塔原型 / 强化卡 / 价格 —— 移植自 design/phase2/numeric-sim/corebound_sim_v03.py
@@ -128,7 +128,8 @@ const TOWERS_EXT := {
 	"Breaker": {"dps": 8.0, "tag": "sunder", "aoe": true, "slow": 0.00, "rng": 18.0},
 	"Shatter": {"dps": 7.0, "tag": "sunder", "aoe": false, "slow": 0.00, "rng": 20.0},
 	"Ruin": {"dps": 9.0, "tag": "sunder", "aoe": true, "slow": 0.00, "rng": 16.0},
-	"Cleave": {"dps": 8.0, "tag": "", "aoe": true, "slow": 0.00, "rng": 15.0},
+	"Drummer": {"dps": 4.0, "tag": "", "aoe": false, "slow": 0.00, "rng": 15.0,
+		"buff_aspd": 0.20},
 	"Quake": {"dps": 5.0, "tag": "", "aoe": true, "slow": 0.15, "rng": 18.0,
 		"buff_def": 0.15},
 	# ---- 咒术包补位（削魔抗光环扩展：tag=hex 自动计入 `SUNDER_TYPES`）----
@@ -266,7 +267,7 @@ const EXT_WEIGHTS := {
 	"Breaker": 0.09,
 	"Shatter": 0.10,
 	"Ruin": 0.08,
-	"Cleave": 0.10,
+	"Drummer": 0.09,
 	"Quake": 0.10,
 	"Curse": 0.09,
 	"Plague": 0.09,
@@ -380,6 +381,13 @@ static func tower_splash(ctype: String) -> int:
 	if not TOWERS_EXT.has(ctype):
 		return 0
 	return int(TOWERS_EXT[ctype].get("splash", 0))
+
+
+## 🆕 攻速光环：附近塔的攻击速度加成（累加，与攻击光环同口径，见 `TowerEffects`）。
+static func tower_buff_aspd(ctype: String) -> float:
+	if not TOWERS_EXT.has(ctype):
+		return 0.0
+	return float(TOWERS_EXT[ctype].get("buff_aspd", 0.0))
 
 
 ## 🆕 赏金：存活时全队累计击杀 N 只 → 获得 X 废料（可重复触发）。

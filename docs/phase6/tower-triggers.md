@@ -117,6 +117,7 @@
 | **弹射** | `bounce` | **Tesla/Bolt/Storm/Arc/Spark/Thunder** | 子弹可跳弹 N 次，每次 +20% 等效输出 | `damage_engine` 逐塔乘 `(1+0.2N)` |
 | **贯穿** | `pierce` | **Lance/Javelin/Ballista/Sniper/Harpoon** | 子弹可穿透 N 个敌人，每个 +25% 等效输出 | `damage_engine` 逐塔乘 `(1+0.25N)` |
 | **溅射** | `splash` | **Cinder/Omen/Wither/Spark/Frostbite/Harpoon/Curse/Exile** | 命中后波及周围 N 个敌人，每个 +40% 等效输出 | `damage_engine` 逐塔乘 `(1+0.4N)` |
+| **攻速光环** | `buff_aspd` | **Drummer 战鼓**（原 Cleave） | 附近塔攻速 +20%（可叠，封顶 +60%） | `damage_engine` 乘 `(1+Σaspd)` |
 
 ### 7.1 口径说明
 

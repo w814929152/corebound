@@ -1,4 +1,4 @@
-extends SceneTree
+﻿extends SceneTree
 ##
 ## 卡包口径 MC —— 48 张卡 / 8 包 / 每局任选 3 包（2026-11-07）
 ## ---------------------------------------------------------------------------
@@ -168,7 +168,7 @@ func _spend(player, cfg: Dictionary, geo, pool: Array, budget: float, cap: int) 
 		var score := float(d["dps"]) * (1.6 if bool(d["aoe"]) else 1.0) * (1.0 + float(d["slow"]))
 		order.append({"nm": String(nm), "score": score})
 	# 🔴 功能塔优先（贪心只看 dps 会永远不造经济/光环塔 = 低估打法）
-	var prio := ["Foundry", "Omen", "Quake", "Wither", "Plague", "Null", "Drillmaster", "Vanguard", "Martyr"]
+	var prio := ["Foundry", "Omen", "Drummer", "Quake", "Wither", "Plague", "Null", "Drillmaster", "Vanguard", "Martyr"]
 	order.sort_custom(func(a, b):
 		var pa := prio.find(String(a["nm"]))
 		var pb := prio.find(String(b["nm"]))

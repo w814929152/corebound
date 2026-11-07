@@ -213,6 +213,12 @@ static func compute_dps(player, cfg: Dictionary, geo = null) -> Dictionary:
 	for _t in ts:
 		atk_buff += _TowerData.tower_buff_atk(String(_t.ctype))
 	atk_buff = minf(atk_buff, 0.6)
+	# 🆕 攻速光环（2026-11-07 · Drummer 等）：附近塔攻速 +Σ，聚合口径等价于 dps ×(1+Σ)。
+	#   🔴 金标本的塔都不带 buff_aspd → 恒 0 → 逐位不变。
+	var aspd_buff := 0.0
+	for _t2 in ts:
+		aspd_buff += _TowerData.tower_buff_aspd(String(_t2.ctype))
+	aspd_buff = minf(aspd_buff, 0.6)
 
 	# -----------------------------------------------------------------------
 	# 阶段 B：逐塔（顺序固定 —— R-1）
@@ -295,6 +301,9 @@ static func compute_dps(player, cfg: Dictionary, geo = null) -> Dictionary:
 		var _spl := _TowerData.tower_splash(ctype)
 		if _spl > 0:
 			dps_i *= 1.0 + 0.40 * float(_spl)
+		# 🆕 攻速光环（见上；金标本恒 0）
+		if aspd_buff > 0.0:
+			dps_i *= 1.0 + aspd_buff
 		per_tower.append({
 			"base": base, "stack": stack, "syn": syn, "res": res,
 			"focus": foc, "allin": ali, "cov": cov, "dps": dps_i,

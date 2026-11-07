@@ -99,6 +99,7 @@ func run_all() -> bool:
 	_test_j_bounce()
 	_test_k_pierce()
 	_test_l_splash()
+	_test_m_aspd()
 
 	# 🔴 收尾：把静态状态还原成默认，避免污染同进程内的后续套件
 	_ShopRuntime.set_active_packs([])
@@ -580,3 +581,19 @@ func _test_l_splash() -> void:
 	_eq_int("L4 非溅射塔（Arrow）", _TD.tower_splash("Arrow"), 0)
 	_ok("L5 Cinder 卡面写明「溅射 2 个」", _CardText.describe("Cinder").find("溅射 2 个") >= 0)
 	_ok("L6 基础塔 Frost 不带溅射（金标本口径不动）", _TD.tower_splash("Frost") == 0)
+
+# ---------------------------------------------------------------------------
+#  M 攻速光环：增加附近塔的攻击速度（2026-11-07）
+# ---------------------------------------------------------------------------
+func _test_m_aspd() -> void:
+	_log("")
+	_log("--- [M] 攻速光环：附近塔攻击速度 +20% ---")
+	_ok("M1 Drummer 攻速光环 = 0.20", absf(_TD.tower_buff_aspd("Drummer") - 0.20) < 1e-9)
+	_ok("M2 普通塔无攻速光环（Arrow）", absf(_TD.tower_buff_aspd("Arrow")) < 1e-9)
+	_ok("M3 Drummer 卡面写明「攻速光环」", _CardText.describe("Drummer").find("攻速光环") >= 0)
+	var names: Array = []
+	for p in _Packs.PACKS:
+		for nm in (p["cards"] as Array):
+			names.append(String(nm))
+	_ok("M4 Drummer 在卡包里（破甲包）", names.has("Drummer"))
+	_ok("M5 旧的 Cleave 已不存在于任何卡包", not names.has("Cleave"))

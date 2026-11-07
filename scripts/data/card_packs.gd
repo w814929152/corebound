@@ -1,4 +1,4 @@
-extends RefCounted
+﻿extends RefCounted
 ##
 ## 卡包（Card Pack）—— 玩家路线卡池的**流派编排单位**
 ## ---------------------------------------------------------------------------
@@ -96,7 +96,7 @@ const PACKS: Array = [
 	},
 	{
 		"id": "sunder", "name": "破甲包", "tag_line": "削物抗光环 + 物理群伤",
-		"cards": ["Sunder", "Breaker", "Shatter", "Ruin", "Cleave", "Quake"],
+		"cards": ["Sunder", "Breaker", "Shatter", "Ruin", "Drummer", "Quake"],
 		"unlock_wave": 18,
 	},
 	{
