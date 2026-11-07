@@ -17,6 +17,7 @@ extends Control
 const _ShopLayout := preload("res://scripts/ui/shop_layout.gd")
 const _TSM := preload("res://scripts/engine/time_state_machine.gd")
 const _MonsterData := preload("res://scripts/data/monster_data.gd")
+const _Style := preload("res://scripts/ui/ui_style.gd")
 
 const C_GOLD := Color(1.000, 0.788, 0.290)      # #FFC94A 辉金
 const C_ALERT := Color(1.000, 0.180, 0.306)     # #FF2E4E 警报红
@@ -28,19 +29,35 @@ const C_WHITE := Color(1.0, 1.0, 1.0)
 const C_PANEL := Color(0.078, 0.090, 0.149, 0.92)
 const C_PANEL_SOFT := Color(0.078, 0.090, 0.149, 0.85)
 
-const WAVE_BAR_W := 320.0
-const WAVE_BAR_H := 8.0
+const WAVE_BAR_W := 300.0
+const WAVE_BAR_H := 10.0
 const BANNER_MS := 1200
+
+## 🆕 UI 优化轮：积分卡（L0 区）几何。
+##   改造前左上角只有一个硬币 + 裸数字，**没有任何文字说明它是什么**；而引导文案里叫
+##   「废料」、商店里叫「废料」、debug 层又写「积分」—— 三处术语不一致，新手读不懂。
+##   现统一为「废料」（与引导 / 商店文案一致），并给 L0 数字加面板承托（§5.3）。
+const SCORE_BOX := Rect2(26.0, 12.0, 214.0, 86.0)
+const SCORE_ICON := Vector2(66.0, 57.0)
+const SCORE_ICON_R := 28.0
+const SCORE_CAP_POS := Vector2(104.0, 18.0)
+const SCORE_NUM_POS := Vector2(104.0, 34.0)
 
 var director: Node = null
 var controller: Node = null
 
 var _score_label: Label
+var _score_caption: Label
 var _wave_label: Label
 var _hint_label: Label
 var _start_wave_btn: Button
 var _banner: Label
 var _debug_panel: PanelContainer
+## 🆕 缓存 StyleBox（`_draw` 每帧调用，不得在绘制里 new StyleBoxFlat → 每帧分配）。
+var _box_score: StyleBoxFlat
+var _box_bar_track: StyleBoxFlat
+var _box_bar_fill: StyleBoxFlat
+var _box_bar_fill_elite: StyleBoxFlat
 
 # ---- F3 保留读数（§B.4：切片3/5 观测全部进 debug 层，不可删）----
 var _battle_label: Label
@@ -54,6 +71,8 @@ var _layout_label: Label
 # ---- 纯演出本地状态（非玩法）----
 var _debug_visible: bool = false
 var _wave_progress: float = 0.0
+var _wave_spawned: int = 0          # 🆕 进度条读数：已出怪数
+var _wave_total: int = 0            # 🆕 进度条读数：本波总数
 var _wave_elite: bool = false
 var _wave_in_combat: bool = false  # 🟢 反制窗口：波次条精英标记「分态取源」用（战斗 vs 决策期）
 var _banner_end_ms: int = 0
@@ -62,7 +81,7 @@ var _banner_end_ms: int = 0
 #   🔴 纯本地 easing：只把**新版数字**缓动显示出来；**不改数据源、不改玩法数值**。
 const SCORE_ROLL_SEC := 0.25         # 数字滚动时长（EASE_OUT）
 const SCORE_PULSE_DECAY := 6.0       # 缩放脉冲衰减速率（/s）
-const GOLD_ORIGIN := Vector2(64.0, 56.0)   # 硬币图标中心（粒子发射原点）
+const GOLD_ORIGIN := SCORE_ICON            # 硬币图标中心（粒子发射原点）
 var _score_display: float = 0.0      # 当前**显示**值（缓动中）
 var _score_from: float = 0.0
 var _score_to: float = 0.0
@@ -95,16 +114,21 @@ func _layout() -> void:
 	position = Vector2.ZERO
 	size = vs
 	if _score_label != null:
-		_score_label.position = Vector2(104.0, 22.0)
-		_score_label.size = Vector2(560.0, 74.0)
+		_score_label.position = SCORE_NUM_POS
+		_score_label.size = Vector2(300.0, 56.0)
+	if _score_caption != null:
+		_score_caption.position = SCORE_CAP_POS
+		_score_caption.size = Vector2(140.0, 20.0)
 	if _wave_label != null:
-		_wave_label.position = Vector2(vw * 0.5 - 200.0, 20.0)
-		_wave_label.size = Vector2(400.0, 56.0)
+		_wave_label.position = Vector2(vw * 0.5 - 200.0, 8.0)
+		_wave_label.size = Vector2(400.0, 54.0)
 	if _start_wave_btn != null:
-		_start_wave_btn.position = Vector2(vw * 0.5 + WAVE_BAR_W * 0.5 + 14.0, 62.0)
-		_start_wave_btn.size = Vector2(128.0, 40.0)
+		_start_wave_btn.position = Vector2(vw * 0.5 + WAVE_BAR_W * 0.5 + 26.0, 78.0)
+		_start_wave_btn.size = Vector2(150.0, 44.0)
 	if _hint_label != null:
-		_hint_label.position = Vector2(24.0, vh - 44.0)
+		# 🆕 上移到核心血条之上：原 `vh - 44` 正好落在血条底槽带（1002–1044）里，
+		#    引导结束后露出键位行时会压住血条左端。
+		_hint_label.position = Vector2(24.0, vh - 112.0)
 		_hint_label.size = Vector2(1300.0, 26.0)
 	if _debug_panel != null:
 		_debug_panel.position = Vector2(16.0, 108.0)
@@ -186,9 +210,27 @@ func _build() -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 
-	# 积分（左上 L0 辉金）
+	# 🆕 L0 区缓存样式：积分卡面板 + 波次条轨道 / 填充（避免 `_draw` 每帧 new）
+	_box_score = _Style.panel(Color(C_ALLY.r, C_ALLY.g, C_ALLY.b, 0.28), 1, 0.0, 0.0)
+	# 🔴 轨道不能直接复用 `_Style.inset()`：它的底色（#0E111B）比场地圆（#1E2C46）更暗，
+	#    叠在上面的结果就是「看不见轨道，只看见一条橙线」。改用半透明黑 + 细描边，深浅底都成立。
+	_box_bar_track = StyleBoxFlat.new()
+	_box_bar_track.bg_color = Color(0.0, 0.0, 0.0, 0.42)
+	_box_bar_track.set_border_width_all(1)
+	_box_bar_track.border_color = Color(1.0, 1.0, 1.0, 0.14)
+	_box_bar_track.set_corner_radius_all(WAVE_BAR_H * 0.5)
+	_box_bar_fill = _Style.bar_fill(C_ENEMY)
+	_box_bar_fill_elite = _Style.bar_fill(C_ALERT)
+
+	# 积分（左上 L0 辉金）—— 🆕 加「废料」说明行：裸数字读不出含义
+	_score_caption = Label.new()
+	_score_caption.text = "废料"
+	_score_caption.add_theme_font_size_override("font_size", 16)
+	_score_caption.add_theme_color_override("font_color", C_TEXT_DIM)
+	add_child(_score_caption)
+
 	_score_label = Label.new()
-	_score_label.add_theme_font_size_override("font_size", 52)
+	_score_label.add_theme_font_size_override("font_size", 44)
 	_score_label.add_theme_color_override("font_color", C_GOLD)
 	_score_label.text = "0"
 	add_child(_score_label)
@@ -196,15 +238,16 @@ func _build() -> void:
 	# 波次（顶部中央 L0 白）
 	_wave_label = Label.new()
 	_wave_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_wave_label.add_theme_font_size_override("font_size", 44)
+	_wave_label.add_theme_font_size_override("font_size", 42)
 	_wave_label.add_theme_color_override("font_color", C_WHITE)
 	_wave_label.text = "WAVE 1"
 	add_child(_wave_label)
 
 	# 开始下一波（波次条右端；仅 SafeWindow 可用 —— 保留按钮功能）
+	# 🆕 安全窗唯一的推进操作 → 用 primary（金描边）提升视觉重量，并走统一 hover/按下动效
 	_start_wave_btn = Button.new()
 	_start_wave_btn.text = "开始下一波"
-	_style_button(_start_wave_btn)
+	_Style.button(_start_wave_btn, "primary")
 	_start_wave_btn.pressed.connect(func() -> void:
 		if director != null:
 			director.start_next_wave())
@@ -277,31 +320,6 @@ func _mk_dbg(parent: Node) -> Label:
 	l.add_theme_color_override("font_color", C_TEXT_DIM)
 	parent.add_child(l)
 	return l
-
-
-func _style_button(b: Button) -> void:
-	var normal := StyleBoxFlat.new()
-	normal.bg_color = C_PANEL
-	normal.set_border_width_all(2)
-	normal.border_color = C_ALLY
-	normal.set_corner_radius_all(4)
-	normal.content_margin_left = 10.0
-	normal.content_margin_right = 10.0
-	normal.content_margin_top = 6.0
-	normal.content_margin_bottom = 6.0
-	var hover := normal.duplicate()
-	hover.bg_color = Color(0.12, 0.16, 0.22, 0.95)
-	hover.border_color = C_GOLD
-	var dis := normal.duplicate()
-	dis.bg_color = Color(0.08, 0.09, 0.12, 0.7)
-	dis.border_color = Color(0.35, 0.38, 0.42, 0.6)
-	b.add_theme_stylebox_override("normal", normal)
-	b.add_theme_stylebox_override("hover", hover)
-	b.add_theme_stylebox_override("pressed", hover)
-	b.add_theme_stylebox_override("disabled", dis)
-	b.add_theme_color_override("font_color", C_WHITE)
-	b.add_theme_color_override("font_color_disabled", C_TEXT_DIM)
-	b.add_theme_font_size_override("font_size", 16)
 
 
 # ---------------------------------------------------------------------------
@@ -395,7 +413,9 @@ func _refresh_wave_progress() -> void:
 		return
 	var s: Dictionary = controller.wave_director.snapshot()
 	var n := int(s.get("n", 0))
-	_wave_progress = (float(s.get("spawned", 0)) / float(n)) if n > 0 else 0.0
+	_wave_spawned = int(s.get("spawned", 0))
+	_wave_total = n
+	_wave_progress = (float(_wave_spawned) / float(n)) if n > 0 else 0.0
 	# 🟢 反制窗口 C-6「分态取源」：波次条**永远表达"玩家当下该准备的那一波"** ——
 	#   战斗态(SPAWNING=1 / FIGHTING=2)用**当前波** `is_elite_wave`；安全窗 / IDLE(决策期)用
 	#   **下一波** `next_is_elite_wave`。🔴 修 stale 隐患：`w` 在 `start_wave` 才自增 →
@@ -513,33 +533,51 @@ func _draw() -> void:
 	var vp := get_viewport()
 	if vp == null:
 		return
-	var vs := vp.get_visible_rect().size
+	var vs: Vector2 = vp.get_visible_rect().size
 	var cx := float(vs.x) * 0.5
+	# 🆕 积分卡：深色底 + 细描边（§5.1），让左上 L0 区从战场里"立"起来
+	if _box_score != null:
+		draw_style_box(_box_score, SCORE_BOX)
 	# 硬币图标（左上 L0）—— P1 增强：随积分脉冲轻微放大
 	var coin_k := 1.0 + 0.10 * _score_pulse
-	draw_circle(GOLD_ORIGIN, 32.0 * coin_k, C_GOLD)
-	draw_circle(GOLD_ORIGIN, 22.0 * coin_k, Color(0.97, 0.66, 0.16, 1.0))
-	draw_circle(GOLD_ORIGIN, 10.0 * coin_k, C_GOLD)
+	draw_circle(SCORE_ICON, SCORE_ICON_R * coin_k, C_GOLD)
+	draw_circle(SCORE_ICON, (SCORE_ICON_R - 6.0) * coin_k, Color(0.97, 0.66, 0.16, 1.0))
+	draw_circle(SCORE_ICON, (SCORE_ICON_R - 18.0) * coin_k, C_GOLD)
 	# P1 增强：一次性金色小粒子（积分增长喷出）
 	for pt in _gold_parts:
 		var p := clampf(float(pt["life"]) / float(pt["max"]), 0.0, 1.0)
 		draw_circle(pt["pos"], 1.0 + 4.0 * (1.0 - p),
 			Color(C_GOLD.r, C_GOLD.g, C_GOLD.b, (1.0 - p) * 0.9))
 	# 波次进度条（顶部中央，波次数字之下）
+	# 🆕 加轨道底 + 圆角 + 右端读数；与 WAVE 文字之间留出 20px 呼吸（原仅 8px，视觉贴死）
 	var bx := cx - WAVE_BAR_W * 0.5
-	var by := 84.0
-	draw_rect(Rect2(bx, by, WAVE_BAR_W, WAVE_BAR_H), Color(0.14, 0.16, 0.20, 0.9))
+	var by := 90.0
+	if _box_bar_track != null:
+		draw_style_box(_box_bar_track, Rect2(bx, by, WAVE_BAR_W, WAVE_BAR_H))
 	if _wave_elite:
 		draw_rect(Rect2(bx - 6.0, by - 6.0, WAVE_BAR_W + 12.0, WAVE_BAR_H + 12.0),
 			Color(C_ALERT.r, C_ALERT.g, C_ALERT.b, 0.2))
-	draw_rect(Rect2(bx, by, WAVE_BAR_W * clampf(_wave_progress, 0.0, 1.0), WAVE_BAR_H), C_ENEMY)
-	# 🟢 T1 反制窗口（玩法②）：精英标记**分态取源**（战斗=当前波 / 决策期=下一波预告）。
-	#   🔴 决策期文案 = "下一波：精英波"（预告，仅决策期）；战斗态 = "精英波"（当前状态）。
-	#   无数字、无倒计时、无进度条（T-E1③ / E-B12 零择时读数）。
+	var fill_w := WAVE_BAR_W * clampf(_wave_progress, 0.0, 1.0)
+	if fill_w > 0.5:
+		var fill_box := _box_bar_fill_elite if _wave_elite else _box_bar_fill
+		draw_style_box(fill_box, Rect2(bx, by, fill_w, WAVE_BAR_H))
+	# 🆕 进度读数（数字优先 §5.2）：`已出 / 总数`，居中于条下
 	var font := ThemeDB.fallback_font
-	if font != null and _wave_elite:
-		draw_string(font, Vector2(bx, by - 8.0), ("精英波" if _wave_in_combat else "下一波：精英波"),
-			HORIZONTAL_ALIGNMENT_LEFT, -1, 18, C_ALERT)
+	if font != null:
+		if _wave_total > 0:
+			var cnt := "%d / %d" % [_wave_spawned, _wave_total]
+			var cw: float = font.get_string_size(cnt, HORIZONTAL_ALIGNMENT_LEFT, -1, 16).x
+			draw_string(font, Vector2(cx - cw * 0.5, by + 26.0), cnt,
+				HORIZONTAL_ALIGNMENT_LEFT, -1, 16, C_TEXT_DIM)
+		# 🟢 T1 反制窗口（玩法②）：精英标记**分态取源**（战斗=当前波 / 决策期=下一波预告）。
+		#   🔴 决策期文案 = "下一波：精英波"（预告，仅决策期）；战斗态 = "精英波"（当前状态）。
+		#   无数字、无倒计时、无进度条（T-E1③ / E-B12 零择时读数）。
+		#   🆕 位置改到进度条**左侧右对齐**，避免与 WAVE 大字／读数行叠压。
+		if _wave_elite:
+			var et := ("精英波" if _wave_in_combat else "下一波：精英波")
+			var ew: float = font.get_string_size(et, HORIZONTAL_ALIGNMENT_LEFT, -1, 16).x
+			draw_string(font, Vector2(bx - 12.0 - ew, by + 9.0), et,
+				HORIZONTAL_ALIGNMENT_LEFT, -1, 16, C_ALERT)
 
 
 func _unhandled_key_input(event: InputEvent) -> void:

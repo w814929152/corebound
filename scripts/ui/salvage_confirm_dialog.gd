@@ -29,6 +29,7 @@ extends CanvasLayer
 signal confirmed()
 signal cancelled()
 
+const _Style := preload("res://scripts/ui/ui_style.gd")
 
 var _on_confirm: Callable = Callable()
 var _built: bool = false            # _build 幂等守卫（show_confirm 可能在 _ready 前被调）
@@ -68,14 +69,19 @@ func _build() -> void:
 
 	_panel = PanelContainer.new()
 	_panel.set_anchors_preset(Control.PRESET_CENTER)
-	_panel.custom_minimum_size = Vector2(360.0, 0.0)
+	# 🔴 居中关键：锚点放中心还不够，增长方向默认 END 会让控件从中心往右下长（整体偏移半个面板）。
+	_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_panel.grow_vertical = Control.GROW_DIRECTION_BOTH
+	_panel.custom_minimum_size = Vector2(380.0, 0.0)
+	# 补面板样式（原先走 Godot 默认主题 → 无描边灰块，与战场语言断裂）
+	_panel.add_theme_stylebox_override("panel", _Style.panel(_Style.C_ALERT, 2, 20.0, 16.0))
 	add_child(_panel)
 
 	var margin := MarginContainer.new()
-	margin.add_theme_constant_override("margin_left", 20)
-	margin.add_theme_constant_override("margin_right", 20)
-	margin.add_theme_constant_override("margin_top", 18)
-	margin.add_theme_constant_override("margin_bottom", 18)
+	margin.add_theme_constant_override("margin_left", 4)
+	margin.add_theme_constant_override("margin_right", 4)
+	margin.add_theme_constant_override("margin_top", 4)
+	margin.add_theme_constant_override("margin_bottom", 4)
 	_panel.add_child(margin)
 
 	var vbox := VBoxContainer.new()
@@ -101,13 +107,15 @@ func _build() -> void:
 
 	_cancel_btn = Button.new()
 	_cancel_btn.text = "取消"
-	_cancel_btn.custom_minimum_size = Vector2(120.0, 40.0)
+	_cancel_btn.custom_minimum_size = Vector2(124.0, 42.0)
+	_Style.button(_cancel_btn, "normal")
 	_cancel_btn.pressed.connect(_on_cancel_pressed)
 	hbox.add_child(_cancel_btn)
 
 	_confirm_btn = Button.new()
 	_confirm_btn.text = "确认拆除"
-	_confirm_btn.custom_minimum_size = Vector2(120.0, 40.0)
+	_confirm_btn.custom_minimum_size = Vector2(124.0, 42.0)
+	_Style.button(_confirm_btn, "danger")
 	_confirm_btn.pressed.connect(_on_confirm_pressed)
 	hbox.add_child(_confirm_btn)
 

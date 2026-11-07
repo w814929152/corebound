@@ -51,6 +51,7 @@ const TestSuiteRadial := preload("res://tests/test_suite_radial.gd")
 const TestSuiteGeo8 := preload("res://tests/test_suite_geo8.gd")
 const TestSuiteTutorial := preload("res://tests/run_tutorial_asserts.gd")
 const TestSuiteExtPack := preload("res://tests/run_ext_pack_asserts.gd")
+const TestSuiteUIStyle := preload("res://tests/run_ui_style_asserts.gd")
 const _Geo := preload("res://scripts/geo/geo.gd")
 const _SpaceModel := preload("res://scripts/geo/space_model.gd")
 
@@ -116,7 +117,7 @@ func _initialize() -> void:
 		if (a.begins_with("slice") or a.begins_with("t1") or a == "v0radial"
 				or a == "radial" or a == "geo8" or a == "radial8" or a == "radial8diag"
 				or a == "repair8" or a == "aggro_golive" or a == "tutorial"
-				or a == "extpack"):
+				or a == "extpack" or a == "uistyle"):
 			only = a
 
 	var ok := true
@@ -166,6 +167,9 @@ func _initialize() -> void:
 	# 🆕 扩展包：新塔 / 新强化 / 玩家卡池开关（金标本 TOWERS / CARD_NAMES 零污染）
 	if only == "" or only == "extpack":
 		ok = TestSuiteExtPack.new().run_all() and ok
+	# 🆕 UI 样式一致性（2026-11-07 · UI 优化轮）：面板/按钮/字号/调色板结构断言。
+	if only == "" or only == "uistyle":
+		ok = TestSuiteUIStyle.new().run_all() and ok
 	# 🔴 第五刀 · 三轴合并镜像退化逐位守护（独立入口，**不进**默认无参回归 → 九段聚合读数逐位不变）。
 	if only == "aggro_golive":
 		ok = TestSuiteAggroGolive.new().run_all() and ok

@@ -51,7 +51,9 @@ const C_PANEL_BG := Color(0.05, 0.06, 0.08, 0.82)
 ## 几何（规格 §6）：底部上方 96px、宽 720、高 40；避开 `hud.gd` 底部 44px 键位行。
 const PANEL_W := 720.0
 const PANEL_H := 40.0
-const PANEL_BOTTOM_GAP := 96.0
+## 🆕 96 → 120：核心血条在 UI 优化轮里上移了（BOTTOM_MARGIN 28 → 46），
+##    浮层底沿需同步抬升，避免与血条数字行贴死。
+const PANEL_BOTTOM_GAP := 120.0
 const SKIP_W := 96.0
 ## 🔴 字号 ≥16px 无障碍下限（S1 定稿）；本浮层取 18。
 const FONT_SIZE := 18
@@ -292,10 +294,11 @@ func _build() -> void:
 	_panel = Panel.new()
 	var sb := StyleBoxFlat.new()
 	sb.bg_color = C_PANEL_BG
-	sb.corner_radius_top_left = 6
-	sb.corner_radius_top_right = 6
-	sb.corner_radius_bottom_left = 6
-	sb.corner_radius_bottom_right = 6
+	sb.set_border_width_all(1)
+	# 🆕 补描边（art-bible §5.1「面板 = 深色底 + 亮色描边」）；原浮层只有纯色底、无边界，
+	#    压在暗战场上时边缘糊在一起。
+	sb.border_color = Color(0.243, 0.816, 0.910, 0.32)
+	sb.set_corner_radius_all(6)
 	_panel.add_theme_stylebox_override("panel", sb)
 	_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_panel)

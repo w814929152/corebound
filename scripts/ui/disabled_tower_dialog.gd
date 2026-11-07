@@ -39,6 +39,8 @@ signal tower_salvage_requested(slot: int)
 ## 弹窗关闭（「放着不管」= no-op 关闭，或全部处置完毕自动关闭）。
 signal closed()
 
+const _Style := preload("res://scripts/ui/ui_style.gd")
+
 
 var _built: bool = false
 var _on_close: Callable = Callable()
@@ -75,14 +77,19 @@ func _build() -> void:
 
 	_panel = PanelContainer.new()
 	_panel.set_anchors_preset(Control.PRESET_CENTER)
-	_panel.custom_minimum_size = Vector2(420.0, 0.0)
+	# 🔴 居中关键：锚点放中心还不够，增长方向默认 END 会让控件从中心往右下长（整体偏移半个面板）。
+	_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_panel.grow_vertical = Control.GROW_DIRECTION_BOTH
+	_panel.custom_minimum_size = Vector2(460.0, 0.0)
+	# 补面板样式（原先走 Godot 默认主题 → 无描边灰块，与战场语言断裂）
+	_panel.add_theme_stylebox_override("panel", _Style.panel(_Style.C_ALERT, 2, 20.0, 16.0))
 	add_child(_panel)
 
 	var margin := MarginContainer.new()
-	margin.add_theme_constant_override("margin_left", 20)
-	margin.add_theme_constant_override("margin_right", 20)
-	margin.add_theme_constant_override("margin_top", 18)
-	margin.add_theme_constant_override("margin_bottom", 18)
+	margin.add_theme_constant_override("margin_left", 4)
+	margin.add_theme_constant_override("margin_right", 4)
+	margin.add_theme_constant_override("margin_top", 4)
+	margin.add_theme_constant_override("margin_bottom", 4)
 	_panel.add_child(margin)
 
 	var vbox := VBoxContainer.new()
@@ -100,7 +107,8 @@ func _build() -> void:
 
 	_close_btn = Button.new()
 	_close_btn.text = "放着不管（关闭）"
-	_close_btn.custom_minimum_size = Vector2(0.0, 40.0)
+	_close_btn.custom_minimum_size = Vector2(0.0, 42.0)
+	_Style.button(_close_btn, "normal")
 	_close_btn.pressed.connect(_on_close_pressed)
 	vbox.add_child(_close_btn)
 
@@ -166,7 +174,9 @@ func _make_row(row: Dictionary) -> Control:
 
 	var repair_btn := Button.new()
 	repair_btn.text = "修复 %.0f 分" % float(repair_cost)
-	repair_btn.custom_minimum_size = Vector2(130.0, 36.0)
+	repair_btn.custom_minimum_size = Vector2(150.0, 38.0)
+	_Style.button(repair_btn, "primary")
+	repair_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	repair_btn.disabled = not can_repair
 	if not can_repair:
 		repair_btn.text = "积分不足 · 修不起"
@@ -176,7 +186,9 @@ func _make_row(row: Dictionary) -> Control:
 
 	var salvage_btn := Button.new()
 	salvage_btn.text = "被动拆除"
-	salvage_btn.custom_minimum_size = Vector2(110.0, 36.0)
+	salvage_btn.custom_minimum_size = Vector2(124.0, 38.0)
+	_Style.button(salvage_btn, "danger")
+	salvage_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	salvage_btn.pressed.connect(func() -> void:
 		tower_salvage_requested.emit(slot))
 	hbox.add_child(salvage_btn)

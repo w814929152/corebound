@@ -42,6 +42,19 @@
 - **双空间模型**：`SpaceModel` 支持 PATH（折线路径）与 RADIAL（径向）双模，默认 PATH、窗口模式注入 RADIAL，一行可回滚。
 - **渲染层只读**：UI 只读战斗快照（snapshot），零玩法写入、零新信号。
 
+## UI 样式
+
+所有玩家可见界面共用一层样式来源 `scripts/ui/ui_style.gd`（调色板 / StyleBox 工厂 / 按钮变体 / 悬停动效），
+色值逐字取自 `design/art/art-bible.md` §2.2，**不允许在各界面里二次发明颜色或控件外观**。
+
+- 按钮五变体：`primary`（金描边，主操作）/ `normal` / `ghost` / `danger` / `unavail`，
+  自带悬停抬起 1.05、按下 0.97、0.12s 弹性缓动（§5.1）。
+- 玩家可见文本最小 16px 由 `_Style.label()` 强制兜底（§9.1 P0）。
+- 结构断言 `tests/run_ui_style_asserts.gd`（46 项，进默认回归）钉住：**不得出现系统默认控件**、
+  三位商品位尺寸一致（X3）、文案零开发占位、调色板不漂移。
+
+重构背景与逐条对照见 `docs/phase6/ui-polish.md`。
+
 ## 本地运行与自测
 
 需要 Godot **4.7.2-stable**。

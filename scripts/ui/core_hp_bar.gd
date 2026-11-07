@@ -22,11 +22,15 @@ const C_TEXT := Color(0.784, 0.812, 0.855)          # #C8CFDA 数字（对比度
 const SEG_COUNT := 20          # 20 段
 const SEG_W := 28.0
 const SEG_H := 22.0
-const SEG_GAP := 3.0
-const BOTTOM_MARGIN := 28.0
+const SEG_GAP := 4.0           # 🆕 3 → 4：1600×900 缩放下 2.5px 的缝几乎看不出"分段"
+const BOTTOM_MARGIN := 46.0    # 🆕 28 → 46：原设计贴屏幕底边（1080p 下仅 18px），显得"被裁掉"
 const PAD := 10.0
+const SEG_RADIUS := 3          # 🆕 段圆角（直角方块在暗底上过于生硬）
+const CORE_CAP := "核心"       # 🆕 血条左侧说明（原来只有一串裸数字，读不出是什么）
 # P1 增强（spec §C.2）：段碎裂演出时长（满→空时短促闪白再隐没）。
 const SHATTER_SEC := 0.18
+
+const _Style := preload("res://scripts/ui/ui_style.gd")
 
 var _director: Node = null
 var _controller: Node = null   # 读 runtime.player.core_hp（单一数据源）
@@ -36,13 +40,36 @@ var _hp_max: float = 1000.0
 ##   只驱动画面衰减，不回写数据源、不参与任何判定（与 monster_layer 的 `_revive_flash` 同性质）。
 var _prev_filled: int = -1
 var _shatter: Dictionary = {}
+## 🆕 缓存 StyleBox（`_draw` 每帧跑，不得在绘制里 new）
+var _box_slot: StyleBoxFlat
+var _box_seg: StyleBoxFlat
+var _box_seg_low: StyleBoxFlat
+var _box_seg_empty: StyleBoxFlat
 
 
 func _ready() -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_build_boxes()
 	if get_tree() != null:
 		get_tree().root.size_changed.connect(_refresh_size)
+
+
+func _build_boxes() -> void:
+	# 底槽：深色底 + 亮色描边 + 圆角（§5.1「面板 = 深底 + 亮描边」）
+	_box_slot = _Style.panel(Color(C_BORDER.r, C_BORDER.g, C_BORDER.b, 0.75), 2, 0.0, 0.0)
+	_box_slot.bg_color = C_BG
+	_box_slot.set_corner_radius_all(SEG_RADIUS + 4)
+	_box_seg = _seg_box(C_FILL)
+	_box_seg_low = _seg_box(C_FILL_LOW)
+	_box_seg_empty = _seg_box(Color(C_FILL.r, C_FILL.g, C_FILL.b, 0.16))
+
+
+func _seg_box(col: Color) -> StyleBoxFlat:
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = col
+	sb.set_corner_radius_all(SEG_RADIUS)
+	return sb
 
 
 func _refresh_size() -> void:
@@ -120,21 +147,26 @@ func _draw() -> void:
 	var x0 := (float(vs.x) - total_w) * 0.5
 	var y0 := float(vs.y) - BOTTOM_MARGIN - SEG_H
 
-	# 底槽（深色 + 亮色描边，§5.1）
+	# 底槽（深色 + 亮色描边 + 圆角，§5.1）
 	var slot := Rect2(x0 - PAD, y0 - PAD, total_w + 2.0 * PAD, SEG_H + 2.0 * PAD)
-	draw_rect(slot, C_BG)
-	draw_rect(slot, C_BORDER, false, 3.0, true)
+	if _box_slot != null:
+		draw_style_box(_box_slot, slot)
 
 	# 分段
 	var frac := clampf(_hp / maxf(1.0, _hp_max), 0.0, 1.0)
 	var filled := int(ceil(frac * float(SEG_COUNT)))
-	var col := C_FILL_LOW if frac <= 0.25 else C_FILL
+	var seg_box := _box_seg_low if frac <= 0.25 else _box_seg
 	for i in SEG_COUNT:
 		var r := Rect2(x0 + float(i) * (SEG_W + SEG_GAP), y0, SEG_W, SEG_H)
 		if i < filled:
-			draw_rect(r, col)
+			if seg_box != null:
+				draw_style_box(seg_box, r)
+			else:
+				draw_rect(r, C_FILL_LOW if frac <= 0.25 else C_FILL)
+		elif _box_seg_empty != null:
+			draw_style_box(_box_seg_empty, r)
 		else:
-			draw_rect(r, Color(col.r, col.g, col.b, 0.16))
+			draw_rect(r, Color(C_FILL.r, C_FILL.g, C_FILL.b, 0.16))
 
 	# P1 增强：段碎裂演出 —— 由满→空的段短促闪白（#FFFFFF）再隐没（不参与玩法）。
 	for i in _shatter:
@@ -143,15 +175,20 @@ func _draw() -> void:
 		var sp := clampf(float(_shatter[i]) / SHATTER_SEC, 0.0, 1.0)
 		var grow := (1.0 - sp) * SEG_GAP * 1.5
 		var sr := Rect2(x0 + float(i) * (SEG_W + SEG_GAP), y0, SEG_W, SEG_H)
-		draw_rect(Rect2(sr.position.x - grow, sr.position.y - grow,
-			sr.size.x + 2.0 * grow, sr.size.y + 2.0 * grow),
-			Color(1.0, 1.0, 1.0, 0.85 * sp))
+		var gr := Rect2(sr.position.x - grow, sr.position.y - grow,
+			sr.size.x + 2.0 * grow, sr.size.y + 2.0 * grow)
+		# 闪白用直角矩形（碎裂瞬间），避免每帧 duplicate StyleBox 产生分配
+		draw_rect(gr, Color(1.0, 1.0, 1.0, 0.85 * sp))
 
-	# 数字（L0）：720 / 1000
+	# 数字（L0）：720 / 1000 —— 🆕 字号 30 → 22，抬到血条上方留白区，不再压住条顶
 	var font := ThemeDB.fallback_font
 	if font != null:
 		var txt := "%d / %d" % [int(round(_hp)), int(round(_hp_max))]
-		var fs := 30
+		var fs := 22
 		var tw: float = font.get_string_size(txt, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
-		draw_string(font, Vector2((float(vs.x) - tw) * 0.5, y0 - 14.0),
+		draw_string(font, Vector2((float(vs.x) - tw) * 0.5, y0 - 10.0),
 			txt, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, C_TEXT)
+		# 🆕 左侧说明「核心」：右对齐贴在底槽左沿外，垂直居中于条
+		var cw: float = font.get_string_size(CORE_CAP, HORIZONTAL_ALIGNMENT_LEFT, -1, 16).x
+		draw_string(font, Vector2(x0 - PAD - 14.0 - cw, y0 + SEG_H * 0.5 + 5.0),
+			CORE_CAP, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, C_TEXT)

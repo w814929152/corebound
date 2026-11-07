@@ -19,8 +19,10 @@ extends SceneTree
 const _Cfg := preload("res://scripts/engine/mvp_config.gd")
 const _TSM := preload("res://scripts/engine/time_state_machine.gd")
 
-const SLOT_W := 150.0
-const SLOT_H := 190.0
+# UI 优化轮：商品位尺寸随卡片内容重排上调（`shop_overlay.gd` 的 `SLOT_SIZE`）。
+# 本冒烟按**像素**反查三个商品位，故必须与实现常量同步。
+const SLOT_W := 168.0
+const SLOT_H := 244.0
 
 
 class Driver extends Node:
@@ -228,7 +230,9 @@ class Driver extends Node:
 				% [i + 1, String(shop._slot_name[i].text), String(shop._slot_kind[i].text),
 				   String(shop._slot_price[i].text), str(bool(shop._slot_buy[i].disabled))])
 		_tally("商品位 1 显示真实卡名 Cannon", String(shop._slot_name[0].text) == "Cannon")
-		_tally("商品位 1 显示价格 12 分", String(shop._slot_price[0].text) == "12 分")
+		# UI 优化轮：价格文案自 S2 起带 **✓/✗ 字形冗余**（art-bible §9.2 红线1 非色彩通道），
+		# 本断言原期望 "12 分" 已与实现脱节（一直失败、且本脚本不在 CI 里，故无人发现）。
+		_tally("商品位 1 显示价格 12 分（含 ✓ 冗余）", String(shop._slot_price[0].text) == "✓ 12 分")
 		_tally("买得起 → 购买按钮可用", bool(shop._slot_buy[0].disabled) == false)
 		rt.scrap = 1.0
 		controller._emit_shop()
