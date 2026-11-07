@@ -71,7 +71,7 @@ static var all_packs_open: bool = true
 const PACKS: Array = [
 	{
 		"id": "core", "name": "泛用包", "tag_line": "物理单体 · 物理群伤 · 魔法减速 · 经济",
-		"cards": ["Arrow", "Cannon", "Frost", "Scout", "Mortar", "Foundry"],
+		"cards": ["Arrow", "Cannon", "Frost", "Scout", "Kinetic", "Foundry"],
 		"unlock_wave": 0,
 	},
 	{
@@ -81,12 +81,12 @@ const PACKS: Array = [
 	},
 	{
 		"id": "rime", "name": "霜序包", "tag_line": "冰：减速梯度 + 整备升级",
-		"cards": ["Icicle", "Drillmaster", "Glacier", "Hail", "Permafrost", "Frostbite"],
+		"cards": ["Icicle", "Drillmaster", "Glacier", "Hail", "Permafrost", "Purity"],
 		"unlock_wave": 0,
 	},
 	{
 		"id": "pierce", "name": "穿甲包", "tag_line": "远程梯度 + 阵亡升级",
-		"cards": ["Lance", "Javelin", "Martyr", "Ballista", "Sniper", "Harpoon"],
+		"cards": ["Lance", "Javelin", "Martyr", "Ballista", "Sniper", "Arcane"],
 		"unlock_wave": 6,
 	},
 	{

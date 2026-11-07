@@ -100,7 +100,8 @@ const TOWERS_EXT := {
 	# ---- 泛用包补位（快 / 远 / 经济）----
 	"Scout": {"dps": 6.0, "tag": "", "aoe": false, "slow": 0.00, "rng": 24.0,
 		"bounty_kills": 10, "bounty_scrap": 6.0},
-	"Mortar": {"dps": 9.0, "tag": "", "aoe": true, "slow": 0.10, "rng": 30.0},
+	"Kinetic": {"dps": 0.0, "tag": "", "aoe": false, "slow": 0.00, "rng": 0.0,
+		"convert": "physical"},
 	# 经济建筑（梦符祭「收益」位）：自己不攻击，每波结算时按比例补贴废料。
 	"Foundry": {"dps": 0.0, "tag": "", "aoe": false, "slow": 0.00, "rng": 0.0,
 		"income": 0.15},
@@ -114,7 +115,8 @@ const TOWERS_EXT := {
 	"Glacier": {"dps": 5.0, "tag": "frost", "aoe": false, "slow": 0.50, "rng": 18.0},
 	"Hail": {"dps": 4.0, "tag": "frost", "aoe": true, "slow": 0.25, "rng": 20.0},
 	"Permafrost": {"dps": 3.0, "tag": "frost", "aoe": true, "slow": 0.35, "rng": 22.0},
-	"Frostbite": {"dps": 7.0, "tag": "frost", "aoe": false, "slow": 0.20, "rng": 14.0, "splash": 1},
+	"Purity": {"dps": 0.0, "tag": "", "aoe": false, "slow": 0.00, "rng": 0.0,
+		"convert": "true"},
 	# ---- 电弧包补位（电：从单体到群伤）----
 	"Storm": {"dps": 7.0, "tag": "shock", "aoe": true, "slow": 0.05, "rng": 18.0, "bounce": 2},
 	"Arc": {"dps": 9.0, "tag": "shock", "aoe": true, "slow": 0.00, "rng": 17.0, "bounce": 2},
@@ -123,7 +125,8 @@ const TOWERS_EXT := {
 	# ---- 穿甲包补位（远程梯度）----
 	"Ballista": {"dps": 12.0, "tag": "pierce", "aoe": false, "slow": 0.00, "rng": 30.0, "pierce": 3},
 	"Sniper": {"dps": 10.0, "tag": "pierce", "aoe": false, "slow": 0.10, "rng": 34.0, "pierce": 2},
-	"Harpoon": {"dps": 9.0, "tag": "pierce", "aoe": false, "slow": 0.00, "rng": 15.0, "pierce": 1, "splash": 1},
+	"Arcane": {"dps": 0.0, "tag": "", "aoe": false, "slow": 0.00, "rng": 0.0,
+		"convert": "magic"},
 	# ---- 破甲包补位（削物抗光环扩展：tag=sunder 自动计入 `SUNDER_TYPES`）----
 	"Breaker": {"dps": 8.0, "tag": "sunder", "aoe": true, "slow": 0.00, "rng": 18.0},
 	"Shatter": {"dps": 7.0, "tag": "sunder", "aoe": false, "slow": 0.00, "rng": 20.0},
@@ -248,7 +251,7 @@ const EXT_WEIGHTS := {
 	"Martyr": 0.09,
 	# 🆕 卡包扩充（48 张卡 · 一卡一包）：按「越万金油越常见、越极端越稀有」排。
 	"Scout": 0.11,
-	"Mortar": 0.08,
+	"Kinetic": 0.08,
 	"Foundry": 0.07,
 	"Blaze": 0.10,
 	"Cinder": 0.10,
@@ -256,14 +259,14 @@ const EXT_WEIGHTS := {
 	"Glacier": 0.09,
 	"Hail": 0.10,
 	"Permafrost": 0.09,
-	"Frostbite": 0.11,
+	"Purity": 0.08,
 	"Storm": 0.10,
 	"Arc": 0.09,
 	"Spark": 0.11,
 	"Thunder": 0.09,
 	"Ballista": 0.08,
 	"Sniper": 0.07,
-	"Harpoon": 0.11,
+	"Arcane": 0.08,
 	"Breaker": 0.09,
 	"Shatter": 0.10,
 	"Ruin": 0.08,
@@ -388,6 +391,14 @@ static func tower_buff_aspd(ctype: String) -> float:
 	if not TOWERS_EXT.has(ctype):
 		return 0.0
 	return float(TOWERS_EXT[ctype].get("buff_aspd", 0.0))
+
+
+## 🆕 伤害类型转换：把「最近的一座塔」转成该类型（"" = 不转换）。
+##   物理 = physical / 魔法 = magic / 纯粹 = true（见 `damage_engine._apply_converters`）。
+static func tower_convert(ctype: String) -> String:
+	if not TOWERS_EXT.has(ctype):
+		return ""
+	return String(TOWERS_EXT[ctype].get("convert", ""))
 
 
 ## 🆕 赏金：存活时全队累计击杀 N 只 → 获得 X 废料（可重复触发）。

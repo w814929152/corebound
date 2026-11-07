@@ -58,6 +58,45 @@ static func tier_of(inv: float, tiers: Array) -> float:
 
 
 # ---------------------------------------------------------------------------
+#  🆕 相位塔：伤害类型转换（2026-11-07）
+# ---------------------------------------------------------------------------
+## 把「最近的一座塔」的攻击类型转成 `convert` 指定的类型（physical / magic / true）。
+##   · 距离取 `geo.slots` 的格心坐标；同距离取索引靠前的塔（确定性）；
+##   · 其它相位塔不参与转换（它们本身不攻击）；
+##   · 🔴 geo 为空时整体跳过 ⇒ 与改动前逐位一致（金标本无相位塔，也不受影响）。
+static func _apply_converters(ts: Array, eff_type: Array, geo) -> void:
+	if geo == null:
+		return
+	var slots: Array = geo.slots
+	if slots.is_empty():
+		return
+	for ci in range(ts.size()):
+		var conv := _TowerData.tower_convert(String(ts[ci].ctype))
+		if conv == "":
+			continue
+		var cslot := int(ts[ci].slot)
+		if cslot < 0 or cslot >= slots.size() or not (slots[cslot] is Vector2):
+			continue
+		var cp: Vector2 = slots[cslot]
+		var best := -1
+		var best_d := INF
+		for ti in range(ts.size()):
+			if ti == ci:
+				continue
+			if _TowerData.tower_convert(String(ts[ti].ctype)) != "":
+				continue
+			var tslot := int(ts[ti].slot)
+			if tslot < 0 or tslot >= slots.size() or not (slots[tslot] is Vector2):
+				continue
+			var d := cp.distance_to(slots[tslot] as Vector2)
+			if d < best_d:
+				best_d = d
+				best = ti
+		if best >= 0:
+			eff_type[best] = conv
+
+
+# ---------------------------------------------------------------------------
 # 主入口
 #   player: PlayerState（需 .path / .towers / .n_hist_max）
 #   cfg:    MvpConfig.cfg_of(...)
@@ -207,6 +246,13 @@ static func compute_dps(player, cfg: Dictionary, geo = null) -> Dictionary:
 
 	var decay := float(cfg["softcap_decay"])
 
+	# 🆕 有效攻击类型（2026-11-07 · 相位塔）：默认 = 塔自带类型；相位塔把**最近的塔**
+	#   转成物理 / 魔法 / 纯粹。🔴 金标本没有相位塔 → eff_type 与默认逐位相同。
+	var eff_type: Array = []
+	for _i in range(n):
+		eff_type.append(_CombatTypes.tower_dmg_type(String(ts[_i].ctype)))
+	_apply_converters(ts, eff_type, geo)
+
 	# 🆕 攻击光环（2026-11-07 · Omen 等）：全场 dps ×(1 + Σ)，封顶 0.6。
 	#   🔴 金标本的塔都不带 buff_atk → 恒 0 → 本段不影响任何既有数值（逐位不变）。
 	var atk_buff := 0.0
@@ -310,7 +356,8 @@ static func compute_dps(player, cfg: Dictionary, geo = null) -> Dictionary:
 			"disabled": bool(t.disabled),
 			# 🆕 战斗类型：本塔攻击类型标注（🔴 additive 只读键，不改 dps 值 / 口径）。
 			#   仅在 `combat_types_enabled` 时被聚合为 `dps_by_type`（见阶段 C 后）。
-			"dmg_type": _CombatTypes.tower_dmg_type(ctype),
+			#   🆕 相位塔转换后的**有效类型**（eff_type）；无相位塔时与原值逐位相同。
+			"dmg_type": String(eff_type[i]),
 		})
 
 	# -----------------------------------------------------------------------

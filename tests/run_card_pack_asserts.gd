@@ -29,6 +29,9 @@ const _ShopRuntime := preload("res://scripts/gameplay/shop_runtime.gd")
 const _ShopAI := preload("res://scripts/engine/shop_ai.gd")
 const _TD := preload("res://scripts/data/tower_data.gd")
 const _CardText := preload("res://scripts/data/card_text.gd")
+const _DE := preload("res://scripts/engine/damage_engine.gd")
+const _Cfg := preload("res://scripts/engine/mvp_config.gd")
+const _Geo6 := preload("res://scripts/geo/geo6.gd")
 const _PS := preload("res://scripts/engine/player_state.gd")
 ## 🆕 触发型建筑（登场 / 整备 / 阵亡 加等级）
 const _TowerEffects := preload("res://scripts/engine/tower_effects.gd")
@@ -100,6 +103,7 @@ func run_all() -> bool:
 	_test_k_pierce()
 	_test_l_splash()
 	_test_m_aspd()
+	_test_n_convert()
 
 	# 🔴 收尾：把静态状态还原成默认，避免污染同进程内的后续套件
 	_ShopRuntime.set_active_packs([])
@@ -253,12 +257,12 @@ func _test_d_pool() -> void:
 	_log("--- [D] 卡池 = 所选包并集（顺序 / 权重 / 总和 / 骨架卡）---")
 	_ShopRuntime.set_active_packs(["core", "cinder", "arc"])
 	var names: Array = _ShopRuntime.player_card_names()
-	# core   = [Arrow,Cannon,Frost,Scout,Mortar,Foundry]
+	# core   = [Arrow,Cannon,Frost,Scout,Kinetic,Foundry]
 	# cinder = [Ember,Maul,Vanguard,Blaze,Cinder,Pyre]
 	# arc    = [Tesla,Bolt,Storm,Arc,Spark,Thunder]
 	_eq_arr("D1 卡池顺序 = 包序 → 包内序（一卡一包，无需去重）",
 		names,
-		["Arrow", "Cannon", "Frost", "Scout", "Mortar", "Foundry",
+		["Arrow", "Cannon", "Frost", "Scout", "Kinetic", "Foundry",
 		 "Ember", "Maul", "Vanguard", "Blaze", "Cinder", "Pyre",
 		 "Tesla", "Bolt", "Storm", "Arc", "Spark", "Thunder"])
 	_eq_int("D2 卡池张数 = 3 包 × 6 张 = 18", names.size(), 18)
@@ -271,8 +275,8 @@ func _test_d_pool() -> void:
 	# 换包必须立即生效（静态缓存清理）；顺序只跟包序走，不跟"点选顺序"走
 	_ShopRuntime.set_active_packs(["pierce", "arc", "core"])
 	_eq_arr("D7 换包后卡池立即变化（按包序）", _ShopRuntime.player_card_names(),
-		["Arrow", "Cannon", "Frost", "Scout", "Mortar", "Foundry",
-		 "Lance", "Javelin", "Martyr", "Ballista", "Sniper", "Harpoon",
+		["Arrow", "Cannon", "Frost", "Scout", "Kinetic", "Foundry",
+		 "Lance", "Javelin", "Martyr", "Ballista", "Sniper", "Arcane",
 		 "Tesla", "Bolt", "Storm", "Arc", "Spark", "Thunder"])
 	# 与扩展包开关同时开：卡包模式优先，扩展包不叠加（卡包表已含全部卡）
 	_ShopRuntime.set_extended_pack(true)
@@ -564,7 +568,7 @@ func _test_k_pierce() -> void:
 	_log("--- [K] 贯穿：穿刺系子弹穿透敌人数 ---")
 	_eq_int("K1 Ballista 贯穿 3 个", _TD.tower_pierce("Ballista"), 3)
 	_eq_int("K2 Lance 贯穿 2 个", _TD.tower_pierce("Lance"), 2)
-	_eq_int("K3 Harpoon 贯穿 1 个", _TD.tower_pierce("Harpoon"), 1)
+	_eq_int("K3 Javelin 贯穿 1 个", _TD.tower_pierce("Javelin"), 1)
 	_eq_int("K4 非穿刺塔无贯穿（Arrow）", _TD.tower_pierce("Arrow"), 0)
 	_ok("K5 Ballista 卡面写明「贯穿 3 个」", _CardText.describe("Ballista").find("贯穿 3 个") >= 0)
 	_ok("K6 无贯穿塔卡面不出现「贯穿」", _CardText.describe("Arrow").find("贯穿") < 0)
@@ -597,3 +601,37 @@ func _test_m_aspd() -> void:
 			names.append(String(nm))
 	_ok("M4 Drummer 在卡包里（破甲包）", names.has("Drummer"))
 	_ok("M5 旧的 Cleave 已不存在于任何卡包", not names.has("Cleave"))
+
+# ---------------------------------------------------------------------------
+#  N 相位塔：把最近的塔转成物理 / 魔法 / 纯粹（2026-11-07）
+# ---------------------------------------------------------------------------
+func _test_n_convert() -> void:
+	_log("")
+	_log("--- [N] 相位塔：最近塔的伤害类型转换 ---")
+	_ok("N1 Kinetic 转物理", _TD.tower_convert("Kinetic") == "physical")
+	_ok("N2 Arcane 转魔法", _TD.tower_convert("Arcane") == "magic")
+	_ok("N3 Purity 转纯粹", _TD.tower_convert("Purity") == "true")
+	_ok("N4 普通塔无转换（Arrow）", _TD.tower_convert("Arrow") == "")
+	_ok("N5 Arcane 卡面写明「最近塔转魔法」", _CardText.describe("Arcane").find("最近塔转魔法") >= 0)
+
+	# 功能：Arrow（默认物理）+ Arcane → Arrow 的伤害应计入魔法池
+	var geo = _Geo6.build_by_slots(6)
+	var cfg: Dictionary = _Cfg.cfg_of("B")
+	var p = _PS.new()
+	p.path = "B"
+	p.towers = []
+	p.towers.append(_PS.make_tower(0, "Arrow", 1, {}))
+	p.towers.append(_PS.make_tower(1, "Arcane", 1, {}))
+	p.n_hist_max = 2
+	var byt: Dictionary = _DE.compute_dps(p, cfg, geo).get("dps_by_type", {})
+	_ok("N6 转换后物理池归零", absf(float(byt.get("physical", 0.0))) < 1e-9)
+	_ok("N7 转换后魔法池 > 0（吃 Arrow 的 dps）", float(byt.get("magic", 0.0)) > 0.0)
+
+	# 无相位塔时：Arrow 仍是物理（零扰动）
+	var p2 = _PS.new()
+	p2.path = "B"
+	p2.towers = []
+	p2.towers.append(_PS.make_tower(0, "Arrow", 1, {}))
+	p2.n_hist_max = 1
+	var byt2: Dictionary = _DE.compute_dps(p2, cfg, geo).get("dps_by_type", {})
+	_ok("N8 无相位塔时物理池 > 0", float(byt2.get("physical", 0.0)) > 0.0)

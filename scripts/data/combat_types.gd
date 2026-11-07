@@ -67,13 +67,15 @@ const TOWER_DMG_TYPE := {
 	"Void":     TRUE,     # 虚无：真实伤害第二塔（aoe，无视抗性）
 	# 🆕 卡包扩充（2026-11-07 · 48 张卡）：按 tag 归属补攻击类型，与同系主塔对齐。
 	"Blaze": PHYSICAL, "Cinder": PHYSICAL, "Pyre": PHYSICAL,
-	"Glacier": MAGIC, "Hail": MAGIC, "Permafrost": MAGIC, "Frostbite": MAGIC,
+	"Glacier": MAGIC, "Hail": MAGIC, "Permafrost": MAGIC,
 	"Storm": MAGIC, "Arc": MAGIC, "Spark": MAGIC, "Thunder": MAGIC,
 	"Breaker": PHYSICAL, "Shatter": PHYSICAL, "Ruin": PHYSICAL,
 	"Drummer": PHYSICAL, "Quake": PHYSICAL,
 	"Curse": MAGIC, "Plague": MAGIC, "Wither": MAGIC, "Omen": MAGIC,
 	"Exile": TRUE, "Null": TRUE, "Rift": TRUE, "Abyss": TRUE,
-	"Scout": PHYSICAL, "Mortar": PHYSICAL,
+	"Scout": PHYSICAL,
+	# 🆕 相位塔（伤害类型转换）：自身不攻击，类型取默认物理；转换在 damage_engine 里结算。
+	"Kinetic": PHYSICAL, "Arcane": PHYSICAL, "Purity": PHYSICAL,
 }
 
 ## 塔的攻击类型查表。未知塔兜底 = 物理（保守，且与「默认无类型影响」一致）。

@@ -76,7 +76,7 @@ const ROLE := {
 	"Martyr": "阵亡：全场 +1 级",
 	# ---- 🆕 卡包扩充（2026-11-07 · 48 张卡）----
 	"Scout": "击杀赏金",
-	"Mortar": "超远程溅射",
+	"Kinetic": "最近塔转物理",
 	"Foundry": "经济：每波产废料",
 	"Blaze": "近距持续灼烧",
 	"Cinder": "单体点火",
@@ -84,14 +84,14 @@ const ROLE := {
 	"Glacier": "强减速",
 	"Hail": "范围减速",
 	"Permafrost": "持续减速",
-	"Frostbite": "减速 + 单体",
+	"Purity": "最近塔转纯粹",
 	"Storm": "范围电击",
 	"Arc": "群伤：电弧",
 	"Spark": "快速单体",
 	"Thunder": "高伤单体",
 	"Ballista": "超远程单体",
 	"Sniper": "最远射程",
-	"Harpoon": "近身穿刺",
+	"Arcane": "最近塔转魔法",
 	"Breaker": "削物抗：群伤",
 	"Shatter": "削物抗：单体",
 	"Ruin": "削物抗：重击",
@@ -274,6 +274,9 @@ static func describe(nm: String) -> String:
 	if _TD.tower_bounty_kills(nm) > 0:
 		return "%s\n%s\n每 %d 杀 +%d 废料" % [
 			r, stat_line(nm), _TD.tower_bounty_kills(nm), int(_TD.tower_bounty_scrap(nm))]
+	# 🆕 相位塔：不攻击，只把最近的塔转成指定伤害类型。
+	if _TD.tower_convert(nm) != "":
+		return "%s\n不攻击 · 占塔位\n最近 1 座塔" % r
 	# 🆕 溅射：命中后波及周围 N 个敌人（优先于弹射/贯穿显示 —— 它是最强的范围加成）。
 	if _TD.tower_splash(nm) > 0:
 		return "%s\n%s\n溅射 %d 个" % [r, stat_line(nm), _TD.tower_splash(nm)]
