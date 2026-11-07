@@ -112,9 +112,22 @@ const SITES: Array = [
 ]
 
 ## 格心 → 阵地 id 的缓存（纯函数结果，只读；`static var` 只在这里当 memo 用）。
+##   🆕 换图时按 `active_map_id` 重建（缓存签名含 map_id，见 `site_index()`）。
 static var _cell_site: Dictionary = {}
+static var _cell_site_map: String = ""
 
 const _SQRT3 := 1.7320508075688772
+
+
+## 🆕 活动阵地表（默认 = const SITES；切图 = 变体表，`sites` 为 null 时复用基准）。
+static func active_sites() -> Array:
+	var mid: String = _SpaceModel.active_map_id
+	if mid == "tri-fissure":
+		return SITES
+	var s: Array = _SpaceModel._MapVariants.sites(mid)
+	if s == null or s.is_empty():
+		return SITES
+	return s
 
 
 ## 战场核心（径向模式的几何中心）。网格以它为原点对齐 → 左右上下对称。
@@ -192,7 +205,7 @@ static func site_id_of(p: Vector2) -> String:
 ## 阵地 id → 该阵地的格心世界坐标（按表内顺序）。
 static func site_cells(id: String) -> Array:
 	var out: Array = []
-	for s in SITES:
+	for s in active_sites():
 		if String(s["id"]) != id:
 			continue
 		for c in s["cells"]:
@@ -209,20 +222,22 @@ static func site_anchor(id: String) -> Vector2:
 ## 全部阵地格心（世界坐标，17 个；布局关闭时返回空数组）。
 static func site_points() -> Array:
 	var out: Array = []
-	for s in SITES:
+	for s in active_sites():
 		for c in s["cells"]:
 			out.append(cell(c.x, c.y))
 	return out
 
 
-## 格心 → 阵地 id 索引（惰性构建一次；`SITES` 是常量表，索引不会变）。
+## 格心 → 阵地 id 索引（惰性构建一次；按 `active_map_id` 签名，换图自动重建）。
 static func site_index() -> Dictionary:
-	if not _cell_site.is_empty():
-		return _cell_site
-	for s in SITES:
-		var id := String(s["id"])
-		for c in s["cells"]:
-			_cell_site[c] = id
+	var mid: String = _SpaceModel.active_map_id
+	if _cell_site_map != mid:
+		_cell_site_map = mid
+		_cell_site = {}
+		for s in active_sites():
+			var id := String(s["id"])
+			for c in s["cells"]:
+				_cell_site[c] = id
 	return _cell_site
 
 
@@ -299,7 +314,7 @@ static func _site_edges() -> PackedVector2Array:
 	var out := PackedVector2Array()
 	var seen := {}
 	var c := core()
-	for s in SITES:
+	for s in active_sites():
 		for k in s["cells"]:
 			var cc := cell(k.x, k.y)
 			var cs := corners(cc)

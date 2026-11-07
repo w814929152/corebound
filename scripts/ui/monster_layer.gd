@@ -174,6 +174,7 @@ var _env_t: float = 1.0
 ## 🟠 T-P6-07 C3 几何缓存（静态径向几何按 `(c.x, c.y, sc)` 缓存为折线点；仅在签名变化时重建；`c` 含「视口 × 抽屉」信息、`sc` 覆盖 `rs`）。
 ##   🔴 纯演出/几何缓存，无玩法含义（与 `_vfx_t` 同性质）。
 var _geo_sig: Vector3 = Vector3(-1.0, -1.0, -1.0)   # (c.x, c.y, sc) 签名
+var _geo_map_sig: String = ""                        # 🆕 活动地图 id（换图重建缓存）
 var _geo: Dictionary = {}
 
 ## 🆕 自由摆放：网格线段缓存（世界坐标，构建一次重复用）。
@@ -1088,7 +1089,7 @@ func _draw_map_layer(sc: float, c: Vector2, g: Dictionary) -> void:
 	var dirt := Color(P_ENEMY.r, P_ENEMY.g, P_ENEMY.b, 0.085)
 	var post := Color(P_ENEMY.r, P_ENEMY.g, P_ENEMY.b, 0.32)
 	var rs := float(_SpaceModel.SPAWN_RADIUS)
-	for arc in _SpaceModel.SPAWN_ARCS:
+	for arc in _SpaceModel.active_spawn_arcs():
 		var a0 := deg_to_rad(float(arc["a0"]))
 		var a1 := deg_to_rad(float(arc["a1"]))
 		draw_arc(c, (rs - 3.0) * sc, a0, a1,
@@ -1131,9 +1132,13 @@ func _sector_poly(c: Vector2, r0: float, r1: float, a0: float, a1: float, seg: i
 ##   放射刻度 / 出生环 / 方位刻度）**错位整局**。⇒ 键改 `(c.x, c.y, sc)`：`c` 已含视口 + 抽屉信息，
 ##   `sc` 覆盖 `rs`。守卫见 `tests/run_vfx_cache_guard.gd`（已入 `run_tests -- radial8`）。
 func _radial_geo(sc: float, c: Vector2, rs: float) -> Dictionary:
+	# 🆕 换图：缓存签名加入 active_map_id —— 地图几何由 (c, sc, map_id) 完全决定，
+	#    换图不重建缓存会让岩脊/阵地继续画上一张图（错位整局）。
 	var sig := Vector3(c.x, c.y, sc)
-	if sig != _geo_sig:
+	var map_sig: String = _SpaceModel.active_map_id
+	if sig != _geo_sig or map_sig != _geo_map_sig:
 		_geo_sig = sig
+		_geo_map_sig = map_sig
 		var rings: Array = []
 		for ru in CONCENTRIC_U:
 			rings.append(_circle_pts(c, float(ru) * sc, 128))
@@ -1149,13 +1154,13 @@ func _radial_geo(sc: float, c: Vector2, rs: float) -> Dictionary:
 		var ridges: Array = []
 		var pads: Array = []
 		if _SpaceModel.layout_enabled:
-			for rg in _SpaceModel.RIDGES:
+			for rg in _SpaceModel.active_ridges():
 				var vpad := float(rg.get("pad", 0.0))
 				ridges.append(_sector_poly(c, float(rg["r0"]) * sc, float(rg["r1"]) * sc,
 					deg_to_rad(float(rg["a0"]) + vpad), deg_to_rad(float(rg["a1"]) - vpad), 12))
 			var ox := c.x - _SpaceModel.RADIAL_CORE.x * sc
 			var oy := c.y - _SpaceModel.RADIAL_CORE.y * sc
-			for s in _BuildGrid.SITES:
+			for s in _BuildGrid.active_sites():
 				for k in s["cells"]:
 					var poly := PackedVector2Array()
 					for v in _BuildGrid.corners(_BuildGrid.cell(k.x, k.y)):
@@ -1489,6 +1494,35 @@ func _draw_radial_tower_glyph(c: Vector2, R: float, ctype: String, sc: float) ->
 		"Tesla":
 			n = 7
 			rot = -PI * 0.5       # 七边形
+		# 🆕 破甲塔（Sunder / Hex）：继续按边数区分（5/7 → 8/9），八/九边形。
+		#   与 Lance/Tesla 同族处理：只动内芯徽记顶点数，外框 8 重对称不动。
+		"Sunder":
+			n = 8
+			rot = PI * 0.125      # 八边形（顶点朝上）
+		"Hex":
+			n = 9
+			rot = -PI * 0.5       # 九边形（顶点朝上）
+		# 🆕 流派第二塔（card-packs v0.2）：继续按边数区分（10~15 边），
+		#   与同 tag 主塔「同族但可辨」——第二塔边数 = 主塔边数 + 7（拉开间距避免混淆）。
+		#   🔴 只动内芯徽记顶点数，外框 8 重对称一字未动（art-bible §3.1 红线）。
+		"Ember":
+			n = 10
+			rot = PI * 0.1        # 十边形（火族，近 Cannon 菱形）
+		"Icicle":
+			n = 11
+			rot = -PI * 0.5       # 十一边形（冰族，近 Frost 六边形）
+		"Javelin":
+			n = 12
+			rot = -PI * 0.5       # 十二边形（穿甲族，近 Lance 五边形）
+		"Bolt":
+			n = 13
+			rot = -PI * 0.5       # 十三边形（电族，近 Tesla 七边形）
+		"Maul":
+			n = 14
+			rot = PI * 0.125      # 十四边形（破甲族，近 Sunder 八边形）
+		"Rune":
+			n = 15
+			rot = -PI * 0.5       # 十五边形（咒术族，近 Hex 九边形）
 	# 亮内形 + 极深描边（自带边界，抗左上高光干扰）。纯几何、无随机、帧间稳定。
 	# 🟠 0.31R（≈+19% vs 改前 0.26R）——见上「选项 A」说明。
 	var pts := _ngon(c, R * 0.31, n, rot)

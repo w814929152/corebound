@@ -96,6 +96,53 @@ const OPEN_DEG: float = 320.0
 
 
 # ---------------------------------------------------------------------------
+#  活动地图选择器（🆕 关卡推进 · 运行时换图）
+# ---------------------------------------------------------------------------
+## 🔴 「换表不换引擎」落地：三张 const 表仍是基准（"tri-fissure"），本选择器在
+##    `map_theta_deg` / `is_ridge_deg` 里**按需**把「活动表」替换为变体表。
+##    · 默认 `active_map_id == "tri-fissure"` → 访问器返回 const 表，**逐位等价**（零扰动）；
+##    · 切到其他 id → 从 `MapVariants`（`scripts/data/map_variants.gd`）取对应表；
+##    · 未知 id / 空 → 回落 "tri-fissure"（const 表）。
+## 🔴 金标本铁律：`active_map_id` 只在 `RADIAL + layout_enabled` 下才被消费，
+##    PATH 模式 / 布局关闭时一行不受影响；测试用完须设回 "tri-fissure"。
+static var active_map_id: String = "tri-fissure"
+
+const _MapVariants := preload("res://scripts/data/map_variants.gd")
+
+
+## 设置活动地图（关卡系统在开局前注入；未知 id 自动回落 "tri-fissure"）。
+static func set_active_map(map_id: String) -> void:
+	if _MapVariants.exists(map_id):
+		active_map_id = map_id
+	else:
+		active_map_id = "tri-fissure"
+
+
+## 活动岩脊表（默认 = const RIDGES，切图 = 变体表）。
+static func active_ridges() -> Array:
+	if active_map_id == "tri-fissure":
+		return RIDGES
+	var r: Array = _MapVariants.ridges(active_map_id)
+	return r if not r.is_empty() else RIDGES
+
+
+## 活动出怪口表（默认 = const SPAWN_ARCS）。
+static func active_spawn_arcs() -> Array:
+	if active_map_id == "tri-fissure":
+		return SPAWN_ARCS
+	var a: Array = _MapVariants.spawn_arcs(active_map_id)
+	return a if not a.is_empty() else SPAWN_ARCS
+
+
+## 活动开口总角宽（默认 = const OPEN_DEG）。
+static func active_open_deg() -> float:
+	if active_map_id == "tri-fissure":
+		return OPEN_DEG
+	var d := _MapVariants.open_deg(active_map_id)
+	return d if d > 0.0 else OPEN_DEG
+
+
+# ---------------------------------------------------------------------------
 #  派生量
 # ---------------------------------------------------------------------------
 ## v₀（u/s）= 行程 / t_reach。
@@ -146,10 +193,12 @@ static func map_theta_deg(deg_in: float) -> float:
 	var d := fposmod(deg_in, 360.0)
 	if not layout_enabled:
 		return d
+	var arcs: Array = active_spawn_arcs()
+	var open: float = active_open_deg()
 	var acc := 0.0
-	for arc in SPAWN_ARCS:
+	for arc in arcs:
 		var span_out: float = float(arc["a1"]) - float(arc["a0"])
-		var span_in: float = span_out * 360.0 / OPEN_DEG
+		var span_in: float = span_out * 360.0 / open
 		# 🔴 `<=` 而不是 `<`：段边界（128.25° / 229.5°）必须归**前一段的终点**。
 		#   否则输入恰好等于边界时会跳到下一口的起点（150 → 164），
 		#   `G` 在那里多出一个 14° 的台阶 —— 怪物会在一条看不见的线上成排断开。
@@ -158,7 +207,7 @@ static func map_theta_deg(deg_in: float) -> float:
 			return fposmod(float(arc["a0"]) + t * span_out, 360.0)
 		acc += span_in
 	# 浮点兜底：落在最后一段末端（d 极接近 360）→ 归到末段终点（= 18°，接 G1）。
-	var last: Dictionary = SPAWN_ARCS[SPAWN_ARCS.size() - 1]
+	var last: Dictionary = arcs[arcs.size() - 1]
 	return fposmod(float(last["a1"]), 360.0)
 
 
@@ -166,7 +215,7 @@ static func map_theta_deg(deg_in: float) -> float:
 ##   供断言 / 调试用；运行时不做角度判定（映射本身已保证不出脊）。
 static func is_ridge_deg(deg_in: float) -> bool:
 	var d := fposmod(deg_in, 360.0)
-	for rg in RIDGES:
+	for rg in active_ridges():
 		if d > float(rg["a0"]) and d < float(rg["a1"]):
 			return true
 	return false
