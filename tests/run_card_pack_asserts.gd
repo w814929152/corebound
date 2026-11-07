@@ -1,4 +1,4 @@
-﻿extends RefCounted
+extends RefCounted
 ##
 ## headless 断言 —— 卡包（Card Pack）· 分池 / 选包 / 解锁 / 发牌
 ##
@@ -28,6 +28,7 @@ const _RunMeta := preload("res://scripts/gameplay/run_meta.gd")
 const _ShopRuntime := preload("res://scripts/gameplay/shop_runtime.gd")
 const _ShopAI := preload("res://scripts/engine/shop_ai.gd")
 const _TD := preload("res://scripts/data/tower_data.gd")
+const _CardText := preload("res://scripts/data/card_text.gd")
 const _PS := preload("res://scripts/engine/player_state.gd")
 ## 🆕 触发型建筑（登场 / 整备 / 阵亡 加等级）
 const _TowerEffects := preload("res://scripts/engine/tower_effects.gd")
@@ -94,6 +95,8 @@ func run_all() -> bool:
 	_test_f_deal()
 	_test_g_ui()
 	_test_h_triggers()
+	_test_i_bounty()
+	_test_j_bounce()
 
 	# 🔴 收尾：把静态状态还原成默认，避免污染同进程内的后续套件
 	_ShopRuntime.set_active_packs([])
@@ -463,10 +466,12 @@ func _test_g_ui() -> void:
 #  H 触发型建筑：登场 / 整备 / 阵亡 加等级（2026-11-07）
 # ---------------------------------------------------------------------------
 ## 🔴 用户口径：「类似塔的效果 —— 回合开始时 / 防御塔上场时 / 防御塔死亡时增加等级」。
-##   本段钉住三件事：①三种时机各自触发；②只影响该影响的塔；③等级封顶 3。
+##   本段钉住四件事：①三种时机各自触发；②只影响该影响的塔；③等级封顶 8；
+##   ④上限常量为 8（形态满级 / Focus 预热满额同档）。
 func _test_h_triggers() -> void:
 	_log("")
-	_log("--- [H] 触发型建筑：登场 / 整备 / 阵亡 加等级（封顶 3）---")
+	_log("--- [H] 触发型建筑：登场 / 整备 / 阵亡 加等级（封顶 8）---")
+	_eq_int("H0 触发升级上限 = 8（形态满级）", _TowerEffects.LEVEL_CAP, 8)
 
 	var p = _PS.new()
 	p.path = "B"
@@ -484,13 +489,19 @@ func _test_h_triggers() -> void:
 	# ② 整备：每波开始全场 +1
 	var n2 := _TowerEffects.apply_trigger(p, "prepare")
 	_eq_int("H4 整备触发全场 3 座", n2, 3)
-	_eq_int("H5 整备后先锋封顶 3 级", int(p.towers[0].h), 3)
+	_eq_int("H5 整备后先锋升到 3 级", int(p.towers[0].h), 3)
 	_eq_int("H6 整备后箭塔 2 级", int(p.towers[1].h), 2)
 
-	# ③ 封顶：再来一次只升还没到 3 的
+	# ③ 封顶：继续整备到 8 级，再触发不再升
 	var n3 := _TowerEffects.apply_trigger(p, "prepare")
-	_eq_int("H7 封顶后只升未满级的 2 座", n3, 2)
-	_eq_int("H8 箭塔升到 3 级后停住", int(p.towers[1].h), 3)
+	_eq_int("H7 第二次整备全场 3 座都升", n3, 3)
+	_eq_int("H8 箭塔升到 3 级", int(p.towers[1].h), 3)
+	var guard := 0
+	while _TowerEffects.apply_trigger(p, "prepare") > 0 and guard < 64:
+		guard += 1
+	_eq_int("H9 先锋封顶 8 级", int(p.towers[0].h), 8)
+	_eq_int("H10 箭塔封顶 8 级", int(p.towers[1].h), 8)
+	_eq_int("H11 封顶后再整备 0 座变化", _TowerEffects.apply_trigger(p, "prepare"), 0)
 
 	# ④ 阵亡：只升其它塔，死者自己不吃
 	var p2 = _PS.new()
@@ -499,6 +510,45 @@ func _test_h_triggers() -> void:
 	p2.towers.append(_PS.make_tower(0, "Martyr", 1, {}))
 	p2.towers.append(_PS.make_tower(1, "Arrow", 1, {}))
 	var n4 := _TowerEffects.apply_trigger(p2, "death", {"tower": p2.towers[0]})
-	_eq_int("H9 阵亡触发 1 座其它塔", n4, 1)
-	_eq_int("H10 箭塔升到 2 级", int(p2.towers[1].h), 2)
-	_eq_int("H11 阵亡的塔自身不加级", int(p2.towers[0].h), 1)
+	_eq_int("H12 阵亡触发 1 座其它塔", n4, 1)
+	_eq_int("H13 箭塔升到 2 级", int(p2.towers[1].h), 2)
+	_eq_int("H14 阵亡的塔自身不加级", int(p2.towers[0].h), 1)
+
+# ---------------------------------------------------------------------------
+#  I 赏金塔：存活时全队累计击杀到阈值 → 发废料（2026-11-07）
+# ---------------------------------------------------------------------------
+func _test_i_bounty() -> void:
+	_log("")
+	_log("--- [I] 赏金塔：存活时全队累计击杀 → 发废料 ---")
+	var p = _PS.new()
+	p.path = "B"
+	p.towers = []
+	p.towers.append(_PS.make_tower(0, "Scout", 1, {}))
+	p.towers.append(_PS.make_tower(1, "Arrow", 1, {}))
+	_eq_int("I1 起始赏金 0", int(p.bounty_scrap), 0)
+	for _i in range(9):
+		_TowerEffects.on_kill(p)
+	_eq_int("I2 9 杀未达阈值（10）", int(p.bounty_scrap), 0)
+	_TowerEffects.on_kill(p)
+	_eq_int("I3 第 10 杀发 6 废料", int(p.bounty_scrap), 6)
+	for _i in range(10):
+		_TowerEffects.on_kill(p)
+	_eq_int("I4 再 10 杀再发一次（累计 12）", int(p.bounty_scrap), 12)
+	p.towers[0].disabled = true
+	var before := float(p.bounty_scrap)
+	for _i in range(20):
+		_TowerEffects.on_kill(p)
+	_eq_int("I5 赏金塔阵亡后不再产出", int(p.bounty_scrap), int(before))
+
+# ---------------------------------------------------------------------------
+#  J 弹射：子弹跳数 + 等效输出倍率（2026-11-07）
+# ---------------------------------------------------------------------------
+func _test_j_bounce() -> void:
+	_log("")
+	_log("--- [J] 弹射：电弧系带跳弹次数，卡面写明 ---")
+	_eq_int("J1 Arc 弹射 2 次", _TD.tower_bounce("Arc"), 2)
+	_eq_int("J2 Storm 弹射 2 次", _TD.tower_bounce("Storm"), 2)
+	_eq_int("J3 Tesla 弹射 1 次", _TD.tower_bounce("Tesla"), 1)
+	_eq_int("J4 非电弧塔无弹射（Arrow）", _TD.tower_bounce("Arrow"), 0)
+	_ok("J5 Arc 卡面写明「弹射 2 次」", _CardText.describe("Arc").find("弹射 2 次") >= 0)
+	_ok("J6 无弹射塔卡面不出现「弹射」", _CardText.describe("Arrow").find("弹射") < 0)

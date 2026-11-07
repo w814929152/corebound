@@ -1,4 +1,4 @@
-﻿extends RefCounted
+extends RefCounted
 ##
 ## 卡面文案表 —— 「这张卡到底干什么」（纯文案层 / **只读**数值 SSOT）
 ## ---------------------------------------------------------------------------
@@ -75,7 +75,7 @@ const ROLE := {
 	"Drillmaster": "整备：全场 +1 级",
 	"Martyr": "阵亡：全场 +1 级",
 	# ---- 🆕 卡包扩充（2026-11-07 · 48 张卡）----
-	"Scout": "快速单体",
+	"Scout": "击杀赏金",
 	"Mortar": "超远程溅射",
 	"Foundry": "经济：每波产废料",
 	"Blaze": "近距持续灼烧",
@@ -270,6 +270,13 @@ static func describe(nm: String) -> String:
 	# 🆕 经济建筑：不攻击，每波按比例补贴废料（不能用「伤害 0 · 射程 0」那行）。
 	if _TD.tower_income(nm) > 0.0:
 		return "%s\n每波 +%d%% 废料\n占 1 个塔位" % [r, int(round(_TD.tower_income(nm) * 100.0))]
+	# 🆕 赏金建筑：存活时全队累计击杀到阈值就发废料（第 3 行写清进度口径）。
+	if _TD.tower_bounty_kills(nm) > 0:
+		return "%s\n%s\n每 %d 杀 +%d 废料" % [
+			r, stat_line(nm), _TD.tower_bounty_kills(nm), int(_TD.tower_bounty_scrap(nm))]
+	# 🆕 弹射：第 3 行写跳弹次数（替代「标记」行，因为弹跳是更关键的取舍信息）。
+	if _TD.tower_bounce(nm) > 0:
+		return "%s\n%s\n弹射 %d 次" % [r, stat_line(nm), _TD.tower_bounce(nm)]
 	if _TD.TOWERS.has(nm) or _TD.TOWERS_EXT.has(nm):
 		return "%s\n%s\n%s" % [r, stat_line(nm), mark_line(nm)]
 	if _TD.REINF.has(nm) or _TD.REINF_EXT.has(nm) or _TD.REINF_EXT2.has(nm):

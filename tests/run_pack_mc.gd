@@ -1,4 +1,4 @@
-﻿extends SceneTree
+extends SceneTree
 ##
 ## 卡包口径 MC —— 48 张卡 / 8 包 / 每局任选 3 包（2026-11-07）
 ## ---------------------------------------------------------------------------
@@ -138,12 +138,17 @@ func _run_once(cfg: Dictionary, geo, combo: Array, seed: int) -> Dictionary:
 	var scrap := 0.0
 	var cap := int(cfg.get("tower_cap", 6))
 	for w in range(1, W_MAX + 1):
-		# 🆕 实机「整备」（每波开始全场 +1 级，封顶 3）：批处理镜像没有这个钩子，这里补上，
+		# 🆕 实机「整备」（每波开始全场 +1 级，封顶 8）：批处理镜像没有这个钩子，这里补上，
 		#    让「Drillmaster 包」的读数不至于被系统性低估。
 		_TowerEffects.apply_trigger(player, "prepare")
 		var res: Dictionary = _WaveSimProto.simulate_wave_proto(player, w, cfg, geo, true, true)
 		core -= float(res["core_damage"])
 		scrap += float(res["scrap_earned"])
+		# 🆕 赏金 / 击杀升级：按本波击杀数补跑一次 on_kill（与实机同口径）
+		for _k in range(int(res["kills"])):
+			_TowerEffects.on_kill(player)
+		scrap += float(player.bounty_scrap)
+		player.bounty_scrap = 0.0
 		if core <= 0.0:
 			return {"won": 0, "wave": w}
 		scrap = _spend(player, cfg, geo, pool, scrap, cap)

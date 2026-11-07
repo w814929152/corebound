@@ -13,7 +13,8 @@ extends RefCounted
 ## 🔴 等级写在哪：直接改 `player.towers[i].h`（与合成 / 强化层同一字段），
 ##   因此伤害（`h^0.6`）、塔 HP（`h^0.6`）、共鸣门槛（h≥3）全部自动跟随。
 ##
-## 🔴 封顶 `LEVEL_CAP = 3`：触发只把塔往上涨到 3 级，不会无限滚雪球。
+## 🔴 封顶 `LEVEL_CAP = 8`：触发只把塔往上涨到 8 级（= 形态满级 / Focus 预热满额），
+##   不会无限滚雪球。🆕 2026-11-07：3 → 8（用户口径「增加塔的等级上限」）。
 ##
 ## 🔴 为什么死亡触发**当波不生效**：`damage_engine` 的 dps 在波首算死（battle 循环
 ##   等价性的前提，见 `wave_director` 文件头）。阵亡加成写进 h → 下一波 dps 才读到。
@@ -28,7 +29,9 @@ extends RefCounted
 const _TD := preload("res://scripts/data/tower_data.gd")
 
 ## 触发加等级的封顶（塔等级上限）。
-const LEVEL_CAP := 3
+##   🔴 8 = 形态满级（`monster_layer` h≥8 外环）/ `Focus` 预热满额（h/8）同档；
+##      合成升级（同格同名再落）**不受此限**，仍无硬上限 —— 本常量只封「触发加等级」。
+const LEVEL_CAP := 8
 
 
 ## 结算一次触发。`trigger` ∈ {enter, prepare, death}。
@@ -62,7 +65,7 @@ static func apply_trigger(player, trigger: String, ctx: Dictionary = {}) -> int:
 	return changed
 
 
-## 给单座塔加等级（封顶 LEVEL_CAP；Disabled 塔不吃加成）。
+## 给单座塔加等级（封顶 LEVEL_CAP = 8；Disabled 塔不吃加成）。
 static func _add_level(t, lv: int) -> int:
 	if t == null or lv <= 0:
 		return 0
@@ -129,7 +132,7 @@ static func regen(player, dt: float) -> void:
 		t.hp = minf(float(t.hp_max), float(t.hp) + heal * dt)
 
 
-## 击杀升级：任意怪物被击杀 → 带 `on_kill_lv` 的塔 +1 级（封顶 LEVEL_CAP）。
+## 击杀升级：任意怪物被击杀 → 带 `on_kill_lv` 的塔 +1 级（封顶 LEVEL_CAP = 8）。
 static func on_kill(player) -> int:
 	if player == null:
 		return 0
@@ -137,4 +140,18 @@ static func on_kill(player) -> int:
 	for t in player.towers:
 		if _TD.tower_on_kill_lv(String(t.ctype)):
 			n += _add_level(t, 1)
+	# 🆕 赏金（2026-11-07）：存活时全队累计击杀到 N 只 → 发 X 废料，可重复。
+	#   🔴 只能挂在玩家路线（`player.bounty_scrap` 在波末由 `grant_wave_result` 入账）；
+	#      金标本没有赏金塔 → 字段恒 0。
+	for t in player.towers:
+		if bool(t.disabled):
+			continue
+		var need := _TD.tower_bounty_kills(String(t.ctype))
+		if need <= 0:
+			continue
+		t.bounty_progress = int(t.bounty_progress) + 1
+		while int(t.bounty_progress) >= need:
+			t.bounty_progress = int(t.bounty_progress) - need
+			player.bounty_scrap = float(player.bounty_scrap) + _TD.tower_bounty_scrap(String(t.ctype))
+			n += 1
 	return n

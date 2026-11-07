@@ -33,6 +33,9 @@ class TowerState extends RefCounted:
 	##      （`shop_ai.gd apply_action`）**不读不写**此字段 → 金标本零改动、MC 判据链不受影响。
 	##   🔴 MVP 默认不触发拆除（入口置灰），本字段恒 0.0；单测里主动写入以验证结算器。
 	var invested: float = 0.0
+	## 🆕 赏金塔进度（2026-11-07）：存活时全队累计击杀到阈值就发废料。
+	##   🔴 只在玩家路线（wave_director + shop_runtime）读写；金标本零扰动。
+	var bounty_progress: int = 0
 	## 🔒 V-8 肉盾循环（`corebound-bulwark-death-cycle-v3` · 诊断字段 · 🔴 默认恒惰性）
 	##   🔴 这五个字段**只被 `wave_sim_aggro.gd` 的 V-8 分支读写**；金标本 AI（`shop_ai`）、
 	##      伤害引擎（`damage_engine`）、实时版（`wave_director`）**不读不写** → 默认零扰动。
@@ -50,6 +53,9 @@ var path: String = "B"
 var towers: Array = []        # Array[TowerState]
 var n_hist_max: int = 0       # 兜底①：本局历史最大塔数（只增不减）
 var income_mult: float = 0.0
+## 🆕 赏金结算缓存（2026-11-07）：本波内由赏金塔产出的废料，波末并入收入后清零。
+##   🔴 只有玩家路线（`wave_director` + `shop_runtime`）读写；金标本恒 0。
+var bounty_scrap: float = 0.0
 ## 🔒 T1 玩法③ 献祭 `Salvage Rite`：本局累积的 **StackCap 增益**（献祭燃料变现）。
 ##   每次献祭 `stackcap_bonus += floor(被献祭塔累计投入 / 10)`（收益 ∝ 投入 = earned，
 ##   兑现 P2；刷塔要真花钱 → 天然防刷）。`damage_engine.dps_only` 把它加到每塔 `caps`

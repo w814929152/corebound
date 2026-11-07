@@ -1,4 +1,4 @@
-﻿class_name TowerData
+class_name TowerData
 extends RefCounted
 ##
 ## 塔原型 / 强化卡 / 价格 —— 移植自 design/phase2/numeric-sim/corebound_sim_v03.py
@@ -58,7 +58,7 @@ const TOWERS_EXT := {
 	"Lance": {"dps": 11.0, "tag": "pierce", "aoe": false, "slow": 0.00, "rng": 26.0},
 	# 贴身电弧：rng 16 < Cannon 18，dps 6（全场最低），换 aoe + 0.10 减速。
 	# 定位 = 堵在暴露位的近身清场，与「肉盾流」站位天然互补。
-	"Tesla": {"dps": 6.0, "tag": "shock", "aoe": true, "slow": 0.10, "rng": 16.0},
+	"Tesla": {"dps": 6.0, "tag": "shock", "aoe": true, "slow": 0.10, "rng": 16.0, "bounce": 1},
 	# 🆕 破甲炮（2026-11-07 · combat-types GDD v0.2）：物理攻击 + 破甲光环（每座减全场物抗）。
 	# 定位 = 物攻 build 核心：自身物理直伤，光环放大所有物理塔对 Tank（物抗 0.30）的输出。
 	# dps 8 < Cannon 7? 否 —— 刻意压到 8（介于 Arrow 10 与 Cannon 7 之间），因为光环本身
@@ -85,7 +85,7 @@ const TOWERS_EXT := {
 	# 穿甲 · 第二塔：短程连射，dps 高但射程短（Lance 是远程狙击，这是近身扫射）。
 	"Javelin": {"dps": 9.0, "tag": "pierce", "aoe": false, "slow": 0.00, "rng": 17.0},
 	# 电 · 第二塔：单体高爆发（Tesla 是近身 aoe，这是单体电弧直击）。
-	"Bolt": {"dps": 8.0, "tag": "shock", "aoe": false, "slow": 0.00, "rng": 19.0},
+	"Bolt": {"dps": 8.0, "tag": "shock", "aoe": false, "slow": 0.00, "rng": 19.0, "bounce": 1},
 	# 破甲 · 第二塔：aoe 物理群伤（Sunder 是单体破甲光环，这是群体物理压制）。
 	"Maul": {"dps": 7.0, "tag": "sunder", "aoe": true, "slow": 0.00, "rng": 16.0},
 	# 咒术 · 第二塔：aoe 魔法（Hex 是单体破魔光环，这是群体魔法清场）。
@@ -98,7 +98,8 @@ const TOWERS_EXT := {
 	#   🔴 全部只进玩家路线（卡包），金标本只读 `TOWERS` → 逐位零扰动。
 	# ═══════════════════════════════════════════════════════════════════════════
 	# ---- 泛用包补位（快 / 远 / 经济）----
-	"Scout": {"dps": 6.0, "tag": "", "aoe": false, "slow": 0.00, "rng": 24.0},
+	"Scout": {"dps": 6.0, "tag": "", "aoe": false, "slow": 0.00, "rng": 24.0,
+		"bounty_kills": 10, "bounty_scrap": 6.0},
 	"Mortar": {"dps": 9.0, "tag": "", "aoe": true, "slow": 0.10, "rng": 30.0},
 	# 经济建筑（梦符祭「收益」位）：自己不攻击，每波结算时按比例补贴废料。
 	"Foundry": {"dps": 0.0, "tag": "", "aoe": false, "slow": 0.00, "rng": 0.0,
@@ -115,10 +116,10 @@ const TOWERS_EXT := {
 	"Permafrost": {"dps": 3.0, "tag": "frost", "aoe": true, "slow": 0.35, "rng": 22.0},
 	"Frostbite": {"dps": 7.0, "tag": "frost", "aoe": false, "slow": 0.20, "rng": 14.0},
 	# ---- 电弧包补位（电：从单体到群伤）----
-	"Storm": {"dps": 7.0, "tag": "shock", "aoe": true, "slow": 0.05, "rng": 18.0},
-	"Arc": {"dps": 9.0, "tag": "shock", "aoe": true, "slow": 0.00, "rng": 17.0},
-	"Spark": {"dps": 8.0, "tag": "shock", "aoe": false, "slow": 0.00, "rng": 20.0},
-	"Thunder": {"dps": 10.0, "tag": "shock", "aoe": false, "slow": 0.00, "rng": 22.0},
+	"Storm": {"dps": 7.0, "tag": "shock", "aoe": true, "slow": 0.05, "rng": 18.0, "bounce": 2},
+	"Arc": {"dps": 9.0, "tag": "shock", "aoe": true, "slow": 0.00, "rng": 17.0, "bounce": 2},
+	"Spark": {"dps": 8.0, "tag": "shock", "aoe": false, "slow": 0.00, "rng": 20.0, "bounce": 1},
+	"Thunder": {"dps": 10.0, "tag": "shock", "aoe": false, "slow": 0.00, "rng": 22.0, "bounce": 1},
 	# ---- 穿甲包补位（远程梯度）----
 	"Ballista": {"dps": 12.0, "tag": "pierce", "aoe": false, "slow": 0.00, "rng": 30.0},
 	"Sniper": {"dps": 10.0, "tag": "pierce", "aoe": false, "slow": 0.10, "rng": 34.0},
@@ -151,7 +152,7 @@ const TOWERS_EXT := {
 	#   用户口径：「类似塔的效果 —— **回合开始时** / **防御塔上场时** / **防御塔死亡时** 增加等级」。
 	#   （明确否掉两种做法：光环被动加等级、三合一升星。）
 	#   实现 = 事件触发的一次性 +等级，`effect.on` 三选一，`effect.scope` = self / all。
-	#   🔴 等级封顶 `TowerEffects.LEVEL_CAP = 3`（触发不会无限叠）。
+	#   🔴 等级封顶 `TowerEffects.LEVEL_CAP = 8`（触发不会无限叠；合成升级仍无硬上限）。
 	#   🔴 只走**玩家路线**（`wave_director` / `shop_runtime`）；金标本走 `wave_sim` 且
 	#      只买 `TOWERS` 基础塔 → 本表不进金标本 → 逐位零扰动。
 	#   🔴 死亡触发在**当波不生效**（dps 在波首已算死）→ 下一波吃到，见 `tower_effects.gd`。
@@ -353,11 +354,31 @@ static func tower_dot(ctype: String) -> float:
 	return float(TOWERS_EXT[ctype].get("dot", 0.0))
 
 
-## 🆕 击杀升级：任意怪物被击杀时，本塔 +1 级（封顶 3）。
+## 🆕 击杀升级：任意怪物被击杀时，本塔 +1 级（封顶 `TowerEffects.LEVEL_CAP` = 8）。
 static func tower_on_kill_lv(ctype: String) -> bool:
 	if not TOWERS_EXT.has(ctype):
 		return false
 	return bool(TOWERS_EXT[ctype].get("on_kill_lv", false))
+
+
+## 🆕 弹射：bullet 命中后可以继续弹跳的次数（每次 +20% 等效输出，见 damage_engine）。
+static func tower_bounce(ctype: String) -> int:
+	if not TOWERS_EXT.has(ctype):
+		return 0
+	return int(TOWERS_EXT[ctype].get("bounce", 0))
+
+
+## 🆕 赏金：存活时全队累计击杀 N 只 → 获得 X 废料（可重复触发）。
+static func tower_bounty_kills(ctype: String) -> int:
+	if not TOWERS_EXT.has(ctype):
+		return 0
+	return int(TOWERS_EXT[ctype].get("bounty_kills", 0))
+
+
+static func tower_bounty_scrap(ctype: String) -> float:
+	if not TOWERS_EXT.has(ctype):
+		return 0.0
+	return float(TOWERS_EXT[ctype].get("bounty_scrap", 0.0))
 
 
 ## 强化卡 tag 查表：先主表、再扩展表（同 `_tower_def` 的兼容策略）。

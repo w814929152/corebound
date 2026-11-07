@@ -280,6 +280,12 @@ static func compute_dps(player, cfg: Dictionary, geo = null) -> Dictionary:
 		# 🆕 攻击光环（见上；金标本恒 0）
 		if atk_buff > 0.0:
 			dps_i *= 1.0 + atk_buff
+		# 🆕 弹射（2026-11-07）：每跳 +20% 等效输出。
+		#   🔴 聚合池本来就会把溢出的伤害顺延到下一只怪 → 在批处理/实时两套口径下，
+		#      弹射等价于「一次攻击命中多只」的伤害放大。金标本的塔无 bounce → 逐位不变。
+		var _bnc := _TowerData.tower_bounce(ctype)
+		if _bnc > 0:
+			dps_i *= 1.0 + 0.20 * float(_bnc)
 		per_tower.append({
 			"base": base, "stack": stack, "syn": syn, "res": res,
 			"focus": foc, "allin": ali, "cov": cov, "dps": dps_i,

@@ -1461,7 +1461,12 @@ func grant_wave_result(res: Dictionary) -> void:
 	if player != null:
 		for t in player.towers:
 			inc += _TD.tower_income(String(t.ctype))
-	scrap += float(res["scrap_earned"]) * (1.0 + float(player.income_mult) + inc)
+	# 🆕 赏金（2026-11-07）：本波内赏金塔产出的废料在这里一次性入账，然后清零。
+	var bounty := 0.0
+	if player != null:
+		bounty = float(player.bounty_scrap)
+		player.bounty_scrap = 0.0
+	scrap += float(res["scrap_earned"]) * (1.0 + float(player.income_mult) + inc) + bounty
 
 
 # ---------------------------------------------------------------------------
