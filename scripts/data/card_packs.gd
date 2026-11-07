@@ -2,25 +2,27 @@ extends RefCounted
 ##
 ## 卡包（Card Pack）—— 玩家路线卡池的**流派编排单位**
 ## ---------------------------------------------------------------------------
-## 需求（2026-11-07 v0.2）：每个卡包 = 一条**能独立成型的完整 build**
-##   （王者万象棋 / 东方梦符祭的羁绊式编排：选包 = 选一套，而不是选几张卡名）。
-##   · v0.1（上一版）：5 包 × 2 张（塔 + 强化），每局选 3 包 = 6 张 —— 卡太少，单包不成体系。
-##   · v0.2（本版）：7 包 × 6 张，每局选 3 包 = 18 张 —— 每包含
-##      核心塔 + 第二塔 + 强化×2 + 经济 + 泛用配塔，自成一个完整流派。
+## 需求（2026-11-07 v0.3）：卡包 = 玩家路线卡池的**建筑调色板**
+##   （选包 = 选这局能造哪几座塔，而不是选几张效果卡）。
+##   · v0.1：5 包 × 2 张（塔 + 强化），选 3 包 = 6 张 —— 卡太少。
+##   · v0.2：7 包 × 6 张（塔 + 强化 + 经济），选 3 包 = 18 张 —— build 完整，但效果卡占半壁。
+##   · v0.3（本版）：8 包 × 6 张，**全部是建筑卡** —— 没有强化 / 经济 / 全局卡。
 ##
-## 🔴 为什么每包 6 张（而不是 2 张 / 4 张）：
-##   「完整 build」需要同时覆盖三阶段——开局（有塔可造）、中期（有强化可叠、第二塔可扩）、
-##   成型（有经济滚动 + 兜底站位）。6 张 = 2 塔（核心 + 第二）+ 2 强化（双叠）+ 1 经济 + 1 泛用，
-##   是最小的「自洽闭环」。少于 6 张必然缺一环，沦为「选几张卡」而不是「选一套流派」。
+## 🔴 为什么本版只收建筑：
+##   用户 2026-11-07 拍板「卡包内只有建筑卡，没有效果卡；先用建筑构建玩法，
+##   其他效果后续再加」。⇒ 玩法深度必须来自**塔的类型 / 伤害类型 / 群伤单体 / 减速削抗**，
+##   而不是从「给塔叠强化层数」里来。强化卡与经济卡的代码/数据**原样保留**
+##   （金标本 `ShopAI` 路径仍在用），只是暂时不进任何卡包 ⇒ 玩家池里抽不到。
 ##
-## 🔴 卡池稀释的对冲（实测依据，见 keyword-adaptation §0/§7.4）：
+## 🔴 建筑-only 带来的三个直接后果（都已在代码里落地，不是待办）：
+##   ① `validate()` 把「非建筑卡混进卡包」判成**结构错误**，防止效果卡被顺手加回来；
+##   ② 同一座塔**允许跨包共享**（塔是建筑类型，不是一次性卡牌），跨包重复不再报错；
+##   ③ 刷新保底的「骨架卡」= 每包**前 2 张**（流派身份塔）——整包都是塔时若全算骨架，
+##      保底永远命中 = 等于没有保底。
+##
+## 🔴 卡池稀释（实测依据，见 keyword-adaptation §0/§7.4）：
 ##   池 7→10 张（+43% 零效果白板）实测 A −8.0pp / B −11.0pp，pity 只是止损阀不是扩容许可。
-##   本版池 18 张看似翻了近 3 倍，但稀释被**三件事**对冲：
-##     ① 选包即筛池：未选的 4 包（24 张）根本不进池，池 = 3 包并集 = 18 张，
-##        且这 18 张是**同主题自洽**的（不是 18 张散卡）；
-##     ② 商店槽位随选包扩容（shop_runtime 动态 SHOP_SLOTS）：3 包时 3→4 位，
-##        命中率不因池深而崩；
-##     ③ 包内权重倾斜：经济/第二强化稀有，核心塔高频，build 骨架优先出现。
+##   本版单池 = 3 包**并集去重**后约 9~12 张（塔跨包共享 ⇒ 比 v0.2 的 18 张更窄）。
 ##
 ## 🔴 数据边界（control-manifest §5）：数值只在 `tower_data.gd` / `shop_ai.gd` 定义一次。
 ##   本文件只回答「谁和谁一包」「几包可用」「几波解锁」，**不写任何数值**；
@@ -32,8 +34,7 @@ extends RefCounted
 const _TD := preload("res://scripts/data/tower_data.gd")
 const _ShopAI := preload("res://scripts/engine/shop_ai.gd")
 
-## 🔴 每局可携带的卡包数：3 包 × 6 张 = **18 张**。
-##   （v0.1 是 3 包 × 2 张 = 6 张；本版扩容，但用「选包筛池 + 槽位扩容 + 权重倾斜」对冲稀释。）
+## 🔴 每局可携带的卡包数：3 包 × 6 张**建筑**（并集去重后约 9~12 张塔）。
 const PICKS_PER_RUN := 3
 
 ## 每包固定张数（自测断言钉死；UI 按它算「本局卡池 N 张」）。
@@ -54,69 +55,65 @@ static var all_packs_open: bool = true
 ##     🔴 用「最佳波次」而不是「通关次数」：打不过也应该有推进（campaign-progression §3
 ##        「失败即产出」）—— 否则首次通关前的内容永远看不见。
 ##
-## 每包 6 张 = 一条**能独立成型的 build 路线**（万象棋 / 梦符祭的羁绊式编排）：
-##   · [核心塔, 第二塔, 强化A, 强化B, 经济, 泛用配塔] —— 2 塔可造、2 强化可叠、1 经济滚动、1 兜底站位。
-##   · 🔴 每包 = **单一流派**（一个 tag 一条线），不是大杂烩：选包 = 选这条流派。
-##   · 🔴 泛用卡（Arrow / ScrapUp）**跨包共享**（多流派都要兜底塔 + 通用经济），
-##      流派专属卡（塔 + 强化）只在本流派包出现一次 —— 这正是「羁绊共享」的编排。
-##   · 🔴 基石包 = 「泛用 + 经济」路线（无标记塔无强化，靠经济滚雪球 + 多塔站位），
-##      是所有流派的通用起点，而非第 8 条 tag 线。
+## 每包 6 张 = 一条**能独立成型的建筑线**（2026-11-07 调整：卡包**只收建筑卡**）：
+##   · 全部 6 张都是塔：没有强化卡、没有经济卡、没有全局卡。
+##   · 🔴 选包 = 选「塔的调色板」：决定本局能造哪几座塔，打法由**塔的类型 / 伤害类型 /
+##      站位**决定，而不是靠强化卡叠数值。
+##   · 🔴 一张塔可以出现在多个包里（`is_shared_card` 对所有塔返回 true）——
+##      塔是「建筑类型」，不是「一次性卡牌」；跨包共享是刻意设计（基础塔人人可用）。
+##   · 🔴 包的身份 = **伤害构成**：物理 / 魔法 / 真实，配合单体 / 群伤 / 减速 / 削抗。
+##      tag 现在只影响 Sunder / Hex 的破抗光环（与 combat-types GDD 一致）。
+##   · ⚠️ 强化卡 / 经济卡（FireUp… / ScrapUp）**暂时退出玩家池**，效果层后续再加：
+##      代码与数据保留（金标本路径仍在用），只是不再进任何卡包。
 const PACKS: Array = [
 	{
-		"id": "core", "name": "基石包", "tag_line": "泛用主塔 · 经济滚雪球",
-		"cards": ["Arrow", "Cannon", "Frost", "ScrapUp", "FireUp", "FrostUp"],
+		"id": "core", "name": "泛用包", "tag_line": "三类型基础 · 无流派承诺",
+		"cards": ["Arrow", "Cannon", "Frost", "Lance", "Tesla", "Oblivion"],
 		"unlock_wave": 0,
 	},
 	{
-		"id": "cinder", "name": "熔炉包", "tag_line": "火：双塔灼烧 · 溅射清场",
-		"cards": ["Cannon", "Ember", "FireUp", "FireUp2", "ScrapUp", "Arrow"],
+		"id": "cinder", "name": "熔炉包", "tag_line": "物理群伤 · 破甲收尾",
+		"cards": ["Cannon", "Ember", "Maul", "Sunder", "Arrow", "Javelin"],
 		"unlock_wave": 0,
 	},
 	{
-		"id": "rime", "name": "霜序包", "tag_line": "冰：双塔减速 · 冻结控场",
-		"cards": ["Frost", "Icicle", "FrostUp", "FrostUp2", "ScrapUp", "Arrow"],
+		"id": "rime", "name": "霜序包", "tag_line": "魔法减速 · 控场清场",
+		"cards": ["Frost", "Icicle", "Tesla", "Bolt", "Hex", "Rune"],
 		"unlock_wave": 0,
 	},
 	{
-		"id": "pierce", "name": "穿甲包", "tag_line": "穿甲：远程狙击 · 近身连射",
-		"cards": ["Lance", "Javelin", "PirUp", "PirUp2", "ScrapUp", "Arrow"],
+		"id": "pierce", "name": "穿甲包", "tag_line": "远程单体 · 真实补刀",
+		"cards": ["Lance", "Javelin", "Arrow", "Cannon", "Oblivion", "Void"],
 		"unlock_wave": 6,
 	},
 	{
-		"id": "arc", "name": "电弧包", "tag_line": "电：近身溅射 · 单体爆发",
-		"cards": ["Tesla", "Bolt", "ShkUp", "ShkUp2", "ScrapUp", "Arrow"],
+		"id": "arc", "name": "电弧包", "tag_line": "近身爆发 · 群伤压制",
+		"cards": ["Tesla", "Bolt", "Ember", "Maul", "Icicle", "Frost"],
 		"unlock_wave": 12,
 	},
 	{
-		"id": "sunder", "name": "破甲包", "tag_line": "破甲：削物抗 · 物理群伤",
-		"cards": ["Sunder", "Maul", "SunUp", "SunUp2", "ScrapUp", "Arrow"],
+		"id": "sunder", "name": "破甲包", "tag_line": "削物抗 · 物理倾泻",
+		"cards": ["Sunder", "Maul", "Cannon", "Ember", "Javelin", "Hex"],
 		"unlock_wave": 16,
 	},
 	{
-		"id": "hex", "name": "咒术包", "tag_line": "咒术：削魔抗 · 魔法清场",
-		"cards": ["Hex", "Rune", "HexUp", "HexUp2", "ScrapUp", "Arrow"],
+		"id": "hex", "name": "咒术包", "tag_line": "魔法清场 · 真实收尾",
+		"cards": ["Hex", "Rune", "Frost", "Icicle", "Oblivion", "Void"],
 		"unlock_wave": 18,
 	},
 	{
-		"id": "true", "name": "湮灭包", "tag_line": "真实：无视抗性 · 克制高抗怪",
-		"cards": ["Oblivion", "Void", "TrueUp", "TrueUp2", "ScrapUp", "Arrow"],
+		"id": "true", "name": "湮灭包", "tag_line": "真实穿透 · 克制高抗",
+		"cards": ["Oblivion", "Void", "Arrow", "Frost", "Sunder", "Hex"],
 		"unlock_wave": 20,
 	},
 ]
 
 
-## 🆕 跨包共享卡（「羁绊共享」编排，万象棋/梦符祭同款）：这些卡**允许**出现在多个包里。
-##   · Arrow / ScrapUp：通用兜底塔 + 通用经济，所有流派都要。
-##   · Cannon / Frost / FireUp / FrostUp：基石包作为「双流派入门」也会带上它们，
-##     与各自专精包（cinder / rime）共享 —— 这是刻意设计（新手包 = 体验两种基础流派）。
-##   validate() 的「卡跨包重复」检查对共享卡**豁免**；流派专精塔（Lance/Tesla/Sunder/Hex
-##   及第二塔 Ember/Icicle/Javelin/Bolt/Maul/Rune）与第二强化卡仍只在本包出现。
+## 跨包共享：**所有建筑卡都可以跨包重复**（塔是建筑类型，不是一次性卡牌）。
+##   保留这个函数是为了让 `validate()` 与旧调用点的语义不变：
+##   「卡跨包重复」在建筑-only 口径下不是错误，只有「非建筑卡混进卡包」才是错误。
 static func is_shared_card(nm: String) -> bool:
-	if nm == "Arrow" or nm == "ScrapUp":
-		return true
-	if nm == "Cannon" or nm == "Frost" or nm == "FireUp" or nm == "FrostUp":
-		return true
-	return false
+	return _TD.TOWERS.has(nm) or _TD.TOWERS_EXT.has(nm)
 
 
 
@@ -199,25 +196,19 @@ static func card_weight(card: String) -> float:
 	return 0.0
 
 
-## 🆕 本局「骨架卡」= 所选包里的**流派塔 + 强化卡**（build 成型的**关键卡**）。
-##   刷新保底（`shop_runtime._apply_reroll_pity`）用这个集合判定：18 张池里，
-##   玩家刷新若 3 张里一张骨架卡都没有，就强制补一张，保证 build 骨架不被稀释淹没。
-##   🔴 排除经济卡（ScrapUp）与泛用配塔（Arrow）—— 它们不是「build 成型」的必要条件，
-##      保底它们反而会让玩家拿不到真正的流派核心（流派塔 / 强化）。
-##   🔴 派生识别（不靠固定下标）：凡查 `TOWERS` / `TOWERS_EXT` 是塔，凡查 `REINF*` 是强化。
+## 🆕 本局「骨架卡」= 所选包里每包的**前 2 张**（流派核心塔 + 第二塔）。
+##   刷新保底（`shop_runtime._apply_reroll_pity`）用这个集合判定：手动刷新若 3 张里
+##   一张骨架卡都没有，强制补一张，保证「本局主打的塔」不被共享基础塔淹没。
+##   🔴 为什么取「前 2 张」而不是全包：建筑-only 口径下整包都是塔，若全算骨架，
+##      保底永远命中 = 等于没有保底。前 2 张是包的身份卡（见 PACKS 注释）。
 static func skeleton_cards(sel: Array) -> Array:
 	var out: Array = []
 	for pid in sel:
-		for nm in cards_of(String(pid)):
-			var s := String(nm)
-			if s == "Arrow" or s == "ScrapUp":
-				continue                         # 泛用卡不算骨架（见上）
-			if _TD.TOWERS.has(s) or _TD.TOWERS_EXT.has(s):
-				if not out.has(s):
-					out.append(s)
-			elif _TD.REINF.has(s) or _TD.REINF_EXT.has(s) or _TD.REINF_EXT2.has(s):
-				if not out.has(s):
-					out.append(s)
+		var cards := cards_of(String(pid))
+		for i in mini(2, cards.size()):
+			var s := String(cards[i])
+			if not out.has(s):
+				out.append(s)
 	return out
 
 
@@ -264,12 +255,16 @@ static func is_valid_selection(sel: Array, best_wave: int) -> bool:
 # ---------------------------------------------------------------------------
 #  自检（数据表自身的结构错误 —— 由 `tests/run_card_pack_asserts.gd` §A 调用）
 # ---------------------------------------------------------------------------
-## 返回错误串数组；空 = 结构合法。检查项：
-##   ① 每包张数 = CARDS_PER_PACK；② 卡不跨包重复；③ 每张卡都能查到权重（= 不是幽灵卡）；
-##   ④ 不含 RerollD（空卡，玩家池历来排除）；⑤ 现有玩家池全集都有归属（不漏卡）；
-##   ⑥ unlock_wave 按包序单调不降（UI 的"第 N 包起解锁"读起来才顺）；
-##   ⑦ 每包至少含 1 座塔（否则整包都是"投不出去的强化"）。
-##   🆕 ⑧ 每包内强化卡的 tag 必须有对应塔（否则买了强化卡没塔可投 = 死牌）。
+## 返回错误串数组；空 = 结构合法。建筑-only 口径下的检查项：
+##   ① 每包张数 = CARDS_PER_PACK；
+##   ② 🔴 **每张卡都必须是建筑**（`TOWERS` / `TOWERS_EXT`）—— 强化卡 / 经济卡 /
+##      全局卡混进卡包直接判错（2026-11-07 拍板：卡包只收建筑）；
+##   ③ 每张卡都能查到权重（= 不是幽灵卡）；
+##   ④ 不含 RerollD（空卡，玩家池历来排除）；
+##   ⑤ 每座塔都要有包可归（否则它永远抽不到 = 死内容）；
+##   ⑥ unlock_wave 按包序单调不降（UI 的"第 N 包起解锁"读起来才顺）。
+##   🔴 跨包重复不再是错误：塔是建筑类型，同一座塔可以出现在多个包里
+##      （见 `is_shared_card()`）。
 static func validate() -> Array:
 	var errs: Array = []
 	var seen := {}
@@ -286,53 +281,22 @@ static func validate() -> Array:
 		if uw < prev_unlock:
 			errs.append("卡包 %s 的解锁波次 %d 小于前一包的 %d（应单调不降）" % [pid, uw, prev_unlock])
 		prev_unlock = maxi(prev_unlock, uw)
-		# ⑦ 每包至少 1 座塔
-		var has_tower := false
 		for nm in cards:
 			var s := String(nm)
-			if _TD.TOWERS.has(s) or _TD.TOWERS_EXT.has(s):
-				has_tower = true
 			if s == "RerollD":
 				errs.append("卡包 %s 含 RerollD（空卡，玩家池不得出现）" % pid)
-			if seen.has(s):
-				# 🆕 泛用卡（Arrow/ScrapUp）允许跨包共享（「羁绊共享」编排）；
-				#    流派专属卡跨包重复才是错误。
-				if not is_shared_card(s):
-					errs.append("卡 %s 同时在 %s 与 %s" % [s, String(seen[s]), pid])
+				continue
+			if not (_TD.TOWERS.has(s) or _TD.TOWERS_EXT.has(s)):
+				errs.append("卡包 %s 的 %s 不是建筑卡（卡包只收建筑）" % [pid, s])
 				continue
 			seen[s] = pid
 			if card_weight(s) <= 0.0:
-				errs.append("卡 %s 查不到权重（主表与扩展表都没有）" % s)
-		if not has_tower:
-			errs.append("卡包 %s 不含任何塔（整包都是投不出去的强化）" % pid)
-		# ⑧ 包内强化卡的 tag 必须有对应塔
-		for nm in cards:
-			var s := String(nm)
-			if _TD.REINF.has(s) or _TD.REINF_EXT.has(s) or _TD.REINF_EXT2.has(s):
-				var tg := _TD.reinf_tag(s)
-				var host_found := false
-				for nm2 in cards:
-					var s2 := String(nm2)
-					if (_TD.TOWERS.has(s2) or _TD.TOWERS_EXT.has(s2)) \
-							and _TD.tower_tag(s2) == tg:
-						host_found = true
-						break
-				if not host_found:
-					errs.append("卡包 %s 的强化卡 %s（tag %s）没有同包塔可投" % [pid, s, tg])
-	# ⑤ 玩家池全集（排除 RerollD）必须全部有包可归
-	for nm in _ShopAI.CARD_NAMES:
-		var s := String(nm)
-		if s == "RerollD":
-			continue
-		if not seen.has(s):
-			errs.append("玩家池的卡 %s 不在任何卡包里（会变成永远抽不到）" % s)
-	for nm in _TD.EXT_WEIGHTS.keys():
+				errs.append("塔 %s 查不到权重（主表与扩展表都没有）" % s)
+	# ⑤ 每座塔都要有包可归
+	for nm in _TD.TOWERS.keys():
 		if not seen.has(String(nm)):
-			errs.append("扩展卡 %s 不在任何卡包里" % String(nm))
+			errs.append("塔 %s 不在任何卡包里（会变成永远抽不到）" % String(nm))
 	for nm in _TD.TOWERS_EXT.keys():
 		if not seen.has(String(nm)):
 			errs.append("扩展塔 %s 不在任何卡包里" % String(nm))
-	for nm in _TD.REINF_EXT2.keys():
-		if not seen.has(String(nm)):
-			errs.append("第二强化卡 %s 不在任何卡包里" % String(nm))
 	return errs

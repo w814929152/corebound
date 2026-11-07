@@ -80,7 +80,7 @@ func run_all() -> bool:
 	_log("")
 	_log("=".repeat(78))
 	_log("卡包（Card Pack）· 分池 / 选包 / 解锁 / 发牌")
-	_log("基准：每局 3 包 = 6 张（分池前玩家池张数）· 解锁按最佳波次")
+	_log("基准：每包 6 张建筑卡 · 每局 3 包 · 解锁按最佳波次")
 	_log("=".repeat(78))
 
 	_test_a_table()
@@ -112,26 +112,33 @@ func run_all() -> bool:
 # ---------------------------------------------------------------------------
 func _test_a_table() -> void:
 	_log("")
-	_log("--- [A] 数据表：7 包 × 6 张，无空卡 / 无漏卡 / 强化有宿主 ---")
+	_log("--- [A] 数据表：8 包 × 6 张**建筑卡**，无空卡 / 无漏塔 / 无效果卡 ---")
 	var errs := _Packs.validate()
 	_ok("A1 validate() 无错误", errs.is_empty(), str(errs))
 	_eq_int("A2 卡包数", _Packs.PACKS.size(), 8)
 	_eq_int("A3 每局携带包数", _Packs.PICKS_PER_RUN, 3)
 	_eq_int("A4 每包张数", _Packs.CARDS_PER_PACK, 6)
-	# 并集 = 玩家池全集（排除 RerollD）；v0.2 新增 6 第二塔 + 6 第二强化 + 4 真实伤害 = 30 张
+	# 并集 = 全部塔（建筑-only 口径：卡包里不再有强化 / 经济卡）
 	var all := _Packs.all_cards()
-	_eq_int("A5 并集张数（14 旧卡 + 12 第二塔/强化 + 4 真实 = 30）", all.size(), 30)
+	var towers_n := _TD.TOWERS.size() + _TD.TOWERS_EXT.size()
+	_eq_int("A5 并集张数 = 全部塔数", all.size(), towers_n)
 	var missing: Array = []
-	for nm in _ShopAI.CARD_NAMES:
-		var s := String(nm)
-		if s == "RerollD":
-			continue
-		if not all.has(s):
-			missing.append(s)
-	for nm in _TD.EXT_WEIGHTS.keys():
+	for nm in _TD.TOWERS.keys():
 		if not all.has(String(nm)):
 			missing.append(String(nm))
-	_ok("A6 玩家池每张卡都有归属", missing.is_empty(), str(missing))
+	for nm in _TD.TOWERS_EXT.keys():
+		if not all.has(String(nm)):
+			missing.append(String(nm))
+	_ok("A6 每座塔都有卡包归属", missing.is_empty(), str(missing))
+	# 🔴 本次改动的核心红线：卡包内**只有建筑卡**
+	var non_tower: Array = []
+	for p in _Packs.PACKS:
+		for nm in (p["cards"] as Array):
+			var s := String(nm)
+			if not (_TD.TOWERS.has(s) or _TD.TOWERS_EXT.has(s)):
+				non_tower.append("%s/%s" % [String(p["id"]), s])
+	_ok("A6b 卡包内 0 张效果卡（强化 / 经济 / 全局都不许进包）",
+		non_tower.is_empty(), str(non_tower))
 	_ok("A7 不含 RerollD", not all.has("RerollD"))
 	# 塔与强化成对（每个包内至少有一座塔）
 	var bad_pairs: Array = []
@@ -224,12 +231,14 @@ func _test_d_pool() -> void:
 	_log("--- [D] 卡池 = 所选包并集（顺序 / 权重 / 总和 / 骨架卡）---")
 	_ShopRuntime.set_active_packs(["core", "cinder", "arc"])
 	var names: Array = _ShopRuntime.player_card_names()
-	# core = [Arrow,Cannon,Frost,ScrapUp,FireUp,FrostUp] + cinder = [Cannon,Ember,FireUp,FireUp2,ScrapUp,Arrow]
-	#   + arc = [Tesla,Bolt,ShkUp,ShkUp2,ScrapUp,Arrow] → 去重后按包序
+	# core      = [Arrow,Cannon,Frost,Lance,Tesla,Oblivion]
+	# cinder    = [Cannon,Ember,Maul,Sunder,Arrow,Javelin]
+	# arc       = [Tesla,Bolt,Ember,Maul,Icicle,Frost]
+	#   → 去重后按包序
 	_eq_arr("D1 卡池顺序 = 包序 → 包内序（去重）",
 		names,
-		["Arrow", "Cannon", "Frost", "ScrapUp", "FireUp", "FrostUp",
-		 "Ember", "FireUp2", "Tesla", "Bolt", "ShkUp", "ShkUp2"])
+		["Arrow", "Cannon", "Frost", "Lance", "Tesla", "Oblivion",
+		 "Ember", "Maul", "Sunder", "Javelin", "Bolt", "Icicle"])
 	_eq_int("D2 卡池张数 = 3 包并集去重后 12 张", names.size(), 12)
 	# 权重和 = 各卡权重之和（现查，不硬编码）
 	var want := 0.0
@@ -240,8 +249,8 @@ func _test_d_pool() -> void:
 	# 换包必须立即生效（静态缓存清理）；顺序只跟包序走，不跟"点选顺序"走
 	_ShopRuntime.set_active_packs(["pierce", "arc", "core"])
 	_eq_arr("D7 换包后卡池立即变化（按包序）", _ShopRuntime.player_card_names(),
-		["Arrow", "Cannon", "Frost", "ScrapUp", "FireUp", "FrostUp",
-		 "Lance", "Javelin", "PirUp", "PirUp2", "Tesla", "Bolt", "ShkUp", "ShkUp2"])
+		["Arrow", "Cannon", "Frost", "Lance", "Tesla", "Oblivion",
+		 "Javelin", "Void", "Bolt", "Ember", "Maul", "Icicle"])
 	# 与扩展包开关同时开：卡包模式优先，扩展包不叠加（卡包表已含全部卡）
 	_ShopRuntime.set_extended_pack(true)
 	var n_ext_on := _ShopRuntime.player_card_names().size()
@@ -249,10 +258,12 @@ func _test_d_pool() -> void:
 	var n_ext_off := _ShopRuntime.player_card_names().size()
 	_eq_int("D8 卡包模式下 extended_pack 不影响卡池（开/关一致）", n_ext_on, n_ext_off)
 	_ShopRuntime.set_active_packs([])
-	# 骨架卡 = 塔 + 强化（排除经济 ScrapUp）
+	# 骨架卡 = 每包前 2 张（流派身份塔）；建筑-only 口径下不再有强化卡
 	var skel := _Packs.skeleton_cards(["cinder"])
-	_eq_arr("D9 骨架卡 = 包内塔+强化（熔炉包）", skel,
-		["Cannon", "Ember", "FireUp", "FireUp2"])
+	_eq_arr("D9 骨架卡 = 包内前 2 张（熔炉包 = Cannon + Ember）", skel,
+		["Cannon", "Ember"])
+	var skel3 := _Packs.skeleton_cards(["core", "rime"])
+	_eq_int("D10 骨架卡跨包去重（2 包 × 2 张）", skel3.size(), 4)
 
 
 # ---------------------------------------------------------------------------
@@ -298,30 +309,29 @@ func _test_f_deal() -> void:
 	_ok("F1 8 波商品位全部在所选池内", bad.is_empty(), str(bad))
 	_eq_int("F2 每波恒 3 位", rt.offers.size(), 3)
 
-	# pity 越池：选不含「火」的包组合（pierce+arc+sunder），即便主塔是 Cannon 也不得把 FireUp 写进商店
-	_ShopRuntime.set_active_packs(["pierce", "arc", "sunder"])
+	# pity 越池：选不含真实塔的包组合（cinder+rime+arc），即便主塔是 Oblivion 也不得把 Void 写进商店
+	_ShopRuntime.set_active_packs(["cinder", "rime", "arc"])
 	var rt2 = _ShopRuntime.new()
 	rt2.setup("B", 20260930)
 	var shop: Array = ["Arrow", "Arrow", "Arrow"]
-	rt2._apply_pity(shop, "FireUp")
-	_ok("F3 池外保底卡不写入商店（FireUp 不在本局池）", not shop.has("FireUp"), str(shop))
-	# 池内保底：选含「火」的包（cinder），FireUp 在池内应照常写入
-	_ShopRuntime.set_active_packs(["cinder", "pierce", "arc"])
+	rt2._apply_pity(shop, "Void")
+	_ok("F3 池外保底卡不写入商店（Void 不在本局池）", not shop.has("Void"), str(shop))
+	# 池内保底：选含真实塔的包（true），Void 在池内应照常写入
+	_ShopRuntime.set_active_packs(["true", "cinder", "rime"])
 	var rt3 = _ShopRuntime.new()
 	rt3.setup("B", 20260930)
 	var shop2: Array = ["Arrow", "Arrow", "Arrow"]
-	rt3._apply_pity(shop2, "FireUp")
-	_ok("F4 池内保底卡照常写入", shop2.has("FireUp"), str(shop2))
+	rt3._apply_pity(shop2, "Void")
+	_ok("F4 池内保底卡照常写入", shop2.has("Void"), str(shop2))
 
-	# 刷新保底：卡包模式下，若刷新 3 张里无骨架卡，强制补一张骨架卡（塔/强化）
+	# 刷新保底：卡包模式下，若刷新 3 张里无骨架卡，强制补一张骨架卡（每包前 2 张）
 	_ShopRuntime.set_active_packs(["cinder"])
 	var rt4 = _ShopRuntime.new()
 	rt4.setup("B", 20260930)
 	var skel := _Packs.skeleton_cards(["cinder"])
-	rt4.offers = ["ScrapUp", "ScrapUp", "Arrow"]  # 全是非骨架卡（经济+泛用）
+	rt4.offers = ["Maul", "Javelin", "Sunder"]  # 全是非骨架卡（骨架 = Cannon / Ember）
 	rt4.scrap = 1000.0
 	rt4.rerolls = 0
-	var before: Array = rt4.offers.duplicate()
 	var ok_reroll: bool = rt4.reroll()
 	_ok("F5 卡包模式刷新成功", ok_reroll)
 	var has_skel := false

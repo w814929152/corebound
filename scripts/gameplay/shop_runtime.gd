@@ -399,16 +399,16 @@ func reroll() -> bool:
 	scrap -= cost
 	rerolls += 1
 	offers = _merge_with_lock(lock_index, kept, fresh, offers.size())
-	# 🆕 刷新保底（card-packs v0.2）：卡包模式（18 张池）下，若刷新结果里一张「骨架卡」都没有，
-	#   强制补一张骨架卡（核心塔/强化），对冲大池稀释 —— 让玩家刷新也能稳定拿到 build 骨架。
+	# 🆕 刷新保底（card-packs v0.3）：卡包模式（建筑-only 池）下，若刷新结果里一张
+	#   「骨架卡」都没有，强制补一张（每包前 2 张 = 流派身份塔），对冲共享基础塔的稀释。
 	_apply_reroll_pity()
 	last_error = ""
 	return true
 
 
-## 🆕 刷新保底（card-packs v0.2 · 卡池深度对冲）：
+## 🆕 刷新保底（card-packs v0.3 · 建筑-only 池）：
 ##   仅卡包模式生效（`active_packs` 非空）；若当前 3 位里没有任何「骨架卡」
-##   （所选包的核心塔 + 强化卡），把 1 个未锁定位改写为骨架卡池的随机一张。
+##   （每包前 2 张 = 流派身份塔），把 1 个未锁定位改写为骨架卡池的随机一张。
 ##   🔴 空选包（老口径 6 张池）不生效 → 与改动前逐位一致；AI 路线（金标本）不经过这里。
 ##   🔴 不覆盖锁定位（同 `_apply_pity` 的 SR-R4）；锁定位若已是骨架卡则不干预。
 func _apply_reroll_pity() -> void:
