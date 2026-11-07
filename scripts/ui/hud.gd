@@ -33,6 +33,9 @@ const WAVE_BAR_W := 300.0
 const WAVE_BAR_H := 10.0
 const BANNER_MS := 1200
 
+## 底部键位行（默认态）。⑤ 放置模式会临时换成放置专属提示 —— 见 `_refresh_hint()`。
+const HINT_DEFAULT := "Tab 商店 · Esc 关闭/取消 · R 刷新 · 1/2/3 选中即买 · Space 锁定焦点位 · F3 调试"
+
 ## 🆕 UI 优化轮：积分卡（L0 区）几何。
 ##   改造前左上角只有一个硬币 + 裸数字，**没有任何文字说明它是什么**；而引导文案里叫
 ##   「废料」、商店里叫「废料」、debug 层又写「积分」—— 三处术语不一致，新手读不懂。
@@ -172,7 +175,24 @@ func set_hint_visible(v: bool) -> void:
 
 
 func _on_state_changed(_from: int, _to: int) -> void:
+	_refresh_hint()
 	queue_redraw()
+
+
+## 底部键位行的**态相关**部分：⑤ 放置模式要换成本局的唯一操作提示。
+## 🔴 依据：GDD §2.1 ⑤ 态**抽屉收起**、战场全屏，「点塔位落子」是此态唯一的操作路径。
+##    改造前这里还写着「Tab 商店 / R 刷新」，而那两个键在 ⑤ 态根本不响应 → 误导。
+func _refresh_hint() -> void:
+	if _hint_label == null:
+		return
+	var placing := (director != null and director.sm != null
+		and int(director.sm.state) == _TSM.State.PLACEMENT_MODE)
+	if placing:
+		_hint_label.text = "放置模式：点亮光的塔位落子（＋ 新建 · ↑ 升级）· Esc 取消（卡退回队列，不退款）"
+		_hint_label.add_theme_color_override("font_color", C_TEXT)
+	else:
+		_hint_label.text = HINT_DEFAULT
+		_hint_label.add_theme_color_override("font_color", C_TEXT_DIM)
 
 
 func _on_budget_changed(_left: float, _max_: float) -> void:
@@ -258,7 +278,7 @@ func _build() -> void:
 	# 🔴 T-P6-06 S1（art-bible §9.1 P0 无障碍硬红线：最小字号 ≥16px）：14 → 16。
 	_hint_label.add_theme_font_size_override("font_size", 16)
 	_hint_label.add_theme_color_override("font_color", C_TEXT_DIM)
-	_hint_label.text = "Tab 商店 · Esc 关闭/取消 · R 刷新 · 1/2/3 选中即买 · Space 锁定焦点位 · F3 调试"
+	_hint_label.text = HINT_DEFAULT
 	add_child(_hint_label)
 
 	# WAVE 大字横幅（层 10，1.2s 演出）

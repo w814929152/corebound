@@ -79,7 +79,6 @@ var _detach_btn: Button
 var _repair_btn: Button              # 🔒 T1 修复入口：处置受损塔（有 disabled 塔才亮 + 红点计数）
 var _pending_label: Label
 var _pending_box: VBoxContainer
-var _place_box: VBoxContainer
 var _no_scrap_label: Label           # 未接线兜底提示（替代原 `_scrap_label` 长串）
 
 
@@ -254,10 +253,11 @@ func _build() -> void:
 	_pending_box.add_theme_constant_override("separation", 4)
 	inner.add_child(_pending_box)
 
-	# ---- 放置模式：塔位按钮（I-8；仅态⑤露出）----
-	_place_box = VBoxContainer.new()
-	_place_box.add_theme_constant_override("separation", 4)
-	inner.add_child(_place_box)
+	# 🆕 放置模式**不在这里出按钮**：GDD §2.1 规定 ⑤ 态抽屉收起、战场全屏，
+	#    `_refresh_mode()` 的 `visible = drawer != CLOSED` 会把整棵控件树隐藏 ⇒
+	#    改造前这里的 6 个塔位按钮是**永远的死代码**，这正是「买了建筑卡放不下」的根因。
+	#    落子改走战场：`monster_layer._draw_placement_marks()` 画 ＋/↑/✕ 高亮，
+	#    点击 → `slot_place_requested`（见 `time_director.gd` / `shop_controller.gd`）。
 
 	# ---- 重决策入口组（🔴 仅 SafeWindow 露出；战斗中置灰且不响应，T-C1 / E16）----
 	_heavy_panel = VBoxContainer.new()
@@ -396,7 +396,6 @@ func _refresh_shop() -> void:
 			_slot_lock[i].disabled = true
 		_reroll_btn.disabled = true
 		_clear_children(_pending_box)
-		_clear_children(_place_box)
 		return
 	_no_scrap_label.visible = false
 
@@ -475,7 +474,6 @@ func _refresh_shop() -> void:
 	_refresh_repair_btn(s)
 
 	_refresh_pending(s)
-	_refresh_placement(s)
 
 
 ## 🔒 T1 修复入口 UI（Q-T4 三选一 · SR-R2 只标事实）：
@@ -531,53 +529,6 @@ func _can_enter_placement() -> bool:
 		return false
 	return int(director.sm.state) in [
 		_TSM.State.SHOP_DILATED, _TSM.State.SHOP_REAL_TIME, _TSM.State.SAFE_WINDOW]
-
-
-func _refresh_placement(s: Dictionary) -> void:
-	_clear_children(_place_box)
-	if director == null or director.sm == null:
-		return
-	if int(director.sm.state) != _TSM.State.PLACEMENT_MODE:
-		return
-	# 图例前置（塔位按钮内只剩 ＋/↑/✕ 一个字符，避免 6 个长按钮挤成一行读不完）
-	var head := _Style.label("点塔位落子：＋新建 · ↑升级 · ✕不可用（Esc 取消，取消不退款）",
-		_Style.FONT_MIN, _Style.C_TEXT_DIM)
-	head.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_place_box.add_child(head)
-
-	var slots: Array = s["slots"]
-	var modes: Array = s["place_modes"]
-	var grid := GridContainer.new()
-	grid.columns = 3
-	grid.add_theme_constant_override("h_separation", 6)
-	grid.add_theme_constant_override("v_separation", 4)
-	_place_box.add_child(grid)
-	for i in slots.size():
-		var d: Dictionary = slots[i]
-		var b := Button.new()
-		var txt := "%d · " % i
-		if bool(d["empty"]):
-			txt += "空"
-		else:
-			txt += "%s L%d" % [String(d["ctype"]), int(d["h"])]
-		var mode := String(modes[i]) if i < modes.size() else ""
-		b.text = txt
-		b.disabled = (mode == "invalid")
-		_Style.button(b, "normal")
-		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		if mode == "new":
-			b.text = "＋ " + txt
-			_Style.button(b, "primary")
-		elif mode == "upgrade":
-			b.text = "↑ " + txt
-		elif mode == "invalid":
-			b.text = "✕ " + txt
-			_Style.button(b, "unavail")
-		var slot_idx := i
-		b.pressed.connect(func() -> void:
-			if director != null:
-				director.exit_placement(true, slot_idx))
-		grid.add_child(b)
 
 
 func _clear_children(parent: Node) -> void:

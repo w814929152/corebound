@@ -68,6 +68,8 @@ const STEP_TEXT := {
 	Step.RUN: "Space 开始下一波 —— 守住核心",
 	Step.REPAIR: "安全窗可修复受损塔（点塔位 → 修复 / 拆除）",
 }
+## PLACE 步的「已进 ⑤」态文案：此刻抽屉已收起，场上只有亮起来的塔位可点。
+const PLACE_TEXT_ARMED := "点亮的塔位即可落子（＋ 新建 · ↑ 升级）· Esc 取消"
 
 ## BUY 步按「买不买得起 + 商店开没开」分三态（🔴 实测口径，见文件头）：
 ##   开局 `scrap = 0`，而卡价 12 ⇒ 首波结束前商店里全是灰的。若一律提示"买一张卡"，
@@ -361,12 +363,22 @@ func _refresh_visual() -> void:
 
 
 ## 当前步文案。BUY 步按「买不买得起 + 抽屉开没开」分三态（判据不受影响，只换字）。
+##   PLACE 步同理分两态：已进 ⑤（抽屉收起、战场全屏）时，再让玩家「点「放置」」就是胡说 ——
+##   那一刻他能做的只有**点战场上亮起来的塔位**。
 func _text_for(s: int) -> String:
+	if s == Step.PLACE:
+		return String(STEP_TEXT[s]) if not _in_placement() else PLACE_TEXT_ARMED
 	if s != Step.BUY:
 		return String(STEP_TEXT.get(s, ""))
 	if not _buy_can_afford:
 		return BUY_TEXT_POOR
 	return BUY_TEXT_RICH if _drawer_open else BUY_TEXT_TAB
+
+
+func _in_placement() -> bool:
+	if director == null or director.sm == null:
+		return false
+	return int(director.sm.state) == _TSM.State.PLACEMENT_MODE
 
 
 func _sync_hud_hint() -> void:

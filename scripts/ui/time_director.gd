@@ -38,6 +38,10 @@ signal salvage_requested()
 signal repair_requested()
 ## 🟡 切片8·I-7：战场塔位点选请求（MonsterLayer 点击塔 → 本信号 → ShopController 接 runtime.select_tower）
 signal tower_select_requested(slot: int)
+## 🟡 放置模式落子请求（MonsterLayer 点**高亮塔位** → 本信号 → ShopController 落子）。
+##   🔴 与 `placement_confirmed` 分工：本信号是**意图**（谁想落在哪），
+##      `placement_confirmed` 是**决定**（退出放置模式并执行）。渲染层只发意图、不碰状态机。
+signal slot_place_requested(slot: int)
 signal placement_cancelled()
 
 

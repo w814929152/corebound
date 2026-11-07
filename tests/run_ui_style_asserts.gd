@@ -56,6 +56,7 @@ func run_all() -> bool:
 	_test_g_drawer_layout()
 	_test_h_dialogs()
 	_test_i_card_text()
+	_test_j_placement_entry()
 
 	_log("")
 	_log("=".repeat(78))
@@ -426,6 +427,60 @@ func _test_i_card_text() -> void:
 	_check("描述块字号 ≥ %dpx（§9.1 P0）" % FONT_MIN,
 		int((shop._slot_desc[0] as Label).get_theme_font_size("font_size")) >= FONT_MIN)
 	shop.free()
+
+
+# ---------------------------------------------------------------------------
+#  [J] 放置模式入口可达性（「买了建筑卡却放不下塔」的回归钉）
+#  ---------------------------------------------------------------------------
+## 🔴 背景（本轮修的 P0 主循环断链）：
+##   ⑤ 态按 GDD §2.1 **抽屉收起、战场全屏** → `_refresh_mode()` 的
+##   `visible = drawer != CLOSED` 会把整棵控件树隐藏，抽屉里那 6 个塔位按钮
+##   **永远不可达**；战场侧又要求「抽屉展开」且只命中**已建塔** ⇒ 两条路同时断。
+##   ⇒ 本段把「落子必须有真实入口」钉成断言，防止再改回抽屉按钮。
+##
+## 口径：源码级 grep（headless 可判）+ 信号存在性。端到端点击见
+##   `tests/probe_placement.gd`（需窗口，非 CI）。
+func _test_j_placement_entry() -> void:
+	_log("")
+	_log("--- [J] 放置入口：⑤ 态落子必须有可达路径（不能是抽屉里的死按钮）---")
+
+	var td_src := FileAccess.get_file_as_string("res://scripts/ui/time_director.gd")
+	var ctl_src := FileAccess.get_file_as_string("res://scripts/gameplay/shop_controller.gd")
+	var ml_src := FileAccess.get_file_as_string("res://scripts/ui/monster_layer.gd")
+	var shop_src := FileAccess.get_file_as_string("res://scripts/ui/shop_overlay.gd")
+	var hud_src := FileAccess.get_file_as_string("res://scripts/ui/hud.gd")
+
+	_check("TimeDirector 声明 slot_place_requested 信号",
+		td_src.find("signal slot_place_requested") >= 0)
+	_check("ShopController 连接并处理 slot_place_requested",
+		ctl_src.find("_on_slot_place_requested") >= 0
+		and ctl_src.find("slot_place_requested.connect") >= 0)
+	_check("ShopController 非 ⑤ 态丢弃落子请求（T-C1 / E16 兜底）",
+		ctl_src.find("State.PLACEMENT_MODE") >= 0 and ctl_src.find("placement_mode_for") >= 0)
+
+	_check("MonsterLayer 由**状态机**判定放置态（不是抽屉）",
+		ml_src.find("func _in_placement()") >= 0
+		and ml_src.find("State.PLACEMENT_MODE") >= 0)
+	_check("MonsterLayer ⑤ 态发 slot_place_requested",
+		ml_src.find("slot_place_requested") >= 0)
+	_check("MonsterLayer 点选发到 time_director（信号声明方）",
+		ml_src.find("time_director.emit_signal(\"tower_select_requested\"") >= 0)
+	_check("MonsterLayer 命中判定走**屏幕距离**（旧实现先转世界坐标 + sc*1.6 当半径 → 300+px 串味）",
+		ml_src.find("func _hit_slot_screen") >= 0
+		and ml_src.find("distance_to(_to_screen(") >= 0
+		and ml_src.find("_hit_tower_slot") < 0)
+	_check("MonsterLayer 保持零文本（AC-T1-24：无 draw_string 调用）",
+		ml_src.find("draw_string(") < 0)
+
+	_check("ShopOverlay 已移除不可达的 _place_box（死代码清除）",
+		shop_src.find("_place_box") < 0 and shop_src.find("_refresh_placement") < 0)
+	_check("HUD ⑤ 态有放置专属提示（不再误导「Tab 商店 / R 刷新」）",
+		hud_src.find("HINT_DEFAULT") >= 0 and hud_src.find("放置模式：点亮光的塔位落子") >= 0)
+
+	# 「进入 ⑤」与「在 ⑤ 里落子」是两个入口，一个都不能少：
+	#   进 ⑤ = 抽屉里的待放置队列（抽屉展开时可见）；落子 = 战场（抽屉已收起）。
+	_check("待放置队列入口仍在（进 ⑤ 靠它，落子靠战场）",
+		shop_src.find("_pending_box") >= 0 and shop_src.find("request_placement") >= 0)
 
 
 # ---------------------------------------------------------------------------

@@ -360,54 +360,81 @@ func _to_screen(p: Vector2) -> Vector2:
 	return Vector2(float(t["ox"]) + p.x * float(t["sc"]), float(t["oy"]) + p.y * float(t["sc"]))
 
 
-## I-7：屏幕坐标 → 塔位世界坐标的逆映射（点击命中判定用）。
+## I-7：屏幕坐标 → 世界坐标的逆映射。
+##   当前**无调用者**：命中判定改走屏幕距离（`_hit_slot_screen`），比"转世界再比"少一次换算
+##   且不受 `sc` 量纲混用影响。保留此函数是因为它是对称 API —— 悬停 tooltip /
+##   世界坐标级的手势判定都要用；删掉将来还得原样写回来。
 func _to_world(screen_p: Vector2) -> Vector2:
 	var t := _xform()
 	var sc := float(t["sc"])
 	return Vector2((screen_p.x - float(t["ox"])) / sc, (screen_p.y - float(t["oy"])) / sc)
 
 
-## I-7：点击战场上的塔 → 发 `tower_select_requested(slot)`（由 ShopController 接 runtime.select_tower）。
-##   · 只发意图、不改状态（SR-5）；命中半径 = 塔身半径 + 余量（像素级宽容）。
-##   · 🔴 仅商店抽屉展开时响应（战斗/收拢时点击战场不该改点选）。
+## I-7 / I-8：战场点击 → 只发**意图**信号，由 ShopController 接线（SR-5）。
+##   · ⑤ 放置模式：抽屉按 GDD §2.1 **收起**（`drawer = CLOSED`）→ 判**状态机**而不是抽屉。
+##     点亮的塔位（new / upgrade）→ `slot_place_requested`；点空地 / 不可用位 = **无操作**
+##     （取消只认 Esc —— 误点就把玩家踢出放置模式，是最烦人的那种 bug）。
+##   · 其余态：仅抽屉展开时可点选已建塔 → `tower_select_requested`。
 func _unhandled_input(event: InputEvent) -> void:
 	if not (event is InputEventMouseButton):
 		return
 	var mb := event as InputEventMouseButton
 	if not mb.pressed or mb.button_index != MOUSE_BUTTON_LEFT:
 		return
-	if controller == null or controller.runtime == null:
+	if controller == null or controller.runtime == null or time_director == null:
 		return
-	# 仅抽屉展开（商店期）可点选塔
-	var drawer_open := false
-	if time_director != null:
-		drawer_open = (int(time_director.sm.clock()["drawer"]) != 0)
-	if not drawer_open:
+
+	# ---- ⑤ 放置模式：点高亮塔位落子 ----
+	if _in_placement():
+		var hit_any := _hit_slot_screen(mb.global_position, false)
+		if hit_any < 0:
+			return
+		var mode := String(controller.runtime.placement_mode_for(hit_any))
+		if mode != "new" and mode != "upgrade":
+			return                                   # 灰显位不响应，也不退出放置
+		time_director.emit_signal("slot_place_requested", hit_any)
+		get_viewport().set_input_as_handled()
 		return
-	var hit := _hit_tower_slot(mb.global_position)
+
+	# ---- 其余态：仅抽屉展开（商店期）可点选已建塔 ----
+	if int(time_director.sm.clock()["drawer"]) == 0:
+		return
+	var hit := _hit_slot_screen(mb.global_position, true)
 	if hit >= 0:
-		# 交给 ShopController 接线（不直接调 runtime，守 SR-5 依赖方向）
-		if director != null:
-			director.emit_signal("tower_select_requested", hit)
+		# 🔴 发到 `time_director`（信号声明方）。改造前发到 `director`（= WaveDirector），
+		#    该信号在 WaveDirector 上不存在 → 点选功能一直静默失效。
+		time_director.emit_signal("tower_select_requested", hit)
 		get_viewport().set_input_as_handled()
 
 
-## 命中判定：找最近的**已建塔**塔位（世界坐标距离 < 命中半径）。返回 slot 或 -1。
-func _hit_tower_slot(screen_p: Vector2) -> int:
-	var wp := _to_world(screen_p)
-	var t := _xform()
-	var sc := float(t["sc"])
-	var hit_radius_world := maxf(9.0, sc * 1.6)     # 塔身半径 + 余量
-	var best := -1
-	var best_d := INF
+func _in_placement() -> bool:
+	if time_director == null or time_director.sm == null:
+		return false
+	return int(time_director.sm.state) == _TSM.State.PLACEMENT_MODE
+
+
+## 屏幕像素命中判定：找最近的塔位。
+##   `only_built = true` → 只考虑已建塔（I-7 点选）；`false` → 全部塔位（I-8 落子，目标可能是空位）。
+## 🔴 必须用**屏幕像素**比距离：`sc` 是"像素/世界单位"（径向 ≈36），
+##    旧实现拿 `maxf(9.0, sc * 1.6)` 当**世界**半径 → 实际 300+ px，六个塔位互相串味。
+func _hit_slot_screen(screen_p: Vector2, only_built: bool) -> int:
 	if controller == null or controller.runtime == null:
 		return -1
-	for tw in controller.runtime.player.towers:
-		var s := int(tw.slot)
-		if s < 0 or s >= _slots_arr().size():
+	var t := _xform()
+	var sc := float(t["sc"])
+	var hit_r := maxf(22.0, U_SLOT * sc)              # 塔位轮廓半径（像素）+ 少量宽容
+	var built: Dictionary = {}
+	if only_built:
+		for tw in controller.runtime.player.towers:
+			built[int(tw.slot)] = true
+	var slots: Array = _slots_arr()
+	var best := -1
+	var best_d := INF
+	for s in slots.size():
+		if only_built and not built.has(s):
 			continue
-		var d := wp.distance_to(_slots_arr()[s])
-		if d < hit_radius_world and d < best_d:
+		var d := screen_p.distance_to(_to_screen(slots[s]))
+		if d <= hit_r and d < best_d:
 			best = s
 			best_d = d
 	return best
@@ -772,6 +799,7 @@ func _draw_radial(sc: float) -> void:
 	_draw_radial_ground(sc)       # 层1 场地圆 + 同心环×3 + 放射刻度×8 + 层2 出生环
 	_draw_all_shadows(sc)         # 层3：先画全部影（避免脏影，spec §A.3/§A.6）
 	_draw_radial_slot_layer(sc)   # 层4：空槽八边形 + 威胁楔形 + 被攻击环 + 暴露图标
+	_draw_placement_marks(sc)     # 层4.5：⑤ 放置模式塔位高亮（＋/↑/✕，零文本）
 	_draw_radial_core(sc)         # 层5：盘 + 8 刻齿（唯一轮廓）
 	_draw_radial_towers(sc)       # 层6：双层八边形塔
 	_draw_radial_monsters(sc)     # 层7：12 边不规则 + 朝核心尖刺扇
@@ -1067,6 +1095,80 @@ func _draw_radial_slot_layer(sc: float) -> void:
 			Color(P_SLOT.r, P_SLOT.g, P_SLOT.b, 0.85), maxf(1.0, 0.12 * sc), true)
 	_draw_under_attack(sc)
 	_draw_exposure_icons(sc)
+
+
+## ---- 层4.5：放置模式塔位标记（I-8，仅 ⑤ 态绘制）----
+## 🔴 为什么画在这里：`shop_overlay` 的塔位按钮在 ⑤ 态**不可达** —— GDD §2.1 规定
+##    ⑤ 态抽屉收起、战场全屏，`visible = drawer != CLOSED` 会把整棵控件树隐藏。
+##    改造前放置 UI 只有抽屉里那 6 个按钮 ⇒ **买了建筑卡永远放不下**（主循环断链）。
+##    现在落子主路径 = 战场点塔位（GDD §2.1「点塔位落子」，本来就是设计原意）。
+## 🔴 零文本（AC-T1-24）：符号全部用 `draw_line` 画（＋ / ↑ / ✕），不写 `draw_string`。
+func _draw_placement_marks(sc: float) -> void:
+	if not _in_placement():
+		return
+	if controller == null or controller.runtime == null:
+		return
+	var snap: Dictionary = controller.runtime.snapshot()
+	var modes: Array = snap.get("place_modes", [])
+	if modes.is_empty():
+		return
+	var slots: Array = _slots_arr()
+	var R0 := U_SLOT * sc
+	# 呼吸：0.9s 周期 ±10% —— 常亮会被当成"已选中"，脉动才读得出"等你点"。
+	var pulse := 1.0 + 0.10 * sin(_vfx_t * TAU / 0.9)
+	for i in slots.size():
+		if i >= modes.size():
+			break
+		var mode := String(modes[i])
+		if mode == "":
+			continue
+		var c := _to_screen(slots[i])
+		var col: Color
+		var lw: float
+		var rr: float
+		match mode:
+			"new":
+				col = P_ALLY                                     # 耀青：可新建
+				lw = maxf(3.0, 0.30 * sc)
+				rr = R0 * 1.20                                   # 比空槽大一圈 → 一眼"跳出来"
+			"upgrade":
+				col = P_GOLD                                     # 辉金：可升级（同原型叠层）
+				lw = maxf(3.0, 0.30 * sc)
+				rr = R0 * 1.20
+			_:
+				col = Color(P_SLOT.r, P_SLOT.g, P_SLOT.b, 0.40)   # 钢灰：不可用（不响应点击）
+				lw = maxf(1.0, 0.10 * sc)
+				rr = R0
+		# ① 扩散外环（只给可落子的位）—— 余光就能看出"哪几个能点"
+		if mode != "invalid":
+			draw_arc(c, rr * 1.16 * pulse, 0.0, TAU, 44,
+				Color(col.r, col.g, col.b, 0.40), maxf(2.0, 0.20 * sc), true)
+			draw_circle(c, rr * 0.96, Color(col.r, col.g, col.b, 0.20))
+		# ② 塔位轮廓（八边形，与空槽同形 → 不改玩家对"塔位长什么样"的认知）
+		draw_polyline(_closed(_oct8(c, rr, PI / 8.0)), col, lw, true)
+		# ③ 徽标：塔位正上方（不压塔身），暗盘衬底保证深底/亮塔上都可读
+		_draw_place_badge(c + Vector2(0.0, -rr * 1.40), rr * 0.34, mode, col, sc)
+
+
+## 落子徽标：圆盘衬底 + 几何符号（零文本）。`mode` ∈ {new, upgrade, invalid}。
+func _draw_place_badge(c: Vector2, r: float, mode: String, col: Color, sc: float) -> void:
+	draw_circle(c, r, Color(0.035, 0.045, 0.085, 0.90))
+	draw_arc(c, r, 0.0, TAU, 24, Color(col.r, col.g, col.b, 0.95), maxf(1.0, 0.10 * sc), true)
+	var k := r * 0.56
+	# 🔴 线宽按 `sc` 走：1600×900 实机上 1.5px 的 ＋ 根本认不出（实测截图裁切放大才看见）。
+	var lw := maxf(2.0, 0.16 * sc)
+	match mode:
+		"new":
+			draw_line(c + Vector2(-k, 0.0), c + Vector2(k, 0.0), col, lw, true)
+			draw_line(c + Vector2(0.0, -k), c + Vector2(0.0, k), col, lw, true)
+		"upgrade":
+			draw_line(c + Vector2(0.0, k), c + Vector2(0.0, -k), col, lw, true)
+			draw_line(c + Vector2(0.0, -k), c + Vector2(-k * 0.72, -k * 0.10), col, lw, true)
+			draw_line(c + Vector2(0.0, -k), c + Vector2(k * 0.72, -k * 0.10), col, lw, true)
+		_:
+			var d := k * 0.80
+			draw_line(c + Vector2(-d, -d), c + Vector2(d, d), col, lw, true)
+			draw_line(c + Vector2(d, -d), c + Vector2(-d, d), col, lw, true)
 
 
 ## 威胁方位楔形（spec §A.2.4 / **§B.1.3 扇区去重版**）：只标"哪个方位有怪"这一事实

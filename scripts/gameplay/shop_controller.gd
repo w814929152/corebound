@@ -98,6 +98,9 @@ func bind_director(d: Node) -> void:
 	#  I-7 塔位点选：MonsterLayer 点击塔 → runtime.select_tower
 	if not d.is_connected("tower_select_requested", _on_tower_select_requested):
 		d.tower_select_requested.connect(_on_tower_select_requested)
+	#  I-8 落子：MonsterLayer 点高亮塔位 → 退出放置模式 + confirm_placement
+	if not d.is_connected("slot_place_requested", _on_slot_place_requested):
+		d.slot_place_requested.connect(_on_slot_place_requested)
 
 
 ## 切片5：`WaveDirector` 注入。波次推进（刷怪 / 伤害 / 漏怪 / 结束判定）由它负责。
@@ -212,6 +215,20 @@ func _on_tower_select_requested(slot: int) -> void:
 	if runtime.select_tower(slot):
 		print("[shop_controller] 点选塔位 %d（reinforce 将投此塔，若 Tag 合法）" % slot)
 		_emit_shop()
+
+
+## 🟡 放置模式落子接线（MonsterLayer 点**高亮塔位** → 退出放置模式并落子）。
+##   🔴 只接受 ⑤ 态：非放置态的误发一律丢弃（T-C1 / E16：战斗内禁止塔相关操作）。
+##   🔴 非法目标（`invalid`：该位已有别的原型）由**渲染层先挡**（不点亮、不响应点击），
+##      这里再兜一层 —— 点错不该把玩家踢出放置模式（卡还在队列里，退了就要重进）。
+func _on_slot_place_requested(slot: int) -> void:
+	if director == null or runtime == null or slot < 0:
+		return
+	if int(director.sm.state) != _TSM.State.PLACEMENT_MODE:
+		return
+	if String(runtime.placement_mode_for(slot)) == "invalid":
+		return
+	director.exit_placement(true, slot)
 
 
 func _on_salvage_requested() -> void:
