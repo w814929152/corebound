@@ -202,7 +202,14 @@ func setup(p_path: String, seed_value: int, overrides: Dictionary = {}) -> void:
 	player = _SimPlayer.new_player(p_path, cfg, geo)
 	if free_placement and player != null and not player.towers.is_empty():
 		# 起手位置沿用改造前的 S0 坐标（吸附到格点）→ 老玩家的手感不变。
-		geo.add_slot(_BuildGrid.snap(_Geo6.SLOTS6[0]))
+		# 🆕 阵地化（RADIAL + 布局开启）：S0 (6,33) 落在圆盘内但**不属于任何阵地** ——
+		#    起手塔会站在不可建的地上（点它升级 / 拆塔都还正常，但读起来是 bug）。
+		#    改落 P1 南台的锚点格：玩家开局就有一座塔在南面主口，正好对上「主口」叙事。
+		#    PATH 模式 `sites_active()` 恒 false → 逐位不变。
+		if _BuildGrid.sites_active():
+			geo.add_slot(_BuildGrid.site_anchor("P1"))
+		else:
+			geo.add_slot(_BuildGrid.snap(_Geo6.SLOTS6[0]))
 	rng = _PyRandom.new(seed_value)
 	wave = 0
 	scrap = 0.0
@@ -895,7 +902,11 @@ func confirm_placement_at(pos: Vector2) -> bool:
 
 	var gpos := _BuildGrid.snap(pos)
 	if not _BuildGrid.buildable(gpos):
-		last_error = "这里不能建塔（核心周围 %.0f 格内 / 战场外圈）" % _BuildGrid.CORE_BAN_R
+		# 🆕 阵地化后两种"不可建"的成因不同，文案要分开：一个是圈，一个是台。
+		if _BuildGrid.sites_active():
+			last_error = "这里不是阵地 —— 塔只能建在青色台子上"
+		else:
+			last_error = "这里不能建塔（核心 %.0fu 内 / 战场外圈）" % _BuildGrid.CORE_BAN_R
 		return false
 
 	var nm := String(pending[_placing_index])

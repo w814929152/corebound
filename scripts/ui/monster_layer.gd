@@ -106,6 +106,9 @@ const BODY_TANK := 1.30        # 怪：Tank 宽扁
 const ELITE_SCALE := 1.35      # 精英体量修饰
 const SPIKE_SPREAD := 0.40     # 尖刺扇相邻夹角（rad；spec 未钉值，取定性观感值）
 const CONCENTRIC_U: Array = [15.0, 30.0, 45.0]     # 同心环半径 u（spec §A.7）
+# 🆕 地图环带边界（u）：焦土 4–16 / 石板 16–30 / 荒原 30–44（`design/gdd/scene-map.md` §5.1）。
+#   环带**只是材质**，不是规则；规则由阵地（`BuildGrid.SITES`）承担。
+const MAP_BAND_R: Array = [16.0, 30.0, 44.0]
 # 确定性 12 边形扰动表（全员共享 → 帧间稳定，杜绝逐帧抖动；spec §A.2.2）
 const BLOB_R12: Array = [1.00, 0.88, 1.06, 0.92, 1.02, 0.86, 1.04, 0.95, 1.00, 0.90, 1.05, 0.93]
 
@@ -174,9 +177,16 @@ var _geo_sig: Vector3 = Vector3(-1.0, -1.0, -1.0)   # (c.x, c.y, sc) 签名
 var _geo: Dictionary = {}
 
 ## 🆕 自由摆放：网格线段缓存（世界坐标，构建一次重复用）。
-##   36 + 36 条裁剪到可建圆的线段，`_BuildGrid.grid_segments()` 只在首帧算一次。
+##   `_BuildGrid.grid_edges()` 只在首帧算一次 —— 整盘约 960 格、去重后约 3660 段边。
+##   🔴 存**成对扁平数组**而不是 `Array<Array>`：一帧一次 `draw_multiline` 就画完，
+##      逐段 `draw_line` 是 3660 次 draw call（改前方格版只有 68 条线才承受得起）。
 ##   🔴 纯几何缓存，无玩法含义（与 `_geo_sig` 同性质）。
-var _grid_segs: Array = []
+var _grid_edges := PackedVector2Array()
+## 🆕 上一份网格是在「阵地化」还是「整盘」口径下算的 —— 切模式（含测试切换）必须重算。
+var _grid_sites_mode := false
+## 网格的屏幕坐标缓存（同一 `(ox, oy, sc, 口径)` 下不重复换算 3660 个点）。签名口径同 `_geo_sig`。
+var _grid_scr_sig := Vector4(-1.0, -1.0, -1.0, -1.0)
+var _grid_scr := PackedVector2Array()
 
 ## 🔴 取证用悬停注入（**不是玩法状态**）：`null` = 跟随真实鼠标（正常游戏）。
 ##   仅 `tests/probe_placement.gd` 在截图前写入 —— 因为窗口模式下 `warp_mouse`
@@ -1030,6 +1040,9 @@ func _draw_radial_ground(sc: float) -> void:
 	#   按 `(c.x, c.y, sc)` 缓存为折线点，仅在签名变化时重建 → 省掉每帧 ~500 顶点的三角重算
 	#   （点数与直接 `draw_arc` 同分度数，视觉逐像素一致；缓存**只含几何**，颜色仍每帧取档）。
 	var g := _radial_geo(sc, c, rs)
+	# 🆕 地图层（scene-map.md §5）：三档材质 → 出怪口土带 → 岩脊 → 阵地。
+	#   🔴 画在**同心环/刻度之下**：环是刻度线，压在地形上才是"量尺"，被地形压住就成了噪声。
+	_draw_map_layer(sc, c, g)
 	var w_ring := maxf(1.0, 0.15 * sc)
 	draw_polyline(g["ring0"], col_ring, w_ring, true)   # 同心环 ×3（距离刻度）
 	draw_polyline(g["ring1"], col_ring, w_ring, true)
@@ -1047,6 +1060,67 @@ func _drawer_open() -> bool:
 	if time_director == null or time_director.sm == null:
 		return false
 	return int(time_director.sm.clock()["drawer"]) != 0
+
+
+# ---- 地图层「三裂环」（scene-map.md §5）----
+## 🔴 为什么地图要先于环/刻度画：环是**量尺**，量尺压在地形上才成立；
+##   反过来地形压住环，玩家读到的是"地上有几段断掉的线"，不是"这个圈有 30u 远"。
+##
+## 三层信息，按"谁能站"排序（P-M3 一眼读懂，零文本）：
+##   ① 三档材质 —— 明度阶梯（×1.18 / ×1.00 / ×0.84）⇒ 越靠核心越烫，不用标数字；
+##   ② 出怪口   —— 熔橙低α土带 + 端头石柱 ⇒ "怪从这里进来"，且**只有三段**；
+##   ③ 岩脊/阵地 —— 深色体块（不可建）vs 青色薄台（可建）⇒ "石头 vs 台子"的材质对立。
+##
+## 🔴 三档材质的颜色由**当前环境档基色**派生（不是写死 hex）：否则换装到 T2/T3 时
+##   地形会与场地圆脱色，看起来像贴图没加载。
+func _draw_map_layer(sc: float, c: Vector2, g: Dictionary) -> void:
+	if not _SpaceModel.layout_enabled:
+		return
+	var base := _env_col("field", 1.0)
+	var inner := Color(minf(base.r * 1.18, 1.0), minf(base.g * 1.18, 1.0),
+		minf(base.b * 1.16, 1.0), 1.0)
+	var outer := Color(base.r * 0.84, base.g * 0.84, base.b * 0.86, 1.0)
+	draw_circle(c, float(MAP_BAND_R[2]) * sc, outer)
+	draw_circle(c, float(MAP_BAND_R[1]) * sc, base)
+	draw_circle(c, float(MAP_BAND_R[0]) * sc, inner)
+
+	# ② 出怪口：磨损土带 + 端头石柱（熔橙低α = "地面被踩秃"，不是"发光路径"）
+	var dirt := Color(P_ENEMY.r, P_ENEMY.g, P_ENEMY.b, 0.085)
+	var post := Color(P_ENEMY.r, P_ENEMY.g, P_ENEMY.b, 0.32)
+	var rs := float(_SpaceModel.SPAWN_RADIUS)
+	for arc in _SpaceModel.SPAWN_ARCS:
+		var a0 := deg_to_rad(float(arc["a0"]))
+		var a1 := deg_to_rad(float(arc["a1"]))
+		draw_arc(c, (rs - 3.0) * sc, a0, a1,
+			maxi(10, int((a1 - a0) * 12.0)), dirt, maxf(3.0, 1.8 * sc), true)
+		for a in [a0, a1]:
+			draw_line(c + _dir(a) * (rs - 6.0) * sc, c + _dir(a) * (rs - 1.0) * sc,
+				post, maxf(2.0, 0.55 * sc), true)
+
+	# ③ 岩脊：填深 + 冷描边 ⇒ 读作"体块"而不是"区域"
+	for poly in g.get("ridges", []):
+		draw_colored_polygon(poly, Color(0.055, 0.063, 0.098, 0.94))
+		draw_polyline(_closed(poly), Color(P_SPAWN_EDGE.r, P_SPAWN_EDGE.g, P_SPAWN_EDGE.b, 0.75),
+			maxf(1.5, 0.12 * sc), true)
+
+	# ④ 阵地：17 个可建台（薄α填充 + 细描边）。网格线在放置态才画，台子**始终**可见。
+	for poly in g.get("pads", []):
+		draw_colored_polygon(poly, Color(P_ALLY.r, P_ALLY.g, P_ALLY.b, 0.055))
+		draw_polyline(_closed(poly), Color(P_ALLY.r, P_ALLY.g, P_ALLY.b, 0.22),
+			maxf(1.0, 0.07 * sc), true)
+
+
+## 环扇形（弧带）多边形：外弧正向 + 内弧反向 ⇒ 一个简单多边形（可直接三角化填充）。
+##   用于岩脊：`a0/a1` 已按视觉 `pad` 内收（逻辑遮挡角比视觉宽 2°/边，给怪留路肩）。
+func _sector_poly(c: Vector2, r0: float, r1: float, a0: float, a1: float, seg: int) -> PackedVector2Array:
+	var out := PackedVector2Array()
+	for i in range(seg + 1):
+		var a := a0 + (a1 - a0) * float(i) / float(seg)
+		out.append(c + _dir(a) * r1)
+	for i in range(seg + 1):
+		var a := a1 + (a0 - a1) * float(i) / float(seg)
+		out.append(c + _dir(a) * r0)
+	return out
 
 
 ## 🟠 T-P6-07 C3：静态径向几何缓存（按 `(c.x, c.y, sc)` 签名；仅变化时重建）。
@@ -1069,8 +1143,27 @@ func _radial_geo(sc: float, c: Vector2, rs: float) -> Dictionary:
 			var a := TAU * float(k) / 8.0
 			spokes.append([c, c + _dir(a) * rs])
 			ticks.append([c + _dir(a) * (rs - 0.8 * sc), c + _dir(a) * (rs + 0.8 * sc)])
+		# 🆕 地图几何（岩脊 / 阵地）：与环同一份缓存 —— 同由 `(c, sc)` 完全决定。
+		#   🔴 世界→屏幕的换算自己算（`ox = c.x − core.x·sc`），不调 `_to_screen()`：
+		#      后者每次重跑 `_xform()`，在缓存重建里调 17×7 次纯属浪费。
+		var ridges: Array = []
+		var pads: Array = []
+		if _SpaceModel.layout_enabled:
+			for rg in _SpaceModel.RIDGES:
+				var vpad := float(rg.get("pad", 0.0))
+				ridges.append(_sector_poly(c, float(rg["r0"]) * sc, float(rg["r1"]) * sc,
+					deg_to_rad(float(rg["a0"]) + vpad), deg_to_rad(float(rg["a1"]) - vpad), 12))
+			var ox := c.x - _SpaceModel.RADIAL_CORE.x * sc
+			var oy := c.y - _SpaceModel.RADIAL_CORE.y * sc
+			for s in _BuildGrid.SITES:
+				for k in s["cells"]:
+					var poly := PackedVector2Array()
+					for v in _BuildGrid.corners(_BuildGrid.cell(k.x, k.y)):
+						poly.append(Vector2(ox + v.x * sc, oy + v.y * sc))
+					pads.append(poly)
 		_geo = {"ring0": rings[0], "ring1": rings[1], "ring2": rings[2],
-			"spawn": _circle_pts(c, rs, 160), "spokes": spokes, "ticks": ticks}
+			"spawn": _circle_pts(c, rs, 160), "spokes": spokes, "ticks": ticks,
+			"ridges": ridges, "pads": pads}
 	return _geo
 
 
@@ -1139,12 +1232,15 @@ func _draw_radial_slot_layer(sc: float) -> void:
 ##    "点哪里才算一格、哪里算建成了" —— 网格是把「自由」变成「可操作」的界面，
 ##    不是装饰。它同时承担三件事：可建区边界、格点吸附的视觉反馈、落子结果预览。
 ##
-## 视觉三层（由弱到强，不抢战场戏）：
-##   ① 网格线     α 0.10 —— 只暗示"这里有刻度"
-##   ② 可建区边界 α 0.30 —— 明确"圈外不能建"；核心禁建区用暗盘 + 红环
-##   ③ 悬停格     实心 + 呼吸 + 徽标 —— 回答"我点下去会怎样"
+## 🆕 网格形状 = **正六边形蜂窝**（玩家要求从方格改过来）。理由见 `build_grid.gd` 文件头：
+##    方格到 4 个斜角邻格的距离是 1.414a，塔阵会自发退化成对角条纹；六边形 6 邻格等距。
 ##
-## 🔴 只对**鼠标所指那一格**查落子模式（O(塔数)），不遍历全盘 ~900 格。
+## 视觉三层（由弱到强，不抢战场戏）：
+##   ① 网格线     α 0.11 —— 只暗示"这里有刻度"
+##   ② 可建区边界 α 0.30 —— 明确"圈外不能建"；核心禁建区用暗盘 + 红环
+##   ③ 悬停格     六边形描边 + 呼吸 + 徽标 —— 回答"我点下去会怎样"
+##
+## 🔴 只对**鼠标所指那一格**查落子模式（O(塔数)），不遍历全盘 ~960 格。
 ## 🔴 零文本（AC-T1-24）：＋ / ↑ 全部 `draw_line` 画，不写 `draw_string`。
 ##
 ## 🆕 `phase` 两段式（同一个函数，两个绘制时机）：
@@ -1158,18 +1254,35 @@ func _draw_placement_marks(sc: float, phase: String = "bg") -> void:
 	if controller == null or controller.runtime == null:
 		return
 
-	# ---- ① 网格线 ----
-	if _grid_segs.is_empty():
-		_grid_segs = _BuildGrid.grid_segments()
-	var g_lw := maxf(1.0, 0.045 * sc)
-	var g_col := Color(P_ALLY.r, P_ALLY.g, P_ALLY.b, 0.10)
-	for seg in _grid_segs:
-		draw_line(_to_screen(seg[0]), _to_screen(seg[1]), g_col, g_lw, true)
+	# ---- ① 网格线（正六边形蜂窝）----
+	# 🔴 一次 `draw_multiline` 画完 ~3660 段边（逐段 draw_line 是不可接受的调用量）；
+	#    屏幕坐标按 (ox, oy, sc) 缓存 —— 抽屉开合会改 `_field_width()` → 战场重新居中，
+	#    签名一变必须重算，否则网格会和塔身错位（本项目踩过手抄坐标的坑）。
+	if _grid_edges.is_empty() or _grid_sites_mode != _BuildGrid.sites_active():
+		_grid_sites_mode = _BuildGrid.sites_active()
+		_grid_edges = _BuildGrid.grid_edges()
+	var xf := _xform()
+	var ox := float(xf["ox"])
+	var oy := float(xf["oy"])
+	var sig := Vector4(ox, oy, sc, 1.0 if _grid_sites_mode else 0.0)
+	if sig != _grid_scr_sig:
+		_grid_scr_sig = sig
+		_grid_scr.resize(_grid_edges.size())
+		for i in range(_grid_edges.size()):
+			var v: Vector2 = _grid_edges[i]
+			_grid_scr[i] = Vector2(ox + v.x * sc, oy + v.y * sc)
+	if not _grid_scr.is_empty():
+		var g_lw := maxf(1.0, 0.045 * sc)
+		var g_col := Color(P_ALLY.r, P_ALLY.g, P_ALLY.b, 0.11)
+		draw_multiline(_grid_scr, g_col, g_lw, true)
 
 	# ---- ② 可建区边界 + 核心禁建区 ----
 	var core := _to_screen(_BuildGrid.core())
-	draw_arc(core, _BuildGrid.FIELD_R * sc, 0.0, TAU, 96,
-		Color(P_ALLY.r, P_ALLY.g, P_ALLY.b, 0.30), maxf(1.5, 0.10 * sc), true)
+	# 🔴 阵地化后可建边界**不再是 44u 圆**，而是那 17 个格子（已在地面层常驻绘制）。
+	#    这里再画一个圆会让玩家以为"圆内都能建"—— 与 `buildable()` 直接矛盾。
+	if not _BuildGrid.sites_active():
+		draw_arc(core, _BuildGrid.FIELD_R * sc, 0.0, TAU, 96,
+			Color(P_ALLY.r, P_ALLY.g, P_ALLY.b, 0.30), maxf(1.5, 0.10 * sc), true)
 	draw_circle(core, _BuildGrid.CORE_BAN_R * sc, Color(0.020, 0.030, 0.060, 0.60))
 	draw_arc(core, _BuildGrid.CORE_BAN_R * sc, 0.0, TAU, 48,
 		Color(P_ALERT.r, P_ALERT.g, P_ALERT.b, 0.45), maxf(1.5, 0.09 * sc), true)
@@ -1191,8 +1304,8 @@ func _draw_placement_marks(sc: float, phase: String = "bg") -> void:
 	var mode := String(info["mode"])
 	if mode == "":
 		return
-	var c := _to_screen(_BuildGrid.snap(wp))
-	var half := _BuildGrid.CELL * 0.5 * sc
+	var cellc := _BuildGrid.snap(wp)          # 吸附后的**世界格心**（六边形轮廓要它，不是鼠标点）
+	var c := _to_screen(cellc)
 	var pulse := 1.0 + 0.10 * sin(_vfx_t * TAU / 0.9)
 	var col: Color
 	var live := true                       # 这一格现在点下去会不会落子
@@ -1207,16 +1320,27 @@ func _draw_placement_marks(sc: float, phase: String = "bg") -> void:
 		_:
 			col = Color(P_SLOT.r, P_SLOT.g, P_SLOT.b, 0.40)   # 钢灰：塔数满 / 已有别的塔
 			live = false
-	var rect := Rect2(c.x - half, c.y - half, half * 2.0, half * 2.0)
+	# 高亮形状 = **这一格的六边形本身**（不是屏幕对齐的方框）。
+	# 🔴 为什么必须跟着格子形状走：方框在对角方向会超出格界（把邻格也罩住），
+	#    玩家看到的高亮范围和 `cell_of()` 的判定范围就对不上 —— 正是"看到能建、点下去不能建"的成因。
+	var hex := PackedVector2Array()          # 开口（给三角化填充）
+	var ring := PackedVector2Array()         # 闭合（给描边）
+	for v in _BuildGrid.corners(cellc):
+		var sv := _to_screen(v)
+		hex.append(sv)
+		ring.append(sv)
+	ring.append(ring[0])
 	if mode == "upgrade":
 		# 升级态只描边不填充 —— 填充会把塔身整块染色，看不清原来那座塔是什么。
-		draw_rect(rect, col, false, maxf(3.0, 0.16 * sc), true)
+		draw_polyline(ring, col, maxf(3.0, 0.16 * sc), true)
 	else:
-		draw_rect(rect, Color(col.r, col.g, col.b, 0.26 if live else 0.10))
-		draw_rect(rect, col, false, maxf(2.0, 0.12 * sc), true)
-	# 徽标：格子正上方（不压塔身），暗盘衬底保证深底 / 亮塔上都可读
+		draw_colored_polygon(hex, Color(col.r, col.g, col.b, 0.26 if live else 0.10))
+		draw_polyline(ring, col, maxf(2.0, 0.12 * sc), true)
+	# 徽标：格子正上方（不压塔身），暗盘衬底保证深底 / 亮塔上都可读。
+	#   偏移按六边形的**半高**（边心距）算 —— 用半宽会顶到邻格里去。
 	if live:
-		_draw_place_badge(c + Vector2(0.0, -half * 1.72), half * 0.62 * pulse, mode, col, sc)
+		var br := _BuildGrid.HEX_R * 0.58 * pulse * sc
+		_draw_place_badge(c + Vector2(0.0, -(_BuildGrid.HEX_HALF_H * sc + br * 1.30)), br, mode, col, sc)
 
 
 ## 落子徽标：圆盘衬底 + 几何符号（零文本）。`mode` ∈ {new, upgrade, invalid}。

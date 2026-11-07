@@ -37,6 +37,7 @@ const _SimPlayer = preload("res://scripts/engine/sim_player.gd")
 const _Geo6 = preload("res://scripts/geo/geo6.gd")
 const _PathGeometry = preload("res://scripts/geo/path_geometry.gd")
 const _SpaceModel = preload("res://scripts/geo/space_model.gd")
+const _BuildGrid = preload("res://scripts/geo/build_grid.gd")
 const _MonsterData = preload("res://scripts/data/monster_data.gd")
 const _Monster = preload("res://scripts/gameplay/monster.gd")
 const _WaveDirector = preload("res://scripts/gameplay/wave_director.gd")
@@ -97,6 +98,7 @@ func run_all() -> bool:
 
 	_test_v0_and_kinematics()
 	_test_spawn_theta_golden()
+	_test_map_layout()
 	_test_batch_mirror_alignment()
 	_test_equivalence_vs_golden()
 
@@ -209,6 +211,134 @@ func _angular_span(angles: Array) -> float:
 		if gap > max_gap:
 			max_gap = gap
 	return 360.0 - max_gap
+
+
+# ===========================================================================
+#  E-M1..E-M8：地图「三裂环」（`design/gdd/scene-map.md` §5 / §11 步4）
+# ===========================================================================
+## 一句话：**地图的可玩性 = 可建格从 965 收敛到 17，而结算链一位不动。**
+##   所以这组断言只验两件事：
+##     ① 收敛真的发生了（格数 / 开口 / 跨台断链）—— 否则地图只是画了张背景；
+##     ② 收敛没有偷偷改路（`G` 只做角向映射 · 出生角永不落在脊里 · 关掉开关逐位回退）。
+func _test_map_layout() -> void:
+	_log("")
+	_log("--- [E-M] 地图三裂环：阵地 17 格 · 开口 320° · G 保序保测度 · 跨台断链 ---")
+	_check_bool("前置：layout_enabled == true", _SpaceModel.layout_enabled, true)
+
+	# ---- E-M1 可建格收敛到 17 ----
+	var cells: Array = _BuildGrid.all_cells()
+	_check_int("E-M1 可建格数 = 17", cells.size(), 17)
+	var all_in := true
+	for c in cells:
+		if _BuildGrid.site_id_of(c).is_empty():
+			all_in = false
+			break
+	_tally("E-M1 每一格都属于某个阵地（没有游离格）", all_in)
+	var outside: Vector2 = _BuildGrid.snap(_SpaceModel.polar_pos(deg_to_rad(100.0), 35.0))
+	_check_bool("E-M1 圆内非阵地格不可建（r=35,θ=100）", _BuildGrid.buildable(outside), false)
+	_check_bool("E-M1 离盘面很远的点不可建", _BuildGrid.buildable(Vector2(-500.0, -500.0)), false)
+	_check_bool("E-M1 核心禁建区仍不可建", _BuildGrid.buildable(_SpaceModel.RADIAL_CORE), false)
+
+	# ---- E-M2 开口 = 320°，脊 = 40° ----
+	var open := 0.0
+	for a in _SpaceModel.SPAWN_ARCS:
+		open += float(a["a1"]) - float(a["a0"])
+	_check("E-M2 开口总角宽 = 320°（AC-R1 下限 300°）", open, 320.0, 1e-9)
+	var blocked := 0.0
+	for rg in _SpaceModel.RIDGES:
+		blocked += float(rg["a1"]) - float(rg["a0"])
+	_check("E-M2 岩脊合计遮挡 = 360 − 开口 = 40°", blocked, 360.0 - open, 1e-9)
+
+	# ---- E-M3 G 保序 + 保测度 ----
+	# 🔴 按**圆周增量**判序（不是比裸值）：C 口跨 0°（262→378），裸值会在 340° 附近
+	#   从 ~360 掉回 ~0 —— 那是绕圈不是回退。真实增量恒 > 0 且 ≤ 0.089°/0.1° 输入。
+	var mono := true
+	var prev := _SpaceModel.map_theta_deg(0.0)
+	var worst_delta := 999.0
+	for i in range(1, 3600):
+		var cur := _SpaceModel.map_theta_deg(float(i) * 0.1)
+		var delta := fposmod(cur - prev + 180.0, 360.0) - 180.0
+		if delta < -1e-9:
+			mono = false
+			break
+		worst_delta = minf(worst_delta, delta)
+		prev = cur
+	_tally("E-M3 G 保序（全周 0.1° 步进，无回退；最差增量 %.4f°）" % worst_delta, mono)
+	_check("E-M3 输入 0° → 输出 36°（A 口起点）", _SpaceModel.map_theta_deg(0.0), 36.0, 1e-6)
+	_check("E-M3 输入 128.25° → 输出 150°（A 口终点）", _SpaceModel.map_theta_deg(128.25), 150.0, 1e-6)
+	_check("E-M3 输入 229.5° → 输出 254°（B 口终点）", _SpaceModel.map_theta_deg(229.5), 254.0, 1e-6)
+	var tail := _SpaceModel.map_theta_deg(359.9999)
+	_check("E-M3 输入 360°⁻ → 输出 18°（C 口绕回，接 G1 起点）", tail, 18.0, 1e-3)
+	# 保测度：均匀输入下每段输出占比必须 = 该段弧长占比（114/90/116 of 320）
+	var counts: Array = [0, 0, 0]
+	const N_MEAS := 3600
+	for i in range(N_MEAS):
+		var d := _SpaceModel.map_theta_deg(float(i) * 0.1)
+		for k in range(_SpaceModel.SPAWN_ARCS.size()):
+			var arc: Dictionary = _SpaceModel.SPAWN_ARCS[k]
+			var a0 := float(arc["a0"])
+			var a1 := float(arc["a1"])
+			var hit := (d >= a0 and d < a1) if a1 <= 360.0 else (d >= a0 or d < a1 - 360.0)
+			if hit:
+				counts[k] = int(counts[k]) + 1
+	var meas := true
+	var meas_txt := ""
+	for k in range(_SpaceModel.SPAWN_ARCS.size()):
+		var arc2: Dictionary = _SpaceModel.SPAWN_ARCS[k]
+		var want := (float(arc2["a1"]) - float(arc2["a0"])) / 320.0
+		var got := float(counts[k]) / float(N_MEAS)
+		meas_txt += "%s:%.3f/%.3f " % [String(arc2["id"]), got, want]
+		if absf(got - want) > 0.002:
+			meas = false
+	_tally("E-M3 保测度：三段输出占比 = 弧长占比（%s）" % meas_txt, meas)
+
+	# ---- E-M4 出生角永不落进岩脊（400 次跨 8 个波号）----
+	var in_ridge := 0
+	for i in range(400):
+		var d := rad_to_deg(_SpaceModel.spawn_theta(i, 3 + i % 8))
+		if _SpaceModel.is_ridge_deg(d):
+			in_ridge += 1
+	_check_int("E-M4 400 次出生角落进岩脊的次数", in_ridge, 0)
+
+	# ---- E-M5 跨台断链（按**最近格距**验，阈值 = Lance 0.65·(Ri+Rj) 上限 28.6u）----
+	var min_d := 1e9
+	var pair := ""
+	var ids: Array = []
+	for s in _BuildGrid.SITES:
+		ids.append(String(s["id"]))
+	for i in range(ids.size()):
+		for j in range(i + 1, ids.size()):
+			for a in _BuildGrid.site_cells(ids[i]):
+				for b in _BuildGrid.site_cells(ids[j]):
+					var dd: float = (a as Vector2).distance_to(b)
+					if dd < min_d:
+						min_d = dd
+						pair = String(ids[i]) + "–" + String(ids[j])
+	_log("   跨台最近格距 = %.2fu（最紧一对 %s）" % [min_d, pair])
+	_tally("E-M5 跨台最近格距 ≥ 28.6u（否则三台连成一片，E 飙回 n−1）", min_d >= 28.6)
+
+	# ---- E-M6 每格都在可建外径内 + 起手锚点属于 P1 ----
+	var in_field := true
+	for c in _BuildGrid.site_points():
+		if (c as Vector2).distance_to(_SpaceModel.RADIAL_CORE) > _BuildGrid.FIELD_R:
+			in_field = false
+	_tally("E-M6 17 格全部落在可建外径 44u 内", in_field)
+	_check_bool("E-M6 起手锚点（P1 首格）可建", _BuildGrid.buildable(_BuildGrid.site_anchor("P1")), true)
+	_check_bool("E-M6 起手锚点属于 P1",
+		_BuildGrid.site_id_of(_BuildGrid.site_anchor("P1")) == "P1", true)
+
+	# ---- E-M7 全局难度税（地图唯一旋钮，必须显式记账）----
+	_check("E-M7 全局曝光税 = 360/320 = 1.125", 360.0 / _SpaceModel.OPEN_DEG, 1.125, 1e-12)
+
+	# ---- E-M8 一键回退：关掉开关必须逐位回到「空圆盘 + 整圈出生」----
+	_SpaceModel.layout_enabled = false
+	var n_off: int = _BuildGrid.all_cells().size()
+	var th_off := rad_to_deg(_SpaceModel.spawn_theta(5, 3))
+	_SpaceModel.layout_enabled = true
+	_log("   布局关闭后：可建格 %d（改前口径 ~965）· θ(5,3) = %.4f°" % [n_off, th_off])
+	_tally("E-M8 关闭开关 → 可建格回到整盘量级（>500）", n_off > 500)
+	_check("E-M8 关闭开关 → 出生角回到黄金角原值（111 + 687.54 mod 360）",
+		th_off, fmod(3.0 * 37.0 + 5.0 * 137.508, 360.0), 1e-9)
 
 
 # ===========================================================================

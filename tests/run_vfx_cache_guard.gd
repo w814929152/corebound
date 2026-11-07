@@ -145,14 +145,14 @@ func _case(SM, ML, sz: Vector2i, expect_sc_equal: bool) -> void:
 # ---------------------------------------------------------------------------
 #  [B] VFX-PATH-01
 # ---------------------------------------------------------------------------
-## 对 7 个容器逐个「仅它非空」注入 → 步进 `_process`（PATH）→ 断言**7 容器全空**。
+## 对 8 个容器逐个「仅它非空」注入 → 步进 `_process`（PATH）→ 断言**8 容器全空**。
 ## 🔴 cross-state 精神：注入态（1）→ 步进后态（0）必须反转；旧守卫下 `_dmg_grid`/`_kill_set`
 ##   两例会停在 1（残留），即本组会对旧实现 FAIL。
 func _path_clear_case(VFX) -> void:
 	var sv := SubViewport.new()
 	sv.size = Vector2i(1920, 1080)
 	root.add_child(sv)
-	var targets: Array = ["_bolts", "_dmg", "_dmg_grid", "_kf_parts", "_kf_rings", "_hp_cache", "_kill_set"]
+	var targets: Array = ["_bolts", "_dmg", "_dmg_grid", "_dmg_by_owner", "_kf_parts", "_kf_rings", "_hp_cache", "_kill_set"]
 	for target in targets:
 		var vx = VFX.new()
 		sv.add_child(vx)
@@ -163,7 +163,7 @@ func _path_clear_case(VFX) -> void:
 		vx._process(0.016)      # PATH 模式（SM.mode=0）
 		var after := _count_nonempty(vx)
 		print("   [%s] 注入前非空=%d → 步进 _process 后非空=%d" % [target, before, after])
-		_ok("[PATH] 仅 `%s` 非空(=%d) → 步进后 7 容器全空(=%d)" % [target, before, after],
+		_ok("[PATH] 仅 `%s` 非空(=%d) → 步进后 8 容器全空(=%d)" % [target, before, after],
 			before == 1 and after == 0)
 	sv.queue_free()
 
@@ -176,6 +176,8 @@ func _inject_one(vx, which: String) -> void:
 			vx._dmg = [{"base": Vector2.ZERO, "text": "1", "tier": 0, "life": 0.0, "count": 1, "jitter": 0.0}]
 		"_dmg_grid":
 			vx._dmg_grid = {Vector2i(0, 0): 999.0}
+		"_dmg_by_owner":
+			vx._dmg_by_owner = {0: {"owner": 0, "amount": 1.0, "count": 1}}
 		"_kf_parts":
 			vx._kf_parts = [{"pos": Vector2.ZERO, "vel": Vector2.ZERO, "life": 0.0,
 				"col": Color(1, 0, 0), "sides": 3, "rot": 0.0, "spin": 0.0}]
@@ -194,6 +196,8 @@ func _count_nonempty(vx) -> int:
 	if not vx._dmg.is_empty():
 		n += 1
 	if not vx._dmg_grid.is_empty():
+		n += 1
+	if not vx._dmg_by_owner.is_empty():
 		n += 1
 	if not vx._kf_parts.is_empty():
 		n += 1

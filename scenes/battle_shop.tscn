@@ -18,6 +18,7 @@
 [ext_resource type="Script" path="res://scripts/ui/battlefield_placeholder.gd" id="3_bf"]
 [ext_resource type="Script" path="res://scripts/ui/monster_layer.gd" id="8_ml"]
 [ext_resource type="Script" path="res://scripts/ui/vfx_layer.gd" id="9_vfx"]
+[ext_resource type="Script" path="res://scripts/ui/tower_level_layer.gd" id="11_tlv"]
 [ext_resource type="Script" path="res://scripts/ui/hud.gd" id="4_hud"]
 [ext_resource type="Script" path="res://scripts/ui/shop_overlay.gd" id="5_shop"]
 [ext_resource type="Script" path="res://scripts/ui/threat_pulse.gd" id="6_pulse"]
@@ -36,6 +37,9 @@ script = ExtResource("3_bf")
 
 [node name="MonsterLayer" type="Node2D" parent="Battlefield"]
 script = ExtResource("8_ml")
+
+[node name="TowerLevelLayer" type="Node2D" parent="Battlefield"]
+script = ExtResource("11_tlv")
 
 [node name="VfxLayer" type="Node2D" parent="Battlefield"]
 script = ExtResource("9_vfx")

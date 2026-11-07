@@ -408,8 +408,10 @@ func _test_three_way_routing() -> void:
 		rt1.offers = ["Arrow"]
 		rt1.buy(0)
 		rt1.begin_placement(0)
-		# 沿 +X 方向逐格撒（每格间距 1 格，互不同槽）
-		var gp: Vector2 = _BuildGrid.snap(_BuildGrid.core() + Vector2(6.0 + 2.5 * float(k), 0.0))
+		# 沿 +X 方向逐格撒：轴向 r = -q/2 时 y 恒等于 core.y，q 走偶数步就是「正右方相邻格」
+		# 🔴 不要写成"core + (6 + 2.5k, 0)"：六边形吸附会把任意偏移拉到最近格心，
+		#    间距 2.5 与列距 2.325 错开 → 两个 k 可能吸附到同一格（然后被当成升级，塔数填不满）。
+		var gp: Vector2 = _BuildGrid.cell(4 + 2 * k, -2 - k)
 		rt1.confirm_placement_at(gp)
 		k += 1
 	_check_int("[E1] 塔数填满（tower_cap）", rt1.player.towers.size(), cap)

@@ -473,9 +473,16 @@ func _test_j_placement_entry() -> void:
 		and ml_src.find("emit_signal(\"place_at_requested\"") >= 0)
 	_check("MonsterLayer 点击先吸附格点（渲染层与 runtime 共用 BuildGrid.snap）",
 		ml_src.find("_BuildGrid.snap") >= 0)
-	_check("MonsterLayer ⑤ 态绘制网格（grid_segments，不是只画 6 个点）",
-		ml_src.find("grid_segments()") >= 0)
-	_check("MonsterLayer 只对鼠标所指格查落子模式（不遍历全盘 900 格）",
+	_check("MonsterLayer ⑤ 态绘制网格（grid_edges，不是只画 6 个点）",
+		ml_src.find("grid_edges()") >= 0)
+	_check("网格一次 draw_multiline 画完（逐段 draw_line × 3660 段不可接受）",
+		ml_src.find("draw_multiline(") >= 0)
+	_check("悬停格按**六边形**高亮（corners + draw_colored_polygon，不是屏幕对齐方框）",
+		ml_src.find("_BuildGrid.corners(") >= 0
+		and ml_src.find("draw_colored_polygon(") >= 0)
+	_check("MonsterLayer 不再引用已删除的方格常量 CELL",
+		ml_src.find("_BuildGrid.CELL") < 0)
+	_check("MonsterLayer 只对鼠标所指格查落子模式（不遍历全盘 960 格）",
 		ml_src.find("placement_mode_at") >= 0)
 	_check("MonsterLayer 点选发到 time_director（信号声明方）",
 		ml_src.find("time_director.emit_signal(\"tower_select_requested\"") >= 0)
@@ -498,36 +505,63 @@ func _test_j_placement_entry() -> void:
 
 
 # ---------------------------------------------------------------------------
-#  [K] 自由摆放：网格几何 + 坐标驱动落子
+#  [K] 自由摆放：六边形网格几何 + 坐标驱动落子
 # ---------------------------------------------------------------------------
-## 🔴 这一节钉的是「自由摆放」的四条不变量：
-##   ① 吸附正确（格点对齐 / 幂等 / 不超过半格）—— 否则同一个视觉位置会落出两个槽
+## 🔴 这一节钉的是「自由摆放」的五条不变量：
+##   ① 吸附正确（轴向取整 / 幂等 / 不超过外接圆半径）—— 否则同一视觉位置会落出两个槽
+##   ①b 格子是**正**六边形：6 邻格等距、顶点构成正六边形 —— 否则"改方格"只是换了个贴图
 ##   ② 可建区正确（核心禁建 / 外径封顶）—— 否则玩家能贴脸堆塔，策略坍缩成唯一解
 ##   ③ 网格与判定共用同一份几何（`BuildGrid`）—— 否则"看到能建、点下去不能建"
 ##   ④ 落子按**坐标**判定：同格升级、异原型拒绝、塔数封顶、槽位表增长
 func _test_k_free_placement() -> void:
 	_log("")
-	_log("--- [K] 自由摆放：网格几何 + 坐标落子（核心禁建 / 塔数上限 / 同格升级）---")
+	_log("--- [K] 自由摆放：六边形网格几何 + 坐标落子（核心禁建 / 塔数上限 / 同格升级）---")
 
 	var core: Vector2 = _BuildGrid.core()
 
-	# ---- ① 吸附 ----
+	# ---- ① 吸附（六边形 = 轴向取整，不是"除以格距再四舍五入"）----
 	var p := Vector2(31.3, 20.8)
+	var k: Vector2i = _BuildGrid.cell_of(p)
 	var s: Vector2 = _BuildGrid.snap(p)
-	var qx := (s.x - core.x) / _BuildGrid.CELL
-	var qy := (s.y - core.y) / _BuildGrid.CELL
-	_check("snap 输出落在格点上（相对核心为整数格）",
-		is_equal_approx(qx, roundf(qx)) and is_equal_approx(qy, roundf(qy)))
+	_check("snap 输出 = cell(cell_of(p))（吸附规则只有一份）",
+		s == _BuildGrid.cell(k.x, k.y))
+	_check("cell_of 往返一致（格心再取整仍是同一格）", _BuildGrid.cell_of(s) == k)
 	_check("snap 幂等（对已吸附点再吸附不漂移）", _BuildGrid.snap(s) == s)
-	_check("snap 就近（偏移 ≤ 半格对角线）",
-		s.distance_to(p) <= _BuildGrid.CELL * 0.75)
+	# 六边形内任一点到最近格心的距离上界 = 外接圆半径 R（最远点就是顶点）。
+	# 🔴 方格时代这条是"半格对角线 0.707a"；直接照搬会在六边形上误判。
+	_check("snap 就近（偏移 ≤ 外接圆半径 R = %.2f，实测 %.3f）" % [
+		_BuildGrid.HEX_R, s.distance_to(p)],
+		s.distance_to(p) <= _BuildGrid.HEX_R + 0.001)
+
+	# ---- ①b 六边形本身（改方格 → 六边形必须钉死的两条）----
+	var eq := true
+	var dmin := 1.0e9
+	var dmax := 0.0
+	for nb in _BuildGrid.neighbors():
+		var d: float = _BuildGrid.cell(nb.x, nb.y).distance_to(core)
+		dmin = minf(dmin, d)
+		dmax = maxf(dmax, d)
+		if not is_equal_approx(d, _BuildGrid.ROW_STEP):
+			eq = false
+	_check("6 个邻格与中心距离全等 = √3R（方格 1.414a 的\"斜向便宜格\"已消失；实测 %.3f ~ %.3f）"
+		% [dmin, dmax], eq and is_equal_approx(dmin, dmax))
+	var vc: PackedVector2Array = _BuildGrid.corners(core)
+	var regular := vc.size() == 6
+	for i in range(6):
+		if not is_equal_approx(vc[i].distance_to(core), _BuildGrid.HEX_R):
+			regular = false
+		if not is_equal_approx(vc[i].distance_to(vc[(i + 1) % 6]), _BuildGrid.HEX_R):
+			regular = false
+	_check("corners() 返回**正**六边形（6 顶点等距 R、相邻顶点距亦为 R）", regular)
+	_check("同格判定按格划分，不按距离容差（邻格不算同格）",
+		_BuildGrid.same_cell(p, s) and not _BuildGrid.same_cell(s, _BuildGrid.cell(k.x + 1, k.y)))
 
 	# ---- ② 可建区 ----
 	_check("核心所在格不可建（CORE_BAN_R 内）", not _BuildGrid.buildable(core))
 	_check("核心禁建圈外、可建外径内 可建",
-		_BuildGrid.buildable(core + Vector2(_BuildGrid.CORE_BAN_R + _BuildGrid.CELL, 0.0)))
+		_BuildGrid.buildable(core + Vector2(_BuildGrid.CORE_BAN_R + _BuildGrid.ROW_STEP, 0.0)))
 	_check("可建外径外 不可建",
-		not _BuildGrid.buildable(core + Vector2(_BuildGrid.FIELD_R + _BuildGrid.CELL, 0.0)))
+		not _BuildGrid.buildable(core + Vector2(_BuildGrid.FIELD_R + _BuildGrid.ROW_STEP, 0.0)))
 	_check("战场外（远离核心）不可建",
 		not _BuildGrid.buildable(Vector2(-500.0, -500.0)))
 
@@ -539,18 +573,27 @@ func _test_k_free_placement() -> void:
 			all_ok = false
 			break
 	_check("all_cells() 每一格都通过 buildable()", all_ok)
-	# 圆环面积 π(44² − 4²) ≈ 6032 u² ÷ 6.25 u²/格 ≈ 965
+	# 圆环面积 π(44² − 4²) ≈ 6032 u² ÷ 6.24 u²/格（= 改前方格 2.5²，容量刻意不变）≈ 966
 	_check("all_cells() 数量在合理量级（500 ~ 1300，实测 %d）" % cells.size(),
 		cells.size() > 500 and cells.size() < 1300)
 
-	var segs: Array = _BuildGrid.grid_segments()
-	_check("网格线段非空（%d 条，整盘 34+34 量级）" % segs.size(), segs.size() >= 40)
+	var edges: PackedVector2Array = _BuildGrid.grid_edges()
+	_check("网格线段成对给出且非空（%d 段，供 draw_multiline 一次画完）" % (edges.size() / 2),
+		edges.size() >= 120 and edges.size() % 2 == 0)
 	var clipped := true
-	for seg in segs:
-		for e in seg:
-			if (e as Vector2).distance_to(core) > _BuildGrid.FIELD_R + 0.01:
-				clipped = false
+	var max_len := 0.0
+	var i := 0
+	while i < edges.size():
+		var a: Vector2 = edges[i]
+		var b: Vector2 = edges[i + 1]
+		if a.distance_to(core) > _BuildGrid.FIELD_R + 0.01 \
+			or b.distance_to(core) > _BuildGrid.FIELD_R + 0.01:
+			clipped = false
+		max_len = maxf(max_len, a.distance_to(b))
+		i += 2
 	_check("网格线段全部裁剪在可建圆内（不会画到出生环外）", clipped)
+	_check("网格线段长度 ≤ 六边形边长 R = %.2f（实测最长 %.3f）" % [_BuildGrid.HEX_R, max_len],
+		max_len <= _BuildGrid.HEX_R + 0.01)
 
 	# ---- ④ 配置：塔数上限与槽位数语义分离 ----
 	var cfg: Dictionary = _Cfg.cfg_of("B")
@@ -566,7 +609,11 @@ func _test_k_free_placement() -> void:
 	_check("起手塔所在格可建（坐标落在格点上，与网格对齐）",
 		_BuildGrid.buildable(rt.geo.slots[0]))
 
-	var p_new: Vector2 = core + Vector2(10.0, 0.0)
+	# 🆕 点位用**轴向坐标**显式取格心，不再写 `core + Vector2(10.0, 0.0)` 这类"随手偏一点"：
+	#    六边形吸附会把任意偏移拉到最近的格心，靠手写的偏移量去赌"落在不同格"是不可靠的。
+	var p_new: Vector2 = _BuildGrid.cell(4, -2)          # 正右方 9.30u：y 恒等于 core.y
+	_check("测试点位 1 在可建区（dist=%.2f）" % p_new.distance_to(core),
+		_BuildGrid.buildable(p_new))
 	rt.pending = ["Cannon"]
 	rt.pending_cost = [12.0]
 	rt.begin_placement(0)
@@ -606,12 +653,12 @@ func _test_k_free_placement() -> void:
 	rt.pending = ["Frost"]
 	rt.pending_cost = [12.0]
 	rt.begin_placement(0)
-	var ok_third: bool = rt.confirm_placement_at(core + Vector2(-8.5, 6.5))
+	var ok_third: bool = rt.confirm_placement_at(_BuildGrid.cell(-4, 2))      # 正左方 9.30u
 	_check("第 3 座塔可建（未超上限 3）", ok_third)
 	rt.pending = ["Frost"]
 	rt.pending_cost = [12.0]
 	rt.begin_placement(0)
-	var ok_fourth: bool = rt.confirm_placement_at(core + Vector2(0.0, -12.5))
+	var ok_fourth: bool = rt.confirm_placement_at(_BuildGrid.cell(0, 5))      # 正下方 13.42u
 	_check("第 4 座塔被塔数上限拒绝（tower_cap=3）", not ok_fourth)
 	_check("被拒后槽位表不变（仍 %d）" % rt.geo.slots.size(), rt.geo.slots.size() == 3)
 
@@ -622,10 +669,6 @@ func _test_k_free_placement() -> void:
 	_check("snapshot 的 towers_max 取 tower_cap（%d）" % int(snap["towers_max"]),
 		int(snap["towers_max"]) == 3)
 
-
-# ---------------------------------------------------------------------------
-#  断言助手
-# ---------------------------------------------------------------------------
 func _close(a: Color, b: Color) -> bool:
 	return absf(a.r - b.r) < 0.002 and absf(a.g - b.g) < 0.002 and absf(a.b - b.b) < 0.002
 

@@ -58,7 +58,16 @@ const DPS_FULL := 300.0                    # dps 归一化满标（放缩 ×1→
 # ---- A2 伤害数字（§2）----
 const DMG_CELL := Vector2(96.0, 48.0)      # 固定网格单元（§2.2）
 const DMG_LIFE := 0.7                      # 数字动画时长（s，约 0.5–0.8）
-const DMG_RISE := 18.0                     # 上浮像素（px）
+const DMG_RISE := 18.0                     # 上浮像素（px，基准档；高档按档位递增）
+# 🔴 同怪续喂（本层增强，治「每 tick 铺一格」）：
+#   玩法是 hitscan 连续结算（每 `_WaveSim.DT`=0.1s 分配一次），每 tick 单怪都会掉血。
+#   若每 tick 都新建数字，0.7s 寿命内同一只怪会铺出 7 个同值数字、按网格排成一片
+#   （实测 `shots_dmg/before-02.png`：7×「2」占满 3×3）——读不出信息，只剩噪点。
+#   → 同怪只保留**一个**数字：窗口内新伤害累加进它（主文本=累计伤害，右上 `×N`=次数）。
+const DMG_FEED_WINDOW := 0.45              # 续喂窗口（s，自上次累加起）
+const DMG_MAX_AGE := 1.0                   # 单数字最长存活（s）→ 超时断代，跟到怪的新位置
+const DMG_PULSE := 0.10                    # 续喂脉冲时长（s，文本瞬间放大后回落）
+const DMG_MERGE_RANGE := 140.0             # 池满合并的最大距离（px；更远宁可丢弃，不许跳格）
 # 五档（§2.1）：字号 px / 颜色；档 4（超杀）= 彩虹（运行时按寿命置色）。
 const DMG_TIER_SIZE: Array = [20, 26, 34, 44, 60]
 const DMG_TIER_COL: Array = [
@@ -93,6 +102,7 @@ var _bolts: Array = []                 # A1 装饰弹池（world 坐标）
 var _bolt_t: Dictionary = {}           # slot → 发射计时累积（s）
 var _dmg: Array = []                   # A2 伤害数字池（screen 坐标）
 var _dmg_grid: Dictionary = {}         # Vector2i 网格单元 → 失效时刻（`_vfx_t`）
+var _dmg_by_owner: Dictionary = {}     # 怪 index → 活跃数字条目（同怪续喂；每帧重建）
 var _kf_parts: Array = []              # A3 碎片池（world 坐标）
 var _kf_rings: Array = []              # A3 冲击环池（world 坐标）
 
@@ -163,13 +173,15 @@ func _process(delta: float) -> void:
 		# 🔴 VFX-PATH-01 修复（quality-lead 边界探察）：守卫**必须与下方清理动作逐一对应**。
 		#   此前守卫只测 5 个容器、动作实清 7 个 → `_dmg_grid` / `_kill_set` **非空时守卫不触发**
 		#   → 二者残留（`_kill_set` 在 PATH 下由 `_on_monster_killed` 逐杀写入 :150、却从不被清）。
-		#   现按清理动作的**同序 7 个容器**判据，判据 ≡ 动作。
+		#   现按清理动作的**同序 8 个容器**判据，判据 ≡ 动作（新增 `_dmg_by_owner` 一并纳入）。
 		if not (_bolts.is_empty() and _dmg.is_empty() and _dmg_grid.is_empty()
+				and _dmg_by_owner.is_empty()
 				and _kf_parts.is_empty() and _kf_rings.is_empty()
 				and _hp_cache.is_empty() and _kill_set.is_empty()):
 			_bolts = []
 			_dmg = []
 			_dmg_grid = {}
+			_dmg_by_owner = {}
 			_kf_parts = []
 			_kf_rings = []
 			_hp_cache = {}
@@ -232,17 +244,30 @@ func _ngon(c: Vector2, r: float, n: int, rot: float) -> PackedVector2Array:
 func _update_dmg(dt: float) -> void:
 	# 🟠 寿命推进 + 过期回收：数字的"上浮 → 淡出"由此驱动（`_draw_dmg_numbers` 读 `life`/`DMG_LIFE`）。
 	#   🔴 与下方 `_dmg_grid`（网格占用释放）**分开**：网格按 `_vfx_t` 释放，数字按自身 `life` 回收。
+	#   `age` = 自创建的总存活（只用于"是否还允许续喂"）；`pulse` = 续喂脉冲余量。
+	var live_cells: Dictionary = {}
 	if not _dmg.is_empty():
 		var alive: Array = []
 		for e in _dmg:
 			e["life"] = float(e["life"]) + dt
+			e["age"] = float(e.get("age", 0.0)) + dt
+			e["pulse"] = maxf(0.0, float(e.get("pulse", 0.0)) - dt / DMG_PULSE)
 			if float(e["life"]) < DMG_LIFE:
 				alive.append(e)
+				if e.has("cell"):
+					live_cells[e["cell"]] = true
+			elif e.has("cell"):
+				_dmg_grid.erase(e["cell"])
 		_dmg = alive
+	# 🔴 精确释放：数字一死就腾出它的格子（此前靠 `_vfx_t + DMG_LIFE` 批量过期，
+	#   续喂会延长数字寿命 → 旧口径下格子会比数字先空出来，导致同格重叠）。
+	#   兜底：`_dmg` 已空但仍有孤儿格（历史 slice/异常路径）时也要能过期清理 → 不放在上面的 if 内。
 	if not _dmg_grid.is_empty():
 		for k in _dmg_grid.keys():
-			if float(_dmg_grid[k]) <= _vfx_t:
+			if not live_cells.has(k) and float(_dmg_grid[k]) <= _vfx_t:
 				_dmg_grid.erase(k)
+	# 同怪索引：重建（条目会被回收/slice 丢弃 → 引用必须每帧刷新，不能长期持有）
+	_rebuild_dmg_owner()
 	var w := int(_snap.get("w", 0))
 	if w != _hp_cache_w:
 		_hp_cache = {}
@@ -259,7 +284,7 @@ func _update_dmg(dt: float) -> void:
 		if old != null:
 			var dmg := float(old["hp"]) - hp
 			if dmg > 0.0001:
-				_spawn_dmg(ppos, dmg, float(m.get("hp_max", 1.0)))
+				_spawn_dmg(ppos, dmg, float(m.get("hp_max", 1.0)), false, idx)
 		new_cache[idx] = {"hp": hp, "hp_max": float(m.get("hp_max", 1.0)), "pos": ppos}
 	for idx in _hp_cache.keys():
 		if new_cache.has(idx):
@@ -268,66 +293,133 @@ func _update_dmg(dt: float) -> void:
 			var old2: Dictionary = _hp_cache[idx]
 			var death_dmg := float(old2["hp"])
 			if death_dmg > 0.0001:
-				_spawn_dmg(old2["pos"], death_dmg, float(old2["hp_max"]), true)   # 击杀 → 升一档
+				# 击杀 → 升一档；若该怪已有活跃数字则续喂进去（一个数字收尾，不另起一格）
+				_spawn_dmg(old2["pos"], death_dmg, float(old2["hp_max"]), true, idx)
 			_kill_set.erase(idx)
 	_hp_cache = new_cache
 
 
+func _tier_of(frac: float) -> int:
+	if frac > 1.0:
+		return 4
+	if frac >= 0.60:
+		return 3
+	if frac >= 0.30:
+		return 2
+	if frac >= 0.10:
+		return 1
+	return 0
+
+
 ## 生成一个伤害数字（分档 §2.1 · 网格吸附 §2.2 · ≤40 聚合 §2.3）。
 ##   `escalate`：击杀帧的"最后一击"用 —— 升一档（击杀 = 超杀档）→ 大额击杀出彩虹（§2.1）。
+##   `owner_idx`：怪 index —— 有它才能做**同怪续喂**（同怪只占一格）。
 ##   🔴 注：玩法是贪心 hitscan（伤害按怪封顶，超杀溢出**结转下一只**）→ 单怪 `Δhp ≤ hp_max`，
 ##      故"超杀档"无法由 `frac>1` 直接触发；此处以"**击杀**"定义超杀（= 结束该单位的一击）。
-func _spawn_dmg(world_p: Vector2, dmg: float, hp_max: float, escalate: bool = false) -> void:
+func _spawn_dmg(world_p: Vector2, dmg: float, hp_max: float, escalate: bool = false,
+		owner_idx: int = -1) -> void:
 	if hp_max <= 0.0:
 		return
-	var frac := dmg / hp_max
-	var tier := 0
-	if frac > 1.0:
-		tier = 4
-	elif frac >= 0.60:
-		tier = 3
-	elif frac >= 0.30:
-		tier = 2
-	elif frac >= 0.10:
-		tier = 1
+	var sp := _to_screen(world_p)
+	var tier := _tier_of(dmg / hp_max)
 	if escalate:
 		tier = mini(tier + 1, 4)
-	var sp := _to_screen(world_p)
+	# —— 同怪续喂：窗口内同一只怪的新伤害累加进原数字（不新建、不换格）——
+	if owner_idx >= 0:
+		var ex = _dmg_by_owner.get(owner_idx, null)
+		if ex != null and float(ex["life"]) <= DMG_FEED_WINDOW \
+				and float(ex.get("age", 0.0)) <= DMG_MAX_AGE:
+			_feed_dmg(ex, dmg, tier)
+			return
 	if _dmg.size() >= VFX_MAX_DMG:
-		_merge_dmg(sp, dmg)
+		_merge_dmg(sp, dmg, tier)
 		return
 	var cell := _find_free_cell(sp)
 	if cell.x == -99999:
-		_merge_dmg(sp, dmg)
+		_merge_dmg(sp, dmg, tier)
 		return
-	_dmg_grid[cell] = _vfx_t + DMG_LIFE
-	_dmg.append({
+	var e := {
 		"base": Vector2((float(cell.x) + 0.5) * DMG_CELL.x, (float(cell.y) + 0.5) * DMG_CELL.y),
-		"text": _fmt_dmg(dmg), "tier": tier, "life": 0.0, "count": 1,
+		"text": _fmt_dmg(dmg), "tier": tier, "life": 0.0, "age": 0.0, "pulse": 1.0,
+		"count": 1, "amount": dmg, "owner": owner_idx, "cell": cell,
 		"jitter": fmod(float(cell.x * 7 + cell.y * 13) * 0.1, TAU),
-	})
+	}
+	_dmg_grid[cell] = _vfx_t + DMG_LIFE
+	_dmg.append(e)
+	if owner_idx >= 0:
+		_dmg_by_owner[owner_idx] = e
 	if _dmg.size() > VFX_MAX_DMG:
-		_dmg = _dmg.slice(_dmg.size() - VFX_MAX_DMG)
+		# 硬上限：丢最旧的（并精准腾出它的格子，避免"格子在、字没了"造成空等症状）
+		var drop := _dmg.size() - VFX_MAX_DMG
+		for i in drop:
+			if _dmg[i].has("cell"):
+				_dmg_grid.erase(_dmg[i]["cell"])
+		_dmg = _dmg.slice(drop)
+		_rebuild_dmg_owner()
 
 
-## 固定网格找最近空闲单元（螺旋外扩 ≤3 圈，§2.2）；无空位 → 哨兵。
+## 建立 `怪index → 活跃数字` 索引（同怪续喂用；条目引用会失效 → 每帧重建）。
+func _rebuild_dmg_owner() -> void:
+	_dmg_by_owner.clear()
+	for e in _dmg:
+		var o := int(e.get("owner", -1))
+		if o >= 0:
+			_dmg_by_owner[o] = e
+
+
+## 续喂：同怪新伤害并入已有条目 → 主文本 = 累计伤害、`count` = 次数、脉冲 + 寿命续期。
+##   🔴 网格位置**不动**（§2.2 禁"乱飞"）；档位只升不降。
+func _feed_dmg(e: Dictionary, dmg: float, tier: int) -> void:
+	e["amount"] = float(e.get("amount", 0.0)) + dmg
+	e["count"] = int(e.get("count", 1)) + 1
+	e["text"] = _fmt_dmg(float(e["amount"]))
+	e["tier"] = maxi(int(e["tier"]), tier)
+	e["life"] = 0.0
+	e["pulse"] = 1.0
+	if e.has("cell"):
+		_dmg_grid[e["cell"]] = _vfx_t + DMG_LIFE
+
+
+## 固定网格找最近空闲单元（§2.2）。🔴 候选顺序 = **上方优先**（固定偏移表，无随机）：
+##   数字优先落在怪的正上方，其次斜上、两侧，最后才是下方 ——
+##   既保持"一格一字不重叠"，又让数字与怪的视觉关联稳定（此前纯螺旋外扩会让数字
+##   均匀铺满怪的四周，看起来像数字在场上"散开"）。
 func _find_free_cell(sp: Vector2) -> Vector2i:
 	var base := Vector2i(int(floor(sp.x / DMG_CELL.x)), int(floor(sp.y / DMG_CELL.y)))
-	if not _dmg_grid.has(base):
-		return base
-	for r in range(1, 4):
-		for dy in range(-r, r + 1):
-			for dx in range(-r, r + 1):
-				if absi(dx) != r and absi(dy) != r:
-					continue
-				var cc := Vector2i(base.x + dx, base.y + dy)
-				if not _dmg_grid.has(cc):
-					return cc
+	for o in _cell_order():
+		var cc := Vector2i(base.x + int(o.x), base.y + int(o.y))
+		if not _dmg_grid.has(cc):
+			return cc
 	return Vector2i(-99999, -99999)
 
 
-## 聚合（§2.3）：并入**最近的**现有数字 → 文本 `×N`、升一档、重置寿命。
-func _merge_dmg(sp: Vector2, _dmg_val: float) -> void:
+## 上方优先的候选偏移表（懒构建 · 排序键固定 → 帧间/进程间可复现）。
+static var _CELL_ORDER: Array = []
+
+func _cell_order() -> Array:
+	if not _CELL_ORDER.is_empty():
+		return _CELL_ORDER
+	var arr: Array = []
+	for dy in range(-3, 4):
+		for dx in range(-3, 4):
+			var man := absi(dx) + absi(dy)
+			var pen := man
+			if dy > 0:
+				pen += 6          # 下方最差
+			elif dy == 0 and man > 0:
+				pen += 3          # 正侧次之（(0,0) 自身不罚，必须排第一）
+			arr.append({"o": Vector2i(dx, dy), "k": pen * 1000 + man * 10 + absi(dx)})
+	arr.sort_custom(func(a, b): return int(a["k"]) < int(b["k"]))
+	for it in arr:
+		_CELL_ORDER.append(it["o"])
+	return _CELL_ORDER
+
+
+## 聚合（§2.3）：并入**最近的**现有数字 → 累计伤害 + `×N`、升一档、重置寿命。
+##   🔴 三点修正：① 不再把 `base` 改成新伤害点（否则聚合数字会"跳格"，违反 §2.2）；
+##   ② 文本保留**累计伤害值**而不是只留 `×N`（原口径丢掉了唯一的数值信息）；
+##   ③ 超过 `DMG_MERGE_RANGE` 宁可丢弃也不合并（避免数字跨半个屏幕"瞬移"）。
+func _merge_dmg(sp: Vector2, dmg: float, tier: int) -> void:
 	if _dmg.is_empty():
 		return
 	var best := 0
@@ -337,18 +429,32 @@ func _merge_dmg(sp: Vector2, _dmg_val: float) -> void:
 		if d < bd:
 			bd = d
 			best = i
+	if bd > DMG_MERGE_RANGE * DMG_MERGE_RANGE:
+		return
 	var e: Dictionary = _dmg[best]
-	e["count"] = int(e["count"]) + 1
-	e["text"] = "×%d" % int(e["count"])
-	e["tier"] = mini(int(e["tier"]) + 1, 4)
+	e["amount"] = float(e.get("amount", 0.0)) + dmg
+	e["count"] = int(e.get("count", 1)) + 1
+	e["text"] = _fmt_dmg(float(e["amount"]))
+	# 档位随次数阶梯上升（每 4 次一档）→ 比"每合并一次升一档"稳定，不会瞬间刷成彩虹
+	e["tier"] = mini(maxi(maxi(int(e["tier"]), tier), 1 + int(float(e["count"]) / 4.0)), 4)
 	e["life"] = 0.0
-	e["base"] = sp
+	e["pulse"] = 1.0
+	if e.has("cell"):
+		_dmg_grid[e["cell"]] = _vfx_t + DMG_LIFE
 
 
 func _fmt_dmg(v: float) -> String:
+	if v >= 1000000.0:
+		return "%.1fM" % (v / 1000000.0)
+	if v >= 10000.0:
+		return "%.0fk" % (v / 1000.0)
 	if v >= 1000.0:
-		return "%.1fk" % (v / 1000.0)
-	return "%d" % int(round(v))
+		var s := "%.1f" % (v / 1000.0)
+		if s.ends_with(".0"):
+			s = s.substr(0, s.length() - 2)
+		return s + "k"
+	# 🔴 保底 1：低 dps 下单 tick 伤害可能 <0.5（原 `round` 会显示「0」，读起来像没打中）
+	return "%d" % maxi(1, int(round(v)))
 
 
 # ---------------------------------------------------------------------------
@@ -550,12 +656,19 @@ func _draw_kill_fragments(sc: float) -> void:
 
 
 ## A2 伤害数字绘制（独立文字层 · 压在所有世界元素之上）。
+##   本帧的视觉口径：
+##     · 弹入：低档轻弹（×1.06，别让"每一下命中"都毫无反馈），高档强弹（×1.35）；
+##     · 续喂脉冲：同一数字被累加时瞬间放大 5% 后回落 → "又打到了"的手感（幅度低于闪烁红线）；
+##     · 上浮距离随档位递增（大数字飘更远，减少压怪/压塔）；
+##     · 基线按**基准档**字号固定 → 升档时数字不会整体往下跳；
+##     · `count>1` 时右上角补小号 `×N`（累计次数），主文本始终是**伤害值**。
 func _draw_dmg_numbers() -> void:
 	if _dmg.is_empty():
 		return
 	var font := ThemeDB.fallback_font
 	if font == null:
 		return
+	var base_line := float(DMG_TIER_SIZE[0]) * 0.35
 	for e in _dmg:
 		var p := clampf(float(e["life"]) / DMG_LIFE, 0.0, 1.0)
 		var tier := clampi(int(e["tier"]), 0, 4)
@@ -563,21 +676,37 @@ func _draw_dmg_numbers() -> void:
 		var col: Color = DMG_TIER_COL[tier]
 		if tier == 4:   # 超杀"彩虹流光" = 2D 替代（🔴 不用 time_scale / 色差，§2.1）
 			col = Color.from_hsv(fmod(_vfx_t * 0.6 + float(e["jitter"]) * 0.05, 1.0), 0.85, 1.0)
+		var pop := 1.0
 		if tier >= 1:   # 弹出（前 25% 起始放大）
-			size = int(round(float(size) * (1.0 + 0.35 * pow(1.0 - minf(1.0, p / 0.25), 2.0))))
-		var rise := DMG_RISE * (1.0 - pow(1.0 - p, 2.0))
-		var alpha := 1.0 if p <= 0.6 else clampf(1.0 - (p - 0.6) / 0.4, 0.0, 1.0)
+			pop = 1.0 + 0.35 * pow(1.0 - minf(1.0, p / 0.25), 2.0)
+		else:
+			pop = 1.0 + 0.06 * pow(1.0 - minf(1.0, p / 0.18), 2.0)
+		var pulse := float(e.get("pulse", 0.0))
+		size = int(round(float(size) * pop * (1.0 + 0.05 * pulse)))
+		var rise := DMG_RISE * (1.0 + 0.28 * float(tier)) * (1.0 - pow(1.0 - p, 2.0))
+		var alpha := 1.0 if p <= 0.62 else clampf(1.0 - (p - 0.62) / 0.38, 0.0, 1.0)
 		var base: Vector2 = e["base"]
 		var jit := 0.0
 		if tier == 2:   # 近似"旋转抖动"的 2D 安全替代（不碰 transform）
 			jit = sin(_vfx_t * 42.0 + float(e["jitter"])) * 2.0
 		var text := String(e["text"])
 		var tw := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
-		var dp := Vector2(base.x - tw * 0.5 + jit, base.y + float(size) * 0.35 - rise)
+		var dp := Vector2(base.x - tw * 0.5 + jit, base.y + base_line - rise)
+		var outline := clampi(int(float(size) * 0.13), 2, 6)
 		draw_string_outline(font, dp, text, HORIZONTAL_ALIGNMENT_LEFT, -1, size,
-			maxi(2, int(float(size) * 0.14)), Color(0.02, 0.02, 0.04, alpha))
+			outline, Color(0.02, 0.02, 0.04, alpha))
 		draw_string(font, dp, text, HORIZONTAL_ALIGNMENT_LEFT, -1, size,
 			Color(col.r, col.g, col.b, alpha))
+		# `×N`：累计次数小标（主文本是伤害值，次数交给上标 —— 信息不丢、主次分明）
+		var cnt := int(e.get("count", 1))
+		if cnt > 1:
+			var sup := "×%d" % cnt
+			var ss := maxi(14, int(float(size) * 0.60))
+			var sp_ := Vector2(base.x + tw * 0.5 + 3.0 + jit, dp.y - float(size) * 0.34)
+			draw_string_outline(font, sp_, sup, HORIZONTAL_ALIGNMENT_LEFT, -1, ss,
+				maxi(2, int(float(ss) * 0.16)), Color(0.02, 0.02, 0.04, alpha))
+			draw_string(font, sp_, sup, HORIZONTAL_ALIGNMENT_LEFT, -1, ss,
+				Color(col.r, col.g, col.b, alpha * 0.95))
 		if tier >= 3 and p < 0.3:   # 一次性亮环（替代不可关震屏 / 不可用色差，§2.1）
 			var rp := p / 0.3
 			draw_arc(Vector2(base.x, base.y - rise), 8.0 + 26.0 * rp, 0.0, TAU, 24,

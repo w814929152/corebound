@@ -68,6 +68,34 @@ const _TWO_PI: float = 6.283185307179586      # 2π
 
 
 # ---------------------------------------------------------------------------
+#  地图布局「三裂环」（design/gdd/scene-map.md v1.0）
+# ---------------------------------------------------------------------------
+## 🔴 总开关（诊断）：false = 回到「整圈可建 + 整圈出生」的空圆盘，一键回退。
+##   与 `mode` 同款哲学：只在 RADIAL 下被读，PATH 模式一行不受影响。
+static var layout_enabled: bool = true
+
+## 岩脊 3 座：**只封出生角，不改路**。
+##   🔴 为什么不挡路：`radial-core-siege-tech-assessment.md` §4.2 已把寻路/避障列为架构红线
+##      （改到核时间 → 金标本等价破产）。本图的地形只做「角向遮挡」——`ρ` 一行不动，
+##      `t_remain` 语义零变更 ⇒ `t_reach` / 到核时间 / 金标本全部不动。
+##   `a0/a1` = 逻辑遮挡角（度，顺时针、y 向下、0° = +x）；`pad` = 视觉每边内收（度）。
+##   合计遮挡 B = (36−18) + (164−150) + (262−254) = 18 + 14 + 8 = **40°**。
+const RIDGES: Array = [
+	{"id": "G1", "name": "东南断崖", "a0": 18.0, "a1": 36.0, "r0": 30.0, "r1": 58.0, "pad": 2.0},
+	{"id": "G2", "name": "西断墙", "a0": 150.0, "a1": 164.0, "r0": 24.0, "r1": 58.0, "pad": 2.0},
+	{"id": "G3", "name": "北短脊", "a0": 254.0, "a1": 262.0, "r0": 32.0, "r1": 58.0, "pad": 1.0},
+]
+## 出怪口 3 段：合计 320°，宽度 114 / 90 / 116 —— **刻意不对称**（三等宽 = 没有选项）。
+const SPAWN_ARCS: Array = [
+	{"id": "A", "name": "南口", "a0": 36.0, "a1": 150.0},
+	{"id": "B", "name": "西北口", "a0": 164.0, "a1": 254.0},
+	{"id": "C", "name": "东北口", "a0": 262.0, "a1": 378.0},
+]
+## 开口总角宽 = 360 − Σ岩脊。AC-R1 下限 300°，本图取 320°（留 20° 余量给映射均匀度与变体图）。
+const OPEN_DEG: float = 320.0
+
+
+# ---------------------------------------------------------------------------
 #  派生量
 # ---------------------------------------------------------------------------
 ## v₀（u/s）= 行程 / t_reach。
@@ -97,10 +125,51 @@ static func is_radial() -> bool:
 ##   θ_i = (θ₀ + i × 137.508°) mod 360°
 ## 🔴 纯确定性：同 (w, index) 恒得同一角度 → 金标本零扰动（不消费任何 RNG 流）。
 ##    PATH 模式下本函数不被调用（路径模型无"出生角"概念），但保留可用以便对照。
+## 🔴 地图布局开启时，序列末尾再过一层 `map_theta_deg()`（保序保测度 → 不聚堆、不开窗）。
+##    **改在函数内而不是三个调用点**：`wave_director` 与两个批处理镜像（`wave_sim_aggro` /
+##    `wave_sim_proto_aggro`）必须拿到同一个角，否则实时↔镜像当场失配。
 static func spawn_theta(index: int, w: int) -> float:
 	var theta0_deg: float = fmod(float(w) * PHASE_STEP_DEG, 360.0)
 	var theta_deg: float = fmod(theta0_deg + float(index) * GOLDEN_ANGLE_DEG, 360.0)
+	if mode == Mode.RADIAL:
+		theta_deg = map_theta_deg(theta_deg)
 	return theta_deg * PI / 180.0
+
+
+## 出生角映射 `G`：360° 输入 → 320° 开口，**分段线性 · 保序 · 保测度**。
+##   每段输入配额按该开口的弧长分配（`1/0.889 = span_out × 360/320`），段内斜率恒 = 320/360。
+##   · 保序   ⇒ 同 (w, index) 恒得同一 θ'，确定性照旧；
+##   · 保测度 ⇒ 黄金角的三项分布性质不变（不开窗、不聚堆）；
+##   · 连续   ⇒ 段末 378° ≡ 18°，正好接上 G1 的起点，跨 0° 无缝。
+## 🔴 零 RNG、零状态、零转向：怪物依然只沿半径走直线。
+static func map_theta_deg(deg_in: float) -> float:
+	var d := fposmod(deg_in, 360.0)
+	if not layout_enabled:
+		return d
+	var acc := 0.0
+	for arc in SPAWN_ARCS:
+		var span_out: float = float(arc["a1"]) - float(arc["a0"])
+		var span_in: float = span_out * 360.0 / OPEN_DEG
+		# 🔴 `<=` 而不是 `<`：段边界（128.25° / 229.5°）必须归**前一段的终点**。
+		#   否则输入恰好等于边界时会跳到下一口的起点（150 → 164），
+		#   `G` 在那里多出一个 14° 的台阶 —— 怪物会在一条看不见的线上成排断开。
+		if d <= acc + span_in:
+			var t := (d - acc) / span_in
+			return fposmod(float(arc["a0"]) + t * span_out, 360.0)
+		acc += span_in
+	# 浮点兜底：落在最后一段末端（d 极接近 360）→ 归到末段终点（= 18°，接 G1）。
+	var last: Dictionary = SPAWN_ARCS[SPAWN_ARCS.size() - 1]
+	return fposmod(float(last["a1"]), 360.0)
+
+
+## 该角度是否落在岩脊**内部**（度，任意实数；边界角算"口"不算"脊"）。
+##   供断言 / 调试用；运行时不做角度判定（映射本身已保证不出脊）。
+static func is_ridge_deg(deg_in: float) -> bool:
+	var d := fposmod(deg_in, 360.0)
+	for rg in RIDGES:
+		if d > float(rg["a0"]) and d < float(rg["a1"]):
+			return true
+	return false
 
 
 # ---------------------------------------------------------------------------

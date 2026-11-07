@@ -65,6 +65,19 @@ func _ready() -> void:
 			ml.bind_time_director(director)
 		if ml.has_method("bind_controller"):
 			ml.bind_controller(controller)
+	# 🟠 塔等级牌层（兄弟于 MonsterLayer，在其之上、VFX 之下；只读 + 纯绘制）。
+	#    🔴 单开一层的原因见 `tower_level_layer.gd` 头部：`monster_layer.gd` 有
+	#       「零文本」红线（AC-T1-24），等级读数不能写进那个文件。
+	#    🔴 世界→屏幕变换**借用 MonsterLayer**（`world_to_screen` / `world_scale`），
+	#       避免两份 `_xform` 漂移导致等级牌与塔身错位。
+	var tlv := get_node_or_null("Battlefield/TowerLevelLayer")
+	if tlv != null:
+		if tlv.has_method("bind_world_layer"):
+			tlv.bind_world_layer(ml)
+		if tlv.has_method("bind_time_director"):
+			tlv.bind_time_director(director)
+		if tlv.has_method("bind_controller"):
+			tlv.bind_controller(controller)
 	# 🟠 T-P6-07 A 档 VFX 层（兄弟于 MonsterLayer，在其之上绘制；只读 + 纯演出）。
 	var vfx := get_node_or_null("Battlefield/VfxLayer")
 	if vfx != null:

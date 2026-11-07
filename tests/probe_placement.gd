@@ -127,13 +127,16 @@ func _run() -> void:
 	_ok(not shop.visible, "抽屉收起（GDD §2.1：⑤ 态战场全屏）")
 
 	# 网格必须真的铺出来（不然玩家不知道点哪算一格）
-	_ok(not layer._grid_segs.is_empty(), "⑤ 态网格线段已构建（%d 条）" % layer._grid_segs.size())
+	_ok(not layer._grid_edges.is_empty(), "⑤ 态网格已构建（%d 段六边形边）" % (layer._grid_edges.size() / 2))
 	var cell_n: int = _BuildGrid.all_cells().size()
-	_ok(cell_n > 500, "可建格点 %d 个 —— 位置自由，不是 6 个固定点" % cell_n)
+	# 阵地化（RADIAL）：可建格 = 17；布局关闭时才是整盘 ~960。
+	_ok(cell_n == 17 or cell_n > 500, "可建格点 %d 个（阵地化 17 / 整盘 >500）" % cell_n)
 
 	var core: Vector2 = _BuildGrid.core()
-	# 目标格：核心右方 10 单位（距核心 10 ∈ [4, 44] → 合法）
-	var target: Vector2 = _BuildGrid.snap(core + Vector2(10.0, 0.0))
+	# 目标格 = P1 南台的首格（起手塔就在这一格 → 落 Cannon 会走"同格异原型"分支？）
+	#   🔴 起手塔是 Arrow@P1 首格，所以这里取 P1 的**第二格**，才是真正的空格。
+	var p1: Array = _BuildGrid.site_cells("P1")
+	var target: Vector2 = p1[1]
 	var tp: Vector2 = layer._to_screen(target)
 	print("[place] 目标格 = %s → 屏幕 (%.0f, %.0f)  模式=%s" % [
 		str(target), tp.x, tp.y, str(rt.placement_mode_at(target)["mode"])])
@@ -186,7 +189,7 @@ func _run() -> void:
 	_ok(rt.pending.size() == 1, "同格异原型**不**消耗卡片")
 
 	# ---- ④ 同一张卡改落别处 → 成功 ----
-	var other: Vector2 = _BuildGrid.snap(core + Vector2(-10.0, 7.5))
+	var other: Vector2 = _BuildGrid.site_cells("P1")[3]   # 同台另一格（仍在阵地上）
 	var op: Vector2 = layer._to_screen(other)
 	print("[place] 改落另一格 %s → 屏幕 (%.0f, %.0f)" % [str(other), op.x, op.y])
 	await _click(op)
