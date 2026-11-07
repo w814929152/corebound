@@ -45,6 +45,8 @@ const _DE := preload("res://scripts/engine/damage_engine.gd")
 const _TD := preload("res://scripts/data/tower_data.gd")
 const _WaveSim := preload("res://scripts/engine/wave_sim.gd")
 const _Geo6 := preload("res://scripts/geo/geo6.gd")
+const _Geo := preload("res://scripts/geo/geo.gd")
+const _BuildGrid := preload("res://scripts/geo/build_grid.gd")
 const _TSM := preload("res://scripts/engine/time_state_machine.gd")
 
 
@@ -171,6 +173,16 @@ var _placing_index: int = -1    # 正在放置的待放置队列下标（-1 = �
 ## 🔴 仅玩家路线状态；金标本 AI 路线恒不点选（apply_action 恒投传入的 slot）。
 var selected_tower_slot: int = -1
 
+## 🆕 自由摆放（玩家路线）：塔位置由玩家在网格上点选，不再限于 `SLOTS6` 六个固定点。
+##   🔴 默认 true；置 false 可一键回退到"六固定塔位"（回归对照 / 出问题时切回）。
+##   🔴 金标本引擎（`run_loop` / `wave_sim` / `shop_ai` + 300 局 MC）**从不经过本文件**
+##      → 无论这里怎么设，金标本读数都不受影响。
+var free_placement: bool = true
+
+## 最近一次成功落子占用的槽位（`confirm_placement_at` 的返回值出口）。
+##   GDScript 不能 out 参数，控制器要用 slot 去 `exit_placement(true, slot)` → 走字段。
+var last_placed_slot: int = -1
+
 
 # ---------------------------------------------------------------------------
 #  开局
@@ -180,8 +192,17 @@ func setup(p_path: String, seed_value: int, overrides: Dictionary = {}) -> void:
 	cfg = _Cfg.cfg_of(p_path)
 	for k in overrides:
 		cfg[k] = overrides[k]
-	geo = _Geo6.build_by_slots(int(cfg["n_slots"]))
+	# 🆕 自由摆放：几何从**空槽位表**起步 —— 没有预置塔位，位置由玩家点选后追加。
+	#   🔴 起手塔（`SimPlayer.new_player` 送的 Arrow@slot0）随后补一个格点坐标，
+	#      否则 `geo.slots[0]` 不存在 → `damage_engine` / `_tower_world` 越界。
+	if free_placement:
+		geo = _Geo.new([])
+	else:
+		geo = _Geo6.build_by_slots(int(cfg["n_slots"]))
 	player = _SimPlayer.new_player(p_path, cfg, geo)
+	if free_placement and player != null and not player.towers.is_empty():
+		# 起手位置沿用改造前的 S0 坐标（吸附到格点）→ 老玩家的手感不变。
+		geo.add_slot(_BuildGrid.snap(_Geo6.SLOTS6[0]))
 	rng = _PyRandom.new(seed_value)
 	wave = 0
 	scrap = 0.0
@@ -504,6 +525,12 @@ func legal_note(slot: int) -> String:
 			for t in player.towers:
 				if String(t.ctype) == nm:
 					return ""                                  # 同原型 → 升级（合法）
+			if free_placement:
+				# 🆕 自由摆放：几何合法性由网格在**落子时**判（点哪判哪），
+				#   商店阶段不枚举全盘 ~900 格。这里唯一会挡住的闸门是塔数上限。
+				if player.towers.size() >= tower_cap():
+					return "塔位已满"
+				return ""
 			var mt = cfg.get("max_towers")
 			if mt == null:
 				mt = {"A": 2, "B": int(cfg["n_slots"])}       # 同 `enumerate_actions()` 的口径
@@ -628,7 +655,8 @@ func highlights() -> Dictionary:
 func slot_usage() -> Dictionary:
 	var enh: int = player.cards.size()
 	var tower_n: int = player.towers.size()
-	var slots_max: int = int(cfg.get("n_slots", 6))
+	# 🆕 自由摆放：塔位上限 = `tower_cap`（塔数旋钮），与金标本槽位数 `n_slots` 解耦。
+	var slots_max: int = tower_cap()
 	# 全局槽：ScrapUp 计数（income_mult 每 +0.20 占 1 槽，cap 见 cfg）
 	var glob_max := 3
 	var glob_used := 0
@@ -796,6 +824,114 @@ func confirm_placement(slot: int) -> bool:
 	pending.remove_at(_placing_index)
 	pending_cost.remove_at(_placing_index)
 	_placing_index = -1
+	last_error = ""
+	return true
+
+
+## ---------------------------------------------------------------------------
+#  🆕 自由摆放（坐标驱动落子）
+# ---------------------------------------------------------------------------
+## 塔数上限。自由摆放后「槽位数」与「塔数」不再等价，故独立成字段。
+func tower_cap() -> int:
+	return int(cfg.get("tower_cap", cfg.get("n_slots", 6)))
+
+
+## 该格点已占用的槽位号（含拆塔后的空槽）；无则 -1。
+## 🔴 复用空槽很重要：拆塔只清 `player.towers` 不缩 `geo.slots`，
+##    若每次都 `add_slot` 新槽，槽位表会随「拆 / 建」无限增长。
+func _slot_at(p: Vector2) -> int:
+	if geo == null:
+		return -1
+	for i in range(geo.slots.size()):
+		if _BuildGrid.same_cell(geo.slots[i], p):
+			return i
+	return -1
+
+
+## 🆕 自由摆放预览：某格点的落子结果（**只读**，不改任何状态）。
+##   返回 `{mode, slot, reason}`，`mode` ∈ {"", "new", "upgrade", "invalid", "blocked"}：
+##     · ""        当前不在放置模式 → 渲染层不画标记
+##     · "new"     可新建（空格，塔数未满）
+##     · "upgrade" 可升级（同格已有同原型塔）
+##     · "invalid" 有卡在放但这一格不能落（塔数已满 / 已有别的原型）
+##     · "blocked" 几何上不可建（核心禁建区 / 战场外）—— 与"有卡"无关，恒定显示
+##   🔴 渲染层每帧对**鼠标所指那一格**调一次（不是全盘 ~900 格），成本 O(塔数)。
+func placement_mode_at(pos: Vector2) -> Dictionary:
+	var gpos := _BuildGrid.snap(pos)
+	if not _BuildGrid.buildable(gpos):
+		return {"mode": "blocked", "slot": -1, "reason": "此处不可建"}
+	if _placing_index < 0 or _placing_index >= pending.size():
+		return {"mode": "", "slot": -1, "reason": ""}
+	var nm := String(pending[_placing_index])
+	var existing := _slot_at(gpos)
+	if existing >= 0:
+		var ti := _tower_index(existing)
+		if ti >= 0:
+			if String(player.towers[ti].ctype) == nm:
+				return {"mode": "upgrade", "slot": existing, "reason": ""}
+			return {"mode": "invalid", "slot": existing, "reason": "这格已有「%s」" % String(player.towers[ti].ctype)}
+		return {"mode": "new", "slot": existing, "reason": ""}
+	if player.towers.size() >= tower_cap():
+		return {"mode": "invalid", "slot": -1, "reason": "塔数已满 %d / %d" % [player.towers.size(), tower_cap()]}
+	return {"mode": "new", "slot": -1, "reason": ""}
+
+
+## 🆕 自由摆放落子：世界坐标 → 吸附格点 → 新建 / 升级 / 拒绝。
+##
+## 返回 true = 已落子（槽位见 `last_placed_slot`）；false = 未落子（原因见 `last_error`）。
+##
+## 🔴 与 `confirm_placement(slot)` 的分工：
+##   · `confirm_placement` = 「槽位已确定」的旧入口（回归对照 / 无网格的老路径）；
+##   · `confirm_placement_at` = 「玩家点了地图某处」的新入口 —— 吸附、查重、必要时建槽。
+##   两者共用同一条 `_ShopAI.apply_action` 执行路径 → 成本 / 层数 / invested 口径完全一致。
+func confirm_placement_at(pos: Vector2) -> bool:
+	last_placed_slot = -1
+	if _placing_index < 0 or _placing_index >= pending.size():
+		last_error = "当前没有正在放置的卡"
+		return false
+	if geo == null:
+		last_error = "战场几何未初始化"
+		return false
+
+	var gpos := _BuildGrid.snap(pos)
+	if not _BuildGrid.buildable(gpos):
+		last_error = "这里不能建塔（核心周围 %.0f 格内 / 战场外圈）" % _BuildGrid.CORE_BAN_R
+		return false
+
+	var nm := String(pending[_placing_index])
+	var existing := _slot_at(gpos)
+	var mode := "new"
+	if existing >= 0:
+		var ti := _tower_index(existing)
+		if ti >= 0:
+			if String(player.towers[ti].ctype) != nm:
+				last_error = "这格已有「%s」，不能改建为「%s」" % [String(player.towers[ti].ctype), nm]
+				return false
+			mode = "upgrade"
+		# ti < 0 = 拆塔残留的空槽 → 直接复用（mode 保持 "new"）
+	elif player.towers.size() >= tower_cap():
+		last_error = "塔数已满（%d / %d）" % [player.towers.size(), tower_cap()]
+		return false
+
+	var slot := existing
+	if slot < 0:
+		slot = geo.add_slot(gpos)
+
+	var act := ["build", nm, slot, null] if mode == "new" else ["up", nm, slot, null]
+	if _ShopAI.apply_action(player, act, cfg) == null:
+		last_error = "落子失败：%s" % nm
+		return false
+
+	# 建筑卡成本（build / up 同价）计入**这座塔**的 invested（拆除返还 50% 的依据）
+	var paid := 0.0
+	if _placing_index < pending_cost.size():
+		paid = float(pending_cost[_placing_index])
+	_add_invested(slot, paid)
+
+	pending.remove_at(_placing_index)
+	pending_cost.remove_at(_placing_index)
+	_placing_index = -1
+	last_placed_slot = slot
 	last_error = ""
 	return true
 
@@ -1239,13 +1375,24 @@ func snapshot() -> Dictionary:
 		legal.append(false)
 		notes.append("此位无卡")
 		caps.append(false)
-	# ---- 塔位事实（H7 槽位占用 / I-8 放置模式高亮：New = 绿 / Upgrade = 金）----
+	# ---- 塔位事实（H7 槽位占用 / 放置模式高亮：New = 青 / Upgrade = 金）----
+	# 🆕 自由摆放：遍历 `geo.slots`（运行时增长的槽位表），而不是 `range(n_slots)`。
+	#   改造前槽位表恒 6 个 → 建到第 7 座塔就完全不可见。现在槽位数随摆塔增长，
+	#   渲染层按 `slot` 索引取 `geo.slots[slot]` 的世界坐标，两边天然对齐。
+	#   🔴 拆塔会留下空槽（`empty: true`）—— 保留它在表里是为了「槽位号 = 索引」不失效，
+	#      渲染层跳过空槽即可（自由摆放没有「虚位以待的空塔位」这个概念）。
 	var slots: Array = []
 	var place_modes: Array = []
 	var by_slot := {}
 	for t in player.towers:
 		by_slot[int(t.slot)] = t
-	for i in range(int(cfg["n_slots"])):
+	var slot_n: int = geo.slots.size() if geo != null else 0
+	# 🔴 防御：某座塔的 slot 若超出槽位表（手工构造场景 / 极端边缘），仍要出现在快照里，
+	#   否则 UI 的塔数统计与「处置受损塔」红点会静默漏塔。正常路径不会走到这个分支
+	#   —— 所有建塔都经 `confirm_placement_at → geo.add_slot`，slot 必然 < slots.size()。
+	for t in player.towers:
+		slot_n = maxi(slot_n, int(t.slot) + 1)
+	for i in range(slot_n):
 		if by_slot.has(i):
 			var t2 = by_slot[i]
 			# 🔒 T1 修复入口 UI：暴露 disabled 状态供重决策面板红点计数（有受损塔才亮「处置受损塔」按钮）
@@ -1277,7 +1424,8 @@ func snapshot() -> Dictionary:
 		"cards": player.cards.size(),
 		"cards_max": int(cfg["backpack"]),
 		"towers": player.towers.size(),
-		"towers_max": int(cfg["n_slots"]),
+		# 🆕 自由摆放：上限取 `tower_cap`（玩家路线塔数上限），不是 `n_slots`（金标本槽位数）。
+		"towers_max": tower_cap(),
 		"income_mult": float(player.income_mult),
 		"reroll_disc": float(player.reroll_disc),
 		"core_tower_slot": core_tower_slot(),

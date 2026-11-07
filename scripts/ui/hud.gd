@@ -180,15 +180,17 @@ func _on_state_changed(_from: int, _to: int) -> void:
 
 
 ## 底部键位行的**态相关**部分：⑤ 放置模式要换成本局的唯一操作提示。
-## 🔴 依据：GDD §2.1 ⑤ 态**抽屉收起**、战场全屏，「点塔位落子」是此态唯一的操作路径。
+## 🔴 依据：GDD §2.1 ⑤ 态**抽屉收起**、战场全屏，「点格子落子」是此态唯一的操作路径。
 ##    改造前这里还写着「Tab 商店 / R 刷新」，而那两个键在 ⑤ 态根本不响应 → 误导。
+## 🆕 自由摆放：可建区铺满网格、核心周围有禁建圈，所以提示词从「点亮光的塔位」
+##    改成「地图上的格子」—— 塔位不再是 6 个固定点，说「塔位」会让玩家去找那 6 个圈。
 func _refresh_hint() -> void:
 	if _hint_label == null:
 		return
 	var placing := (director != null and director.sm != null
 		and int(director.sm.state) == _TSM.State.PLACEMENT_MODE)
 	if placing:
-		_hint_label.text = "放置模式：点亮光的塔位落子（＋ 新建 · ↑ 升级）· Esc 取消（卡退回队列，不退款）"
+		_hint_label.text = "放置模式：点地图上的格子落子（＋ 新建 · ↑ 升级）· Esc 取消（卡退回队列，不退款）"
 		_hint_label.add_theme_color_override("font_color", C_TEXT)
 	else:
 		_hint_label.text = HINT_DEFAULT

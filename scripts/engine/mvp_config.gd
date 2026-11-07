@@ -161,6 +161,12 @@ static func cfg_of(
 		"coverage_mode": "path",
 		"tower_card_mode": "map",
 		"n_slots": 6,
+		# 🆕 自由摆放：**塔数上限**（与 `n_slots` 语义分离）。
+		#   · `n_slots` = 金标本固定槽位数 —— 引擎侧「格子编号空间」，不改（改了 MC 全废）。
+		#   · `tower_cap` = 玩家路线能同时存在的塔数 —— 玩法侧平衡旋钮。
+		#   位置自由后槽位数不再天然等于塔数上限，故拆成两个字段。
+		#   🔴 默认仅玩家路线（`shop_runtime`）读；金标本 AI 仍用 `n_slots` → 判据链零扰动。
+		"tower_cap": 10,
 		"link_rule": rule,
 		"max_actions": 12,
 		"wave_price_step": 0.0,

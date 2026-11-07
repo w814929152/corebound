@@ -24,6 +24,7 @@ const _Cfg := preload("res://scripts/engine/mvp_config.gd")
 const _TSM := preload("res://scripts/engine/time_state_machine.gd")
 const _ShopAI := preload("res://scripts/engine/shop_ai.gd")
 const _ShopRuntime := preload("res://scripts/gameplay/shop_runtime.gd")
+const _BuildGrid := preload("res://scripts/geo/build_grid.gd")
 const _Stats := preload("res://scripts/engine/stats.gd")
 const _G := preload("res://tests/golden_slice2.gd")
 
@@ -394,15 +395,24 @@ func _test_three_way_routing() -> void:
 	rt9.offers = ["FireUp"]
 	_check_str("E9 场上无塔 → 单塔效果卡置灰", rt9.legal_note(0), "需先建造一座塔")
 
-	# ---- E1：塔位填满且无同原型 → 建筑卡无合法目标 ----
+	# ---- E1：塔数填满且无同原型 → 建筑卡无合法目标 ----
+	# 🆕 自由摆放：闸门是 `tower_cap`（塔数上限），**不是** `n_slots`（金标本槽位数）。
+	#   改造前两者是同一个数（6）；位置自由之后槽位数随便增长，塔数上限才是玩法旋钮。
+	#   这里把上限压到 3 便于构造，落子走**坐标**（`confirm_placement_at`）。
 	var rt1 = _mk_runtime(2024)
+	rt1.cfg["tower_cap"] = 3
 	rt1.scrap = 1.0e6
-	for i in int(rt1.cfg["n_slots"]):
+	var cap: int = rt1.tower_cap()
+	var k := 0
+	while rt1.player.towers.size() < cap and k < 8:
 		rt1.offers = ["Arrow"]
 		rt1.buy(0)
 		rt1.begin_placement(0)
-		rt1.confirm_placement(i)
-	_check_int("[E1] 塔位填满", rt1.player.towers.size(), int(rt1.cfg["n_slots"]))
+		# 沿 +X 方向逐格撒（每格间距 1 格，互不同槽）
+		var gp: Vector2 = _BuildGrid.snap(_BuildGrid.core() + Vector2(6.0 + 2.5 * float(k), 0.0))
+		rt1.confirm_placement_at(gp)
+		k += 1
+	_check_int("[E1] 塔数填满（tower_cap）", rt1.player.towers.size(), cap)
 	rt1.offers = ["Cannon"]
 	_log("   [info] E1 置灰理由 = 「%s」（H8 无合法目标）" % rt1.legal_note(0))
 	_tally("E1 建筑卡无合法目标 → 置灰", rt1.legal_note(0) != "")

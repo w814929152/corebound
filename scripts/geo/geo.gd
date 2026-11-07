@@ -84,6 +84,46 @@ func _dist(a: Vector2, b: Vector2) -> float:
 	return sqrt(dx * dx + dy * dy)
 
 
+## 🆕 自由摆放：运行时追加一个塔位坐标，返回新槽位索引。
+##
+## 🔴 为什么需要它：改造前塔位是编译期常量（`SLOTS6` 六个固定点），`t.slot` 既是主键
+##    又是坐标索引。玩家要自由摆塔，就得让「槽位表」在运行时增长。
+##
+## 🔴 金标本零扰动：本方法**只有玩家路线**（`shop_runtime`）调用；金标本引擎
+##    （`run_loop` / `wave_sim` / `shop_ai`）与 300 局 MC 从不追加槽位
+##    → 默认的 6 槽 `dist` / `cov` / `links` 逐位不变。
+##
+## 增量维护三个派生结构，避免每次摆塔重建全表：
+##   · `slots` / `n`  —— 追加一位
+##   · `dist`         —— 追加一行一列（O(n)，不是 O(n²) 重建）
+##   · `cov`          —— 只补新槽那一列（实机读不到 cov，纯粹为了一致性）
+func add_slot(pos: Vector2) -> int:
+	var idx := slots.size()
+	slots.append(pos)
+	n = slots.size()
+	# dist：老行各补一格，再追加新行
+	for i in range(dist.size()):
+		dist[i].append(_dist(slots[i], pos))
+	var row: Array = []
+	for j in range(n):
+		row.append(_dist(pos, slots[j]))
+	dist.append(row)
+	# cov：只补这个槽
+	for ctype in _TowerData.TOWERS:
+		cov[_cov_key(idx, ctype)] = coverage_of(pos, _TowerData.tower_rng(ctype))
+	return idx
+
+
+## 安全取距离：`dist` 若因历史原因短于 `n`（序列化 / 手工构造），退回现场计算。
+## 正常路径不会走到兜底分支 —— 它只是让 `links()` 在槽位表增长后不会硬崩。
+func _dist_at(i: int, j: int) -> float:
+	if i < dist.size() and j < (dist[i] as Array).size():
+		return float(dist[i][j])
+	if i < slots.size() and j < slots.size():
+		return _dist(slots[i], slots[j])
+	return INF
+
+
 # ---------------------------------------------------------------------------
 # CoverageScore —— 对应 v03 `coverage_of()` (L104-107)
 # ---------------------------------------------------------------------------
@@ -136,6 +176,9 @@ func links(tower_types: Array, rule: String = "any") -> Array:
 		for j in range(m):
 			if i == j or String(tower_types[j]) == "":
 				continue
-			if float(dist[i][j]) <= f * (float(R[i]) + float(R[j])):
+			# 🆕 走 `_dist_at` 而不是 `dist[i][j]`：自由摆放后槽位表运行时增长，
+			#    `links()` 的调用方（`damage_engine`）按 `geo.n` 建数组，两者可能短暂不同步。
+			#    正常路径两者一致，`_dist_at` 直接读预计算值 → 逐位不变。
+			if _dist_at(i, j) <= f * (float(R[i]) + float(R[j])):
 				adj[i].append(j)
 	return adj

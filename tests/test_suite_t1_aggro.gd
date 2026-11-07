@@ -31,6 +31,8 @@ const _WaveSimAggro := preload("res://scripts/engine/wave_sim_aggro.gd")
 const _MonsterData := preload("res://scripts/data/monster_data.gd")
 const _SimPlayer := preload("res://scripts/engine/sim_player.gd")
 const _Geo6 := preload("res://scripts/geo/geo6.gd")
+const _Geo := preload("res://scripts/geo/geo.gd")
+const _BuildGrid := preload("res://scripts/geo/build_grid.gd")
 const _Geo8 := preload("res://scripts/geo/geo8.gd")
 const _SpaceModel := preload("res://scripts/geo/space_model.gd")
 const _Cfg := preload("res://scripts/engine/mvp_config.gd")
@@ -442,6 +444,13 @@ func _test_repair_ui_snapshot_datasource() -> void:
 	# ③ 多塔混合：一座受损 + 一座正常 → 计数 = 1（只标事实，不标推荐）
 	var rt3 = _ShopRuntime.new()
 	rt3.setup("B", 20261002)
+	# 🆕 自由摆放：槽位表由**摆放**产生，不再是编译期的 6 个固定点。
+	#   手工构造多塔场景时必须显式给塔补坐标 —— 不变式是「每个塔的 slot 都要能在
+	#   `geo.slots` 里找到格点」，否则渲染层与仇恨系统的 `_tower_world()` 会取不到位置。
+	#   改造前这条不变式由 `SLOTS6` 免费保证，现在要靠构造方自己维护。
+	rt3.geo = _Geo.new([])
+	rt3.geo.add_slot(_BuildGrid.snap(_BuildGrid.core() + Vector2(8.0, 0.0)))
+	rt3.geo.add_slot(_BuildGrid.snap(_BuildGrid.core() + Vector2(-8.0, 0.0)))
 	rt3.player.towers = []
 	var td := _PS.make_tower(0, "Cannon", 1, {})   # 受损
 	td.invested = 100.0; td.disabled = true; td.hp = 0.0

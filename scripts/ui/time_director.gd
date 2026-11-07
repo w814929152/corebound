@@ -42,6 +42,11 @@ signal tower_select_requested(slot: int)
 ##   🔴 与 `placement_confirmed` 分工：本信号是**意图**（谁想落在哪），
 ##      `placement_confirmed` 是**决定**（退出放置模式并执行）。渲染层只发意图、不碰状态机。
 signal slot_place_requested(slot: int)
+## 🆕 自由摆放：战场坐标落子意图（MonsterLayer 点**地图任意格** → 本信号）。
+##   🔴 与 `slot_place_requested` 并存：旧信号按「槽位号」提交，只在槽位已知时可用
+##      （回归对照 / 探针）；玩家自由摆放走这条，带的是**吸附后的格点世界坐标**。
+##      吸附由渲染层做（它知道 `sc` 和鼠标位置），runtime 会再吸附一次（幂等，防手抖）。
+signal place_at_requested(pos: Vector2)
 signal placement_cancelled()
 
 

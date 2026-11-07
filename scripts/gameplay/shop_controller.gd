@@ -101,6 +101,9 @@ func bind_director(d: Node) -> void:
 	#  I-8 落子：MonsterLayer 点高亮塔位 → 退出放置模式 + confirm_placement
 	if not d.is_connected("slot_place_requested", _on_slot_place_requested):
 		d.slot_place_requested.connect(_on_slot_place_requested)
+	#  🆕 自由摆放：MonsterLayer 点地图任意格（带格点世界坐标）→ confirm_placement_at
+	if not d.is_connected("place_at_requested", _on_place_at_requested):
+		d.place_at_requested.connect(_on_place_at_requested)
 
 
 ## 切片5：`WaveDirector` 注入。波次推进（刷怪 / 伤害 / 漏怪 / 结束判定）由它负责。
@@ -229,6 +232,23 @@ func _on_slot_place_requested(slot: int) -> void:
 	if String(runtime.placement_mode_for(slot)) == "invalid":
 		return
 	director.exit_placement(true, slot)
+
+
+## 🆕 自由摆放落子接线（MonsterLayer 点**地图任意格** → 退出放置模式并落子）。
+##   🔴 只接受 ⑤ 态：非放置态的误发一律丢弃（T-C1 / E16：战斗内禁止塔相关操作）。
+##   🔴 失败**不踢人**：点核心禁建区 / 点战场外 / 塔数已满 → 只是不落子，
+##      卡留在队列、玩家还在 ⑤ 态。只有成功才 `exit_placement(true, slot)`。
+##      误点就把玩家踢回商店、要重新点「放置」，是最烦人的那种 bug。
+func _on_place_at_requested(pos: Vector2) -> void:
+	if director == null or runtime == null:
+		return
+	if int(director.sm.state) != _TSM.State.PLACEMENT_MODE:
+		return
+	if not runtime.confirm_placement_at(pos):
+		# 把原因送到商店快照的 `last_error`，UI 会显示在抽屉里；玩家仍可继续点别处。
+		_emit_shop()
+		return
+	director.exit_placement(true, runtime.last_placed_slot)
 
 
 func _on_salvage_requested() -> void:

@@ -25,6 +25,7 @@ const _Geo6 := preload("res://scripts/geo/geo6.gd")
 const _ShopLayout := preload("res://scripts/ui/shop_layout.gd")
 const _TSM := preload("res://scripts/engine/time_state_machine.gd")
 const _SpaceModel := preload("res://scripts/geo/space_model.gd")
+const _BuildGrid := preload("res://scripts/geo/build_grid.gd")
 const _MonsterData := preload("res://scripts/data/monster_data.gd")
 const _WD := preload("res://scripts/gameplay/wave_director.gd")   # 仅取 MState 枚举（AGGRO_TOWER）
 ## 🔴 P0（spec §A.6）：环境换装共享色表（纯静态助手，与 `Battlefield` 共用同款 preload）。
@@ -171,6 +172,18 @@ var _env_t: float = 1.0
 ##   🔴 纯演出/几何缓存，无玩法含义（与 `_vfx_t` 同性质）。
 var _geo_sig: Vector3 = Vector3(-1.0, -1.0, -1.0)   # (c.x, c.y, sc) 签名
 var _geo: Dictionary = {}
+
+## 🆕 自由摆放：网格线段缓存（世界坐标，构建一次重复用）。
+##   36 + 36 条裁剪到可建圆的线段，`_BuildGrid.grid_segments()` 只在首帧算一次。
+##   🔴 纯几何缓存，无玩法含义（与 `_geo_sig` 同性质）。
+var _grid_segs: Array = []
+
+## 🔴 取证用悬停注入（**不是玩法状态**）：`null` = 跟随真实鼠标（正常游戏）。
+##   仅 `tests/probe_placement.gd` 在截图前写入 —— 因为窗口模式下 `warp_mouse`
+##   受 DPI / 窗口缩放影响（本工程视口 1920×1080、窗口 1600×900），
+##   实测 warp 后 `get_mouse_position()` 落在完全无关的位置，截图会拍到"错的格子"。
+##   语义等价于"把鼠标移到这个格上"，只影响 `_draw_placement_marks` 的高亮。
+var probe_hover_world = null
 
 
 func _ready() -> void:
@@ -360,6 +373,19 @@ func _to_screen(p: Vector2) -> Vector2:
 	return Vector2(float(t["ox"]) + p.x * float(t["sc"]), float(t["oy"]) + p.y * float(t["sc"]))
 
 
+## 世界坐标 → 屏幕坐标（**公开别名**，供同类叠加层复用）。
+##   🔴 为什么不各自复写一份 `_xform()`：抽屉展开会改可视宽（`_field_width()`），
+##      战场整体重新居中；两份换算只要漂移一点，叠加层就会和塔身/怪物错位
+##      （本项目已踩过"手抄第二份网格数字"的坑）。需要世界坐标的叠加层一律走这里。
+func world_to_screen(p: Vector2) -> Vector2:
+	return _to_screen(p)
+
+
+## 当前缩放（屏幕 px / 世界 u）—— 叠加层用它换算"塔身半径 / 字号"的屏幕尺寸。
+func world_scale() -> float:
+	return float(_xform()["sc"])
+
+
 ## I-7：屏幕坐标 → 世界坐标的逆映射。
 ##   当前**无调用者**：命中判定改走屏幕距离（`_hit_slot_screen`），比"转世界再比"少一次换算
 ##   且不受 `sc` 量纲混用影响。保留此函数是因为它是对称 API —— 悬停 tooltip /
@@ -370,9 +396,10 @@ func _to_world(screen_p: Vector2) -> Vector2:
 	return Vector2((screen_p.x - float(t["ox"])) / sc, (screen_p.y - float(t["oy"])) / sc)
 
 
-## I-7 / I-8：战场点击 → 只发**意图**信号，由 ShopController 接线（SR-5）。
+## 战场点击 → 只发**意图**信号，由 ShopController 接线（SR-5）。
 ##   · ⑤ 放置模式：抽屉按 GDD §2.1 **收起**（`drawer = CLOSED`）→ 判**状态机**而不是抽屉。
-##     点亮的塔位（new / upgrade）→ `slot_place_requested`；点空地 / 不可用位 = **无操作**
+##     点击位置**吸附到网格格点**后发 `place_at_requested(pos)`；
+##     不可落子的格（核心禁建区 / 战场外 / 塔数已满 / 已有别的原型）= **无操作**
 ##     （取消只认 Esc —— 误点就把玩家踢出放置模式，是最烦人的那种 bug）。
 ##   · 其余态：仅抽屉展开时可点选已建塔 → `tower_select_requested`。
 func _unhandled_input(event: InputEvent) -> void:
@@ -384,15 +411,16 @@ func _unhandled_input(event: InputEvent) -> void:
 	if controller == null or controller.runtime == null or time_director == null:
 		return
 
-	# ---- ⑤ 放置模式：点高亮塔位落子 ----
+	# ---- ⑤ 放置模式：点地图**任意格**落子（自由摆放）----
+	# 🔴 坐标吸附在渲染层先做（它知道 `sc` 与鼠标位置），runtime 会再吸附一次 ——
+	#    `snap()` 幂等，重复调用不会漂移，这样探针 / 键盘路径也能直接传裸坐标。
 	if _in_placement():
-		var hit_any := _hit_slot_screen(mb.global_position, false)
-		if hit_any < 0:
-			return
-		var mode := String(controller.runtime.placement_mode_for(hit_any))
+		var wp := _BuildGrid.snap(_to_world(mb.global_position))
+		var info: Dictionary = controller.runtime.placement_mode_at(wp)
+		var mode := String(info["mode"])
 		if mode != "new" and mode != "upgrade":
-			return                                   # 灰显位不响应，也不退出放置
-		time_director.emit_signal("slot_place_requested", hit_any)
+			return                                   # 不可落子的格不响应，也**不退出**放置模式
+		time_director.emit_signal("place_at_requested", wp)
 		get_viewport().set_input_as_handled()
 		return
 
@@ -799,9 +827,10 @@ func _draw_radial(sc: float) -> void:
 	_draw_radial_ground(sc)       # 层1 场地圆 + 同心环×3 + 放射刻度×8 + 层2 出生环
 	_draw_all_shadows(sc)         # 层3：先画全部影（避免脏影，spec §A.3/§A.6）
 	_draw_radial_slot_layer(sc)   # 层4：空槽八边形 + 威胁楔形 + 被攻击环 + 暴露图标
-	_draw_placement_marks(sc)     # 层4.5：⑤ 放置模式塔位高亮（＋/↑/✕，零文本）
+	_draw_placement_marks(sc, "bg")   # 层4.5：⑤ 自由摆放网格 + 可建区边界（塔之下）
 	_draw_radial_core(sc)         # 层5：盘 + 8 刻齿（唯一轮廓）
 	_draw_radial_towers(sc)       # 层6：双层八边形塔
+	_draw_placement_marks(sc, "fg")   # 层6.5：⑤ 悬停格描边 + 徽标（塔之上）
 	_draw_radial_monsters(sc)     # 层7：12 边不规则 + 朝核心尖刺扇
 	_draw_projectiles(sc)         # 层8：字段缺失 → 零绘制（保留既有 hook）
 	_draw_revive_flash(sc)        # 层9：爬起扩散环（沿用既有）
@@ -1083,13 +1112,19 @@ func _draw_all_shadows(sc: float) -> void:
 func _draw_radial_slot_layer(sc: float) -> void:
 	_draw_threat_wedges(sc)
 	var occupied: Dictionary = {}
+	# 🆕 自由摆放：没有「虚位以待的空塔位」这回事 —— 槽位表只记已建塔的位置
+	#   （拆塔会留下空槽，但那是历史痕迹，不该画成"这里可以建塔"）。
+	var free_place := false
 	if controller != null and controller.runtime != null:
 		for tw in controller.runtime.player.towers:
 			occupied[int(tw.slot)] = true
+		free_place = bool(controller.runtime.free_placement)
 	for row in _slot_rows:
 		var slot: int = int(row["slot"])
 		if occupied.has(slot):
 			continue
+		if free_place:
+			continue                     # 自由摆放：不画空槽八边形（网格负责表达"哪里能建"）
 		var sp := _to_screen(row["pos"])
 		draw_polyline(_closed(_oct8(sp, U_SLOT * sc, PI / 8.0)),
 			Color(P_SLOT.r, P_SLOT.g, P_SLOT.b, 0.85), maxf(1.0, 0.12 * sc), true)
@@ -1097,57 +1132,91 @@ func _draw_radial_slot_layer(sc: float) -> void:
 	_draw_exposure_icons(sc)
 
 
-## ---- 层4.5：放置模式塔位标记（I-8，仅 ⑤ 态绘制）----
-## 🔴 为什么画在这里：`shop_overlay` 的塔位按钮在 ⑤ 态**不可达** —— GDD §2.1 规定
-##    ⑤ 态抽屉收起、战场全屏，`visible = drawer != CLOSED` 会把整棵控件树隐藏。
-##    改造前放置 UI 只有抽屉里那 6 个按钮 ⇒ **买了建筑卡永远放不下**（主循环断链）。
-##    现在落子主路径 = 战场点塔位（GDD §2.1「点塔位落子」，本来就是设计原意）。
-## 🔴 零文本（AC-T1-24）：符号全部用 `draw_line` 画（＋ / ↑ / ✕），不写 `draw_string`。
-func _draw_placement_marks(sc: float) -> void:
+## ---- 层4.5：自由摆放网格 + 落子标记（仅 ⑤ 态绘制）----
+##
+## 🔴 为什么必须有网格：改造前塔只能落在 6 个固定点，每个点自带八边形轮廓 →
+##    玩家"看得见也点得到"。改成自由摆塔后，如果只画一片空地，玩家无法判断
+##    "点哪里才算一格、哪里算建成了" —— 网格是把「自由」变成「可操作」的界面，
+##    不是装饰。它同时承担三件事：可建区边界、格点吸附的视觉反馈、落子结果预览。
+##
+## 视觉三层（由弱到强，不抢战场戏）：
+##   ① 网格线     α 0.10 —— 只暗示"这里有刻度"
+##   ② 可建区边界 α 0.30 —— 明确"圈外不能建"；核心禁建区用暗盘 + 红环
+##   ③ 悬停格     实心 + 呼吸 + 徽标 —— 回答"我点下去会怎样"
+##
+## 🔴 只对**鼠标所指那一格**查落子模式（O(塔数)），不遍历全盘 ~900 格。
+## 🔴 零文本（AC-T1-24）：＋ / ↑ 全部 `draw_line` 画，不写 `draw_string`。
+##
+## 🆕 `phase` 两段式（同一个函数，两个绘制时机）：
+##   · "bg"（默认）= 网格 + 可建区边界，在**塔之下**调用 —— 否则网格线横穿塔身。
+##   · "fg"        = 悬停格描边 + 徽标，在**塔之上**调用 —— 升级态要圈住已有的塔，
+##                   画在塔下面会被塔身整块盖住，玩家看不出"这一格可以升级"
+##                   （实测截图取证确认过，不是推测）。
+func _draw_placement_marks(sc: float, phase: String = "bg") -> void:
 	if not _in_placement():
 		return
 	if controller == null or controller.runtime == null:
 		return
-	var snap: Dictionary = controller.runtime.snapshot()
-	var modes: Array = snap.get("place_modes", [])
-	if modes.is_empty():
+
+	# ---- ① 网格线 ----
+	if _grid_segs.is_empty():
+		_grid_segs = _BuildGrid.grid_segments()
+	var g_lw := maxf(1.0, 0.045 * sc)
+	var g_col := Color(P_ALLY.r, P_ALLY.g, P_ALLY.b, 0.10)
+	for seg in _grid_segs:
+		draw_line(_to_screen(seg[0]), _to_screen(seg[1]), g_col, g_lw, true)
+
+	# ---- ② 可建区边界 + 核心禁建区 ----
+	var core := _to_screen(_BuildGrid.core())
+	draw_arc(core, _BuildGrid.FIELD_R * sc, 0.0, TAU, 96,
+		Color(P_ALLY.r, P_ALLY.g, P_ALLY.b, 0.30), maxf(1.5, 0.10 * sc), true)
+	draw_circle(core, _BuildGrid.CORE_BAN_R * sc, Color(0.020, 0.030, 0.060, 0.60))
+	draw_arc(core, _BuildGrid.CORE_BAN_R * sc, 0.0, TAU, 48,
+		Color(P_ALERT.r, P_ALERT.g, P_ALERT.b, 0.45), maxf(1.5, 0.09 * sc), true)
+
+	if phase == "bg":
+		return                      # 背景段到此为止（塔之上还要再调一次 fg 段）
+
+	# ---- ③ 悬停格预览 ----
+	# 鼠标在抽屉 / HUD 上时不高亮（`_field_width` 已扣掉抽屉占位）。
+	var wp: Vector2
+	if probe_hover_world != null:
+		wp = _BuildGrid.snap(Vector2(probe_hover_world))      # 取证注入（见变量注释）
+	else:
+		var mpos := get_viewport().get_mouse_position()
+		if mpos.x > _field_width():
+			return
+		wp = _to_world(mpos)
+	var info: Dictionary = controller.runtime.placement_mode_at(wp)
+	var mode := String(info["mode"])
+	if mode == "":
 		return
-	var slots: Array = _slots_arr()
-	var R0 := U_SLOT * sc
-	# 呼吸：0.9s 周期 ±10% —— 常亮会被当成"已选中"，脉动才读得出"等你点"。
+	var c := _to_screen(_BuildGrid.snap(wp))
+	var half := _BuildGrid.CELL * 0.5 * sc
 	var pulse := 1.0 + 0.10 * sin(_vfx_t * TAU / 0.9)
-	for i in slots.size():
-		if i >= modes.size():
-			break
-		var mode := String(modes[i])
-		if mode == "":
-			continue
-		var c := _to_screen(slots[i])
-		var col: Color
-		var lw: float
-		var rr: float
-		match mode:
-			"new":
-				col = P_ALLY                                     # 耀青：可新建
-				lw = maxf(3.0, 0.30 * sc)
-				rr = R0 * 1.20                                   # 比空槽大一圈 → 一眼"跳出来"
-			"upgrade":
-				col = P_GOLD                                     # 辉金：可升级（同原型叠层）
-				lw = maxf(3.0, 0.30 * sc)
-				rr = R0 * 1.20
-			_:
-				col = Color(P_SLOT.r, P_SLOT.g, P_SLOT.b, 0.40)   # 钢灰：不可用（不响应点击）
-				lw = maxf(1.0, 0.10 * sc)
-				rr = R0
-		# ① 扩散外环（只给可落子的位）—— 余光就能看出"哪几个能点"
-		if mode != "invalid":
-			draw_arc(c, rr * 1.16 * pulse, 0.0, TAU, 44,
-				Color(col.r, col.g, col.b, 0.40), maxf(2.0, 0.20 * sc), true)
-			draw_circle(c, rr * 0.96, Color(col.r, col.g, col.b, 0.20))
-		# ② 塔位轮廓（八边形，与空槽同形 → 不改玩家对"塔位长什么样"的认知）
-		draw_polyline(_closed(_oct8(c, rr, PI / 8.0)), col, lw, true)
-		# ③ 徽标：塔位正上方（不压塔身），暗盘衬底保证深底/亮塔上都可读
-		_draw_place_badge(c + Vector2(0.0, -rr * 1.40), rr * 0.34, mode, col, sc)
+	var col: Color
+	var live := true                       # 这一格现在点下去会不会落子
+	match mode:
+		"new":
+			col = P_ALLY                   # 耀青：可新建
+		"upgrade":
+			col = P_GOLD                   # 辉金：可升级（同格同原型）
+		"blocked":
+			col = Color(P_SLOT.r, P_SLOT.g, P_SLOT.b, 0.55)   # 钢灰：几何不可建
+			live = false
+		_:
+			col = Color(P_SLOT.r, P_SLOT.g, P_SLOT.b, 0.40)   # 钢灰：塔数满 / 已有别的塔
+			live = false
+	var rect := Rect2(c.x - half, c.y - half, half * 2.0, half * 2.0)
+	if mode == "upgrade":
+		# 升级态只描边不填充 —— 填充会把塔身整块染色，看不清原来那座塔是什么。
+		draw_rect(rect, col, false, maxf(3.0, 0.16 * sc), true)
+	else:
+		draw_rect(rect, Color(col.r, col.g, col.b, 0.26 if live else 0.10))
+		draw_rect(rect, col, false, maxf(2.0, 0.12 * sc), true)
+	# 徽标：格子正上方（不压塔身），暗盘衬底保证深底 / 亮塔上都可读
+	if live:
+		_draw_place_badge(c + Vector2(0.0, -half * 1.72), half * 0.62 * pulse, mode, col, sc)
 
 
 ## 落子徽标：圆盘衬底 + 几何符号（零文本）。`mode` ∈ {new, upgrade, invalid}。

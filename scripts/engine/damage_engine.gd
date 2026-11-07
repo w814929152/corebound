@@ -168,8 +168,17 @@ static func compute_dps(player, cfg: Dictionary, geo = null) -> Dictionary:
 		E.append(0.0)
 
 	if bool(cfg["use_resonance"]) and geo != null:
+		# 🆕 自由摆放：`geo.n`（槽位表长度）与「塔的 slot 号」不再天然一致 ——
+		#   商店的 ΔDPS 预览会**凭空造一个塔**探针（`apply_action(["build", nm, null])`
+		#   用 `free_map_slots` 取一个号的槽位），那个槽位号还没进 `geo.slots`。
+		#   按 `max(geo.n, max_slot+1)` 建索引表即可；越界的那些槽在 `links()` 里
+		#   由 `_dist_at()` 兜底成 INF（无边），不会改变任何已有塔的共振结果。
+		# 🔴 金标本零扰动：金标本的 slot 恒 < n_slots == geo.n → gsize 恒等于 geo.n。
+		var gsize: int = geo.n
+		for t in ts:
+			gsize = maxi(gsize, int(t.slot) + 1)
 		var gtypes: Array = []
-		for _k in range(geo.n):
+		for _k in range(gsize):
 			gtypes.append("")
 		for t in ts:
 			gtypes[int(t.slot)] = String(t.ctype)

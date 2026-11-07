@@ -18,6 +18,9 @@ extends RefCounted
 ##    H 弹窗：结算 / 回收确认 / 受损塔处置同样不得用系统默认控件
 ##    I 卡面描述：每张卡都必须回答「这张卡干什么」——恒 3 行、数值现取自 SSOT、
 ##      无强弱评价词（C-3 / SR-R2）、无占位痕迹
+##    J 放置入口：⑤ 态落子必须有可达路径（不能是抽屉里的死按钮）
+##    K 自由摆放：网格几何与落子判定共用一份定义；核心禁建、塔数上限、同格升级、
+##      槽位表增长 —— 全部按玩家点选的**坐标**判定，而不是 6 个固定槽位号
 ##
 ## 跑法：
 ##   <godot> --headless --path . --script res://tests/run_tests.gd -- uistyle
@@ -33,6 +36,9 @@ const _Salvage := preload("res://scripts/ui/salvage_confirm_dialog.gd")
 const _DisabledDialog := preload("res://scripts/ui/disabled_tower_dialog.gd")
 const _CardText := preload("res://scripts/data/card_text.gd")
 const _TD := preload("res://scripts/data/tower_data.gd")
+const _BuildGrid := preload("res://scripts/geo/build_grid.gd")
+const _Runtime := preload("res://scripts/gameplay/shop_runtime.gd")
+const _Cfg := preload("res://scripts/engine/mvp_config.gd")
 
 const FONT_MIN := 16
 
@@ -57,6 +63,7 @@ func run_all() -> bool:
 	_test_h_dialogs()
 	_test_i_card_text()
 	_test_j_placement_entry()
+	_test_k_free_placement()
 
 	_log("")
 	_log("=".repeat(78))
@@ -461,8 +468,15 @@ func _test_j_placement_entry() -> void:
 	_check("MonsterLayer 由**状态机**判定放置态（不是抽屉）",
 		ml_src.find("func _in_placement()") >= 0
 		and ml_src.find("State.PLACEMENT_MODE") >= 0)
-	_check("MonsterLayer ⑤ 态发 slot_place_requested",
-		ml_src.find("slot_place_requested") >= 0)
+	_check("MonsterLayer ⑤ 态发 place_at_requested（**坐标驱动**，不是槽位号）",
+		ml_src.find("place_at_requested") >= 0
+		and ml_src.find("emit_signal(\"place_at_requested\"") >= 0)
+	_check("MonsterLayer 点击先吸附格点（渲染层与 runtime 共用 BuildGrid.snap）",
+		ml_src.find("_BuildGrid.snap") >= 0)
+	_check("MonsterLayer ⑤ 态绘制网格（grid_segments，不是只画 6 个点）",
+		ml_src.find("grid_segments()") >= 0)
+	_check("MonsterLayer 只对鼠标所指格查落子模式（不遍历全盘 900 格）",
+		ml_src.find("placement_mode_at") >= 0)
 	_check("MonsterLayer 点选发到 time_director（信号声明方）",
 		ml_src.find("time_director.emit_signal(\"tower_select_requested\"") >= 0)
 	_check("MonsterLayer 命中判定走**屏幕距离**（旧实现先转世界坐标 + sc*1.6 当半径 → 300+px 串味）",
@@ -475,12 +489,138 @@ func _test_j_placement_entry() -> void:
 	_check("ShopOverlay 已移除不可达的 _place_box（死代码清除）",
 		shop_src.find("_place_box") < 0 and shop_src.find("_refresh_placement") < 0)
 	_check("HUD ⑤ 态有放置专属提示（不再误导「Tab 商店 / R 刷新」）",
-		hud_src.find("HINT_DEFAULT") >= 0 and hud_src.find("放置模式：点亮光的塔位落子") >= 0)
+		hud_src.find("HINT_DEFAULT") >= 0 and hud_src.find("点地图上的格子落子") >= 0)
 
 	# 「进入 ⑤」与「在 ⑤ 里落子」是两个入口，一个都不能少：
 	#   进 ⑤ = 抽屉里的待放置队列（抽屉展开时可见）；落子 = 战场（抽屉已收起）。
 	_check("待放置队列入口仍在（进 ⑤ 靠它，落子靠战场）",
 		shop_src.find("_pending_box") >= 0 and shop_src.find("request_placement") >= 0)
+
+
+# ---------------------------------------------------------------------------
+#  [K] 自由摆放：网格几何 + 坐标驱动落子
+# ---------------------------------------------------------------------------
+## 🔴 这一节钉的是「自由摆放」的四条不变量：
+##   ① 吸附正确（格点对齐 / 幂等 / 不超过半格）—— 否则同一个视觉位置会落出两个槽
+##   ② 可建区正确（核心禁建 / 外径封顶）—— 否则玩家能贴脸堆塔，策略坍缩成唯一解
+##   ③ 网格与判定共用同一份几何（`BuildGrid`）—— 否则"看到能建、点下去不能建"
+##   ④ 落子按**坐标**判定：同格升级、异原型拒绝、塔数封顶、槽位表增长
+func _test_k_free_placement() -> void:
+	_log("")
+	_log("--- [K] 自由摆放：网格几何 + 坐标落子（核心禁建 / 塔数上限 / 同格升级）---")
+
+	var core: Vector2 = _BuildGrid.core()
+
+	# ---- ① 吸附 ----
+	var p := Vector2(31.3, 20.8)
+	var s: Vector2 = _BuildGrid.snap(p)
+	var qx := (s.x - core.x) / _BuildGrid.CELL
+	var qy := (s.y - core.y) / _BuildGrid.CELL
+	_check("snap 输出落在格点上（相对核心为整数格）",
+		is_equal_approx(qx, roundf(qx)) and is_equal_approx(qy, roundf(qy)))
+	_check("snap 幂等（对已吸附点再吸附不漂移）", _BuildGrid.snap(s) == s)
+	_check("snap 就近（偏移 ≤ 半格对角线）",
+		s.distance_to(p) <= _BuildGrid.CELL * 0.75)
+
+	# ---- ② 可建区 ----
+	_check("核心所在格不可建（CORE_BAN_R 内）", not _BuildGrid.buildable(core))
+	_check("核心禁建圈外、可建外径内 可建",
+		_BuildGrid.buildable(core + Vector2(_BuildGrid.CORE_BAN_R + _BuildGrid.CELL, 0.0)))
+	_check("可建外径外 不可建",
+		not _BuildGrid.buildable(core + Vector2(_BuildGrid.FIELD_R + _BuildGrid.CELL, 0.0)))
+	_check("战场外（远离核心）不可建",
+		not _BuildGrid.buildable(Vector2(-500.0, -500.0)))
+
+	# ---- ③ 枚举与网格线 ----
+	var cells: Array = _BuildGrid.all_cells()
+	var all_ok := true
+	for c in cells:
+		if not _BuildGrid.buildable(c):
+			all_ok = false
+			break
+	_check("all_cells() 每一格都通过 buildable()", all_ok)
+	# 圆环面积 π(44² − 4²) ≈ 6032 u² ÷ 6.25 u²/格 ≈ 965
+	_check("all_cells() 数量在合理量级（500 ~ 1300，实测 %d）" % cells.size(),
+		cells.size() > 500 and cells.size() < 1300)
+
+	var segs: Array = _BuildGrid.grid_segments()
+	_check("网格线段非空（%d 条，整盘 34+34 量级）" % segs.size(), segs.size() >= 40)
+	var clipped := true
+	for seg in segs:
+		for e in seg:
+			if (e as Vector2).distance_to(core) > _BuildGrid.FIELD_R + 0.01:
+				clipped = false
+	_check("网格线段全部裁剪在可建圆内（不会画到出生环外）", clipped)
+
+	# ---- ④ 配置：塔数上限与槽位数语义分离 ----
+	var cfg: Dictionary = _Cfg.cfg_of("B")
+	_check("cfg 同时有 n_slots 与 tower_cap（%d / %d）且 tower_cap 更大" % [
+		int(cfg["n_slots"]), int(cfg.get("tower_cap", -1))],
+		int(cfg.get("tower_cap", -1)) > int(cfg["n_slots"]))
+
+	# ---- ⑤ 坐标落子：新建 / 升级 / 拒绝 ----
+	var rt = _Runtime.new()
+	rt.setup("B", 1234, {"tower_cap": 3})
+	_check("玩家路线几何从空槽起步，只含起手塔那一个槽（got=%d）" % rt.geo.slots.size(),
+		rt.geo.slots.size() == 1)
+	_check("起手塔所在格可建（坐标落在格点上，与网格对齐）",
+		_BuildGrid.buildable(rt.geo.slots[0]))
+
+	var p_new: Vector2 = core + Vector2(10.0, 0.0)
+	rt.pending = ["Cannon"]
+	rt.pending_cost = [12.0]
+	rt.begin_placement(0)
+	var ok_new: bool = rt.confirm_placement_at(p_new)
+	_check("核心外格点落子成功（%s）" % rt.last_error, ok_new)
+	_check("落子后槽位表 1 → %d（新格即新槽）" % rt.geo.slots.size(), rt.geo.slots.size() == 2)
+	_check("落子后场上 2 座塔", rt.player.towers.size() == 2)
+
+	# 同格同原型 → 升级（不新增槽、不新增塔）
+	rt.pending = ["Cannon"]
+	rt.pending_cost = [12.0]
+	rt.begin_placement(0)
+	var ok_up: bool = rt.confirm_placement_at(p_new + Vector2(0.7, -0.6))   # 故意偏移 → 吸附同格
+	_check("同格再次落同原型卡 = 升级（%s）" % rt.last_error, ok_up)
+	_check("升级不新增槽（仍 %d）" % rt.geo.slots.size(), rt.geo.slots.size() == 2)
+	_check("升级不新增塔（仍 %d 座）" % rt.player.towers.size(), rt.player.towers.size() == 2)
+
+	# 同格异原型 → 拒绝
+	rt.pending = ["Frost"]
+	rt.pending_cost = [12.0]
+	rt.begin_placement(0)
+	var ok_bad: bool = rt.confirm_placement_at(p_new)
+	_check("同格异原型被拒绝且不消耗卡", not ok_bad and rt.pending.size() == 1)
+	rt.pending = []
+	rt.pending_cost = []
+	rt.cancel_placement()
+
+	# 核心禁建区 → 拒绝
+	rt.pending = ["Frost"]
+	rt.pending_cost = [12.0]
+	rt.begin_placement(0)
+	_check("在核心禁建区落子被拒绝", not rt.confirm_placement_at(core))
+	rt.pending = []
+	rt.cancel_placement()
+
+	# 塔数上限：tower_cap=3，已有 2 座 → 第 3 座可建，第 4 座被拒
+	rt.pending = ["Frost"]
+	rt.pending_cost = [12.0]
+	rt.begin_placement(0)
+	var ok_third: bool = rt.confirm_placement_at(core + Vector2(-8.5, 6.5))
+	_check("第 3 座塔可建（未超上限 3）", ok_third)
+	rt.pending = ["Frost"]
+	rt.pending_cost = [12.0]
+	rt.begin_placement(0)
+	var ok_fourth: bool = rt.confirm_placement_at(core + Vector2(0.0, -12.5))
+	_check("第 4 座塔被塔数上限拒绝（tower_cap=3）", not ok_fourth)
+	_check("被拒后槽位表不变（仍 %d）" % rt.geo.slots.size(), rt.geo.slots.size() == 3)
+
+	# 快照与槽位表一致（渲染层按 slot 索引取 geo.slots）
+	var snap: Dictionary = rt.snapshot()
+	_check("snapshot 槽位数 = geo.slots 数（%d）" % int(snap["slots"].size()),
+		int(snap["slots"].size()) == rt.geo.slots.size())
+	_check("snapshot 的 towers_max 取 tower_cap（%d）" % int(snap["towers_max"]),
+		int(snap["towers_max"]) == 3)
 
 
 # ---------------------------------------------------------------------------
