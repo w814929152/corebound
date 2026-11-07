@@ -72,7 +72,7 @@ const TOWER_DMG_TYPE := {
 	"Breaker": PHYSICAL, "Shatter": PHYSICAL, "Ruin": PHYSICAL,
 	"Drummer": PHYSICAL, "Quake": PHYSICAL,
 	"Curse": MAGIC, "Plague": MAGIC, "Wither": MAGIC, "Omen": MAGIC,
-	"Exile": TRUE, "Null": TRUE, "Rift": TRUE, "Abyss": TRUE,
+	"Exile": TRUE, "Null": TRUE, "Rift": TRUE, "Necro": TRUE,
 	"Scout": PHYSICAL,
 	# 🆕 相位塔（伤害类型转换）：自身不攻击，类型取默认物理；转换在 damage_engine 里结算。
 	"Kinetic": PHYSICAL, "Arcane": PHYSICAL, "Purity": PHYSICAL,

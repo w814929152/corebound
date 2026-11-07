@@ -158,6 +158,10 @@ var v0_: float = 10.10
 var limit: float = 0.0      # D + t_reach + 1e-9
 
 var monsters: Array = []
+## 🆕 召唤小兵（2026-11-07 · Necro 等）：会在战场上移动、攻击最近敌人的友方单位。
+##   每项 = {pos: Vector2, ttl: float, dps: float, speed: float}；🔴 只在实时战斗里存在，
+##   批处理镜像不生成 → 金标本 / MC 零扰动。
+var minions: Array = []
 var kills: int = 0
 var leaked_count: int = 0
 var scrap_earned: float = 0.0
@@ -341,6 +345,34 @@ func _init_tower_hp() -> void:
 		if not bool(t.disabled):
 			t.hp_max = _MonsterData.tower_hp(int(t.h), exp) * def_mult
 			t.hp = t.hp_max
+	# 🆕 召唤：每波开始时按塔上的 summon 配置重新生成小兵。
+	_spawn_summoned()
+
+
+## 🆕 召唤小兵：在召唤塔的格心生成 N 个游魂（围绕塔身错开，避免完全重叠）。
+func _spawn_summoned() -> void:
+	minions.clear()
+	if player == null:
+		return
+	for t in player.towers:
+		if bool(t.disabled):
+			continue
+		var n := _TD.tower_summon_n(String(t.ctype))
+		if n <= 0:
+			continue
+		var base := Vector2.ZERO
+		if geo != null:
+			var si := int(t.slot)
+			if si >= 0 and si < geo.slots.size() and geo.slots[si] is Vector2:
+				base = geo.slots[si]
+		for k in range(n):
+			var ang := TAU * float(k) / float(maxi(1, n))
+			minions.append({
+				"pos": base + Vector2(cos(ang), sin(ang)) * 0.9,
+				"ttl": _TD.tower_summon_ttl(String(t.ctype)),
+				"dps": _TD.tower_summon_dps(String(t.ctype)),
+				"speed": _TD.tower_summon_speed(String(t.ctype)),
+			})
 
 
 ## 本波出生表（纯确定性，无 RNG）
@@ -497,12 +529,53 @@ func _substep() -> void:
 	if tower_aggro_enabled and w > warmup_waves:
 		_apply_aggro()
 
+	# ---- ④b 🆕 召唤小兵（2026-11-07）：移动 + 攻击最近敌人。
+	_update_minions(_WaveSim.DT)
+
 	# ---- ⑤ 🔒 V-8 战斗中复活（M-1）：Disabled 塔累计 N 秒 → 系统自动重启 ----
 	#   🔴 与批处理镜像同序（都在④仇恨之后）→ 死亡当子步就开始累计 `revive_t_disabled`。
 	#   🔴 `repair_on_disable < 9`（默认 0）→ 函数首行 return，off 路径逐位不变。
 	_tick_revive()
 
 
+
+## 🆕 召唤小兵（2026-11-07）：向最近活怪移动，进入 1.5 单位内持续攻击（无视抗性）。
+##   🔴 只有玩家路线会召唤（金标本 / 批处理不生成 minions）→ 零扰动。
+func _update_minions(dt: float) -> void:
+	if minions.is_empty():
+		return
+	var alive: Array = []
+	for m in monsters:
+		if m != null and float(m.hp) > 0.0:
+			alive.append(m)
+	for mi in range(minions.size() - 1, -1, -1):
+		var mn: Dictionary = minions[mi]
+		mn["ttl"] = float(mn["ttl"]) - dt
+		if float(mn["ttl"]) <= 0.0:
+			minions.remove_at(mi)
+			continue
+		if alive.is_empty():
+			continue
+		var mp: Vector2 = mn["pos"]
+		var best = null
+		var best_d := INF
+		for m in alive:
+			var d: float = (m.pos(v0_) as Vector2).distance_to(mp)
+			if d < best_d:
+				best_d = d
+				best = m
+		if best == null:
+			continue
+		if best_d > 1.5:
+			var dir: Vector2 = ((best.pos(v0_) as Vector2) - mp).normalized()
+			mn["pos"] = mp + dir * float(mn["speed"]) * dt
+		else:
+			best.hp = maxf(0.0, float(best.hp) - float(mn["dps"]) * dt)
+			if float(best.hp) <= 0.0:
+				kills += 1
+				scrap_earned += spk
+				emit_signal("monster_killed", best)
+				_TowerEffects.on_kill(player)
 ## 🔒 T1（Q-T3 = ① 机会型仇恨）：每子步的仇恨判定（GDD §2.6 状态机）。
 ##   · Marching 怪：当前位置与某座 **未 Disabled** 塔的距离 ≤ AGGRO_R → 转 AggroTower，
 ##     目标 = 最近的塔（迟滞带内锁定）。
@@ -983,6 +1056,13 @@ func _end_wave() -> void:
 # ---------------------------------------------------------------------------
 #  只读快照（UI / 自测；🔴 UI 不持有游戏状态，control-manifest §5）
 # ---------------------------------------------------------------------------
+
+## 🆕 快照用：只导出渲染需要的两个字段（位置 / 剩余时长），不做任何状态复制。
+func _snapshot_minions() -> Array:
+	var out: Array = []
+	for mn in minions:
+		out.append({"pos": mn["pos"], "ttl": float(mn["ttl"])})
+	return out
 func snapshot() -> Dictionary:
 	var live: Array = []
 	for m in monsters:
@@ -1039,6 +1119,8 @@ func snapshot() -> Dictionary:
 		"v0": v0_,
 		"t_reach": t_reach,
 		"monsters": live,
+		# 🆕 召唤小兵（只读、additive）：渲染层据此画游魂；无召唤物时为空数组。
+		"minions": _snapshot_minions(),
 		"towers": towers,
 		"towers_disabled": _count_disabled_towers(),
 		# 🔒 V-8 渲染层总闸（**布尔**）：只有「仇恨开 + 复活档位开」时渲染层才画

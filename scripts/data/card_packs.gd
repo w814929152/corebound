@@ -106,7 +106,7 @@ const PACKS: Array = [
 	},
 	{
 		"id": "true", "name": "湮灭包", "tag_line": "真实穿透 + 觉醒",
-		"cards": ["Oblivion", "Void", "Exile", "Null", "Rift", "Abyss"],
+		"cards": ["Oblivion", "Void", "Exile", "Null", "Rift", "Necro"],
 		"unlock_wave": 30,
 	},
 ]

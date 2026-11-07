@@ -1,4 +1,4 @@
-extends Node2D
+﻿extends Node2D
 ##
 ## 怪物 / 路径 / 塔位 **占位渲染层**（Node2D，世界层）
 ##
@@ -843,6 +843,7 @@ func _draw_radial(sc: float) -> void:
 	_draw_radial_towers(sc)       # 层6：双层八边形塔
 	_draw_placement_marks(sc, "fg")   # 层6.5：⑤ 悬停格描边 + 徽标（塔之上）
 	_draw_radial_monsters(sc)     # 层7：12 边不规则 + 朝核心尖刺扇
+	_draw_minions(sc)             # 层7.5：召唤小兵（只读快照）
 	_draw_projectiles(sc)         # 层8：字段缺失 → 零绘制（保留既有 hook）
 	_draw_revive_flash(sc)        # 层9：爬起扩散环（沿用既有）
 	# 🟠 T-P6-07 A 档 VFX（弹流/伤害数字/击杀反馈）由**兄弟节点** `VfxLayer` 绘制
@@ -1531,6 +1532,18 @@ func _draw_radial_tower_glyph(c: Vector2, R: float, ctype: String, sc: float) ->
 
 
 # ---- 层7：怪（12 边不规则 + 朝核心尖刺扇 + 外扩描边）----
+
+## 🆕 召唤小兵（2026-11-07）：只读 `_snap["minions"]`，画成青蓝色小圆点 + 细环。
+##   🔴 渲染层零文本 / 零玩法写入（AC-T1-24 同纪律）。
+func _draw_minions(sc: float) -> void:
+	if _snap.is_empty():
+		return
+	for mn in _snap.get("minions", []):
+		var p: Vector2 = mn["pos"]
+		var sp := _to_screen(p)
+		var r := maxf(3.0, sc * 0.45)
+		draw_circle(sp, r, C_CORE)
+		draw_arc(sp, r + maxf(2.0, sc * 0.12), 0.0, TAU, 12, C_CORE, 1.0, true)
 func _draw_radial_monsters(sc: float) -> void:
 	var ms: Array = _snap.get("monsters", [])
 	if ms.is_empty():

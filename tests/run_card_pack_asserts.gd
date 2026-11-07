@@ -105,6 +105,7 @@ func run_all() -> bool:
 	_test_m_aspd()
 	_test_n_convert()
 	_test_o_death_blast()
+	_test_p_summon()
 
 	# 🔴 收尾：把静态状态还原成默认，避免污染同进程内的后续套件
 	_ShopRuntime.set_active_packs([])
@@ -648,3 +649,22 @@ func _test_o_death_blast() -> void:
 	_ok("O3 普通塔无爆炸（Arrow）", absf(_TD.tower_death_blast("Arrow")) < 1e-9)
 	_ok("O4 Rift 不带爆炸（只有 Pyre 有）", absf(_TD.tower_death_blast("Rift")) < 1e-9)
 	_ok("O5 Pyre 卡面写明「阵亡：爆炸 40」", _CardText.describe("Pyre").find("阵亡：爆炸 40") >= 0)
+
+# ---------------------------------------------------------------------------
+#  P 召唤小兵：塔每波召唤可移动单位攻击敌人（2026-11-07）
+# ---------------------------------------------------------------------------
+func _test_p_summon() -> void:
+	_log("")
+	_log("--- [P] 召唤小兵：Necro 每波召唤 2 个游魂 ---")
+	_eq_int("P1 Necro 召唤数量 = 2", _TD.tower_summon_n("Necro"), 2)
+	_ok("P2 Necro 小兵 dps = 8", absf(_TD.tower_summon_dps("Necro") - 8.0) < 1e-9)
+	_ok("P3 Necro 小兵存活 10s", absf(_TD.tower_summon_ttl("Necro") - 10.0) < 1e-9)
+	_ok("P4 Necro 小兵移动速度 6", absf(_TD.tower_summon_speed("Necro") - 6.0) < 1e-9)
+	_eq_int("P5 普通塔不召唤（Arrow）", _TD.tower_summon_n("Arrow"), 0)
+	_ok("P6 Necro 卡面写明「召唤游魂作战」", _CardText.describe("Necro").find("召唤游魂作战") >= 0)
+	var names: Array = []
+	for p in _Packs.PACKS:
+		for nm in (p["cards"] as Array):
+			names.append(String(nm))
+	_ok("P7 Necro 在湮灭包", names.has("Necro"))
+	_ok("P8 旧的 Abyss 已不在任何卡包", not names.has("Abyss"))

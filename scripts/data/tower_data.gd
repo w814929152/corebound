@@ -1,4 +1,4 @@
-﻿class_name TowerData
+class_name TowerData
 extends RefCounted
 ##
 ## 塔原型 / 强化卡 / 价格 —— 移植自 design/phase2/numeric-sim/corebound_sim_v03.py
@@ -149,7 +149,8 @@ const TOWERS_EXT := {
 		"on_kill_lv": true},
 	"Rift": {"dps": 8.0, "tag": "true", "aoe": false, "slow": 0.00, "rng": 22.0,
 		"awaken": true},
-	"Abyss": {"dps": 5.0, "tag": "true", "aoe": true, "slow": 0.10, "rng": 20.0},
+	"Necro": {"dps": 3.0, "tag": "true", "aoe": false, "slow": 0.00, "rng": 18.0,
+		"summon_n": 2, "summon_dps": 8.0, "summon_ttl": 10.0, "summon_speed": 6.0},
 
 	# ═══════════════════════════════════════════════════════════════════════════
 	# 🆕 触发型建筑（2026-11-07 · 卡包只收建筑后的升级路线）
@@ -279,7 +280,7 @@ const EXT_WEIGHTS := {
 	"Exile": 0.09,
 	"Null": 0.09,
 	"Rift": 0.08,
-	"Abyss": 0.08,
+	"Necro": 0.08,
 }
 
 
@@ -413,6 +414,31 @@ static func tower_death_blast_r(ctype: String) -> float:
 	if not TOWERS_EXT.has(ctype):
 		return 0.0
 	return float(TOWERS_EXT[ctype].get("death_blast_r", 0.0))
+
+
+## 🆕 召唤：每波召唤的小兵数量（0 = 不召唤）。
+static func tower_summon_n(ctype: String) -> int:
+	if not TOWERS_EXT.has(ctype):
+		return 0
+	return int(TOWERS_EXT[ctype].get("summon_n", 0))
+
+
+static func tower_summon_dps(ctype: String) -> float:
+	if not TOWERS_EXT.has(ctype):
+		return 0.0
+	return float(TOWERS_EXT[ctype].get("summon_dps", 0.0))
+
+
+static func tower_summon_ttl(ctype: String) -> float:
+	if not TOWERS_EXT.has(ctype):
+		return 0.0
+	return float(TOWERS_EXT[ctype].get("summon_ttl", 0.0))
+
+
+static func tower_summon_speed(ctype: String) -> float:
+	if not TOWERS_EXT.has(ctype):
+		return 0.0
+	return float(TOWERS_EXT[ctype].get("summon_speed", 0.0))
 
 
 ## 🆕 赏金：存活时全队累计击杀 N 只 → 获得 X 废料（可重复触发）。

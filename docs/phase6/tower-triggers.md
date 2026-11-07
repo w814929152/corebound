@@ -120,6 +120,7 @@
 | **攻速光环** | `buff_aspd` | **Drummer 战鼓**（原 Cleave） | 附近塔攻速 +20%（可叠，封顶 +60%） | `damage_engine` 乘 `(1+Σaspd)` |
 | **伤害类型转换** | `convert` | **Kinetic / Arcane / Purity**（原 Mortar / Harpoon / Frostbite） | 把**最近的一座塔**分别转成物理 / 魔法 / 纯粹 | `damage_engine._apply_converters`（按格心距离取最近） |
 | **死亡爆炸** | `death_blast` / `death_blast_r` | **Pyre 火葬** | 阵亡时对半径 6 内敌人造成 40 真实伤害 | `wave_director._death_explode`（阵亡处） |
+| **召唤小兵** | `summon_n/dps/ttl/speed` | **Necro 亡灵塔**（原 Abyss） | 每波召唤 2 个游魂：自动追最近敌人、8 dps、存活 10s | `wave_director._spawn_summoned` / `_update_minions`；快照 `minions` 交给渲染层 |
 
 ### 7.1 口径说明
 
