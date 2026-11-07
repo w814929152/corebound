@@ -286,6 +286,10 @@ static func compute_dps(player, cfg: Dictionary, geo = null) -> Dictionary:
 		var _bnc := _TowerData.tower_bounce(ctype)
 		if _bnc > 0:
 			dps_i *= 1.0 + 0.20 * float(_bnc)
+		# 🆕 贯穿（2026-11-07）：每贯穿一个敌人 +25% 等效输出（穿刺系）。金标本恒 0。
+		var _prc := _TowerData.tower_pierce(ctype)
+		if _prc > 0:
+			dps_i *= 1.0 + 0.25 * float(_prc)
 		per_tower.append({
 			"base": base, "stack": stack, "syn": syn, "res": res,
 			"focus": foc, "allin": ali, "cov": cov, "dps": dps_i,

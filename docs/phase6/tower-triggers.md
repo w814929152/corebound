@@ -115,6 +115,7 @@
 | **击杀升级** | `on_kill_lv` | **Null 归零** | 任意怪物被击杀 → 本塔 +1 级（封顶 8） | `_apply_pool_live` 击杀处 |
 | **赏金** | `bounty_kills` / `bounty_scrap` | **Scout 斥候** | 存活时全队每累计 10 杀 → +6 废料（可重复） | `tower_effects.on_kill` → 波末 `grant_wave_result` 入账 |
 | **弹射** | `bounce` | **Tesla/Bolt/Storm/Arc/Spark/Thunder** | 子弹可跳弹 N 次，每次 +20% 等效输出 | `damage_engine` 逐塔乘 `(1+0.2N)` |
+| **贯穿** | `pierce` | **Lance/Javelin/Ballista/Sniper/Harpoon** | 子弹可穿透 N 个敌人，每个 +25% 等效输出 | `damage_engine` 逐塔乘 `(1+0.25N)` |
 
 ### 7.1 口径说明
 
@@ -146,7 +147,8 @@
   （`min(1, h/8)`）的同档值 → 触发升级能走到「满级形态」，再往上不再有形态/乘区跃迁。
 - **只封触发加等级**：合成升级（同格同名再落）仍**无硬上限**，保持「`h^0.6` 次线性、
   雪崩无上限」的定性。因此等级牌在 `h > 8` 时仍会显示真实数字（不标 MAX）。
-- **MC 复跑**（`tests/run_pack_mc.gd`，1 seed / 56 组合，其余口径逐项不变）：
+- **MC 复跑**（`tests/run_pack_mc.gd`，1 seed / 56 组合，其余口径逐项不变；
+  读数取 2026-11-07 20:27 快照 —— 与 `pack-mc-v01.md` §7 同一棵树，贯穿机制尚未落地）：
 
   | 上限 | 通关率 | 平均波次 |
   |---|---|---|

@@ -55,7 +55,7 @@ const ALLOWED := {
 const TOWERS_EXT := {
 	# 远程狙击：rng 26 > Arrow 22，dps 11 > Arrow 10。
 	# 代价 = 独立 tag "pierce" ⇒ 不与 fire / frost 共享 tag 投资，κ 只能靠自己堆。
-	"Lance": {"dps": 11.0, "tag": "pierce", "aoe": false, "slow": 0.00, "rng": 26.0},
+	"Lance": {"dps": 11.0, "tag": "pierce", "aoe": false, "slow": 0.00, "rng": 26.0, "pierce": 2},
 	# 贴身电弧：rng 16 < Cannon 18，dps 6（全场最低），换 aoe + 0.10 减速。
 	# 定位 = 堵在暴露位的近身清场，与「肉盾流」站位天然互补。
 	"Tesla": {"dps": 6.0, "tag": "shock", "aoe": true, "slow": 0.10, "rng": 16.0, "bounce": 1},
@@ -83,7 +83,7 @@ const TOWERS_EXT := {
 	# 冰 · 第二塔：单体强减速，射程近（Frost 是远程减速，这是贴身冰封）。
 	"Icicle": {"dps": 4.0, "tag": "frost", "aoe": false, "slow": 0.45, "rng": 15.0},
 	# 穿甲 · 第二塔：短程连射，dps 高但射程短（Lance 是远程狙击，这是近身扫射）。
-	"Javelin": {"dps": 9.0, "tag": "pierce", "aoe": false, "slow": 0.00, "rng": 17.0},
+	"Javelin": {"dps": 9.0, "tag": "pierce", "aoe": false, "slow": 0.00, "rng": 17.0, "pierce": 1},
 	# 电 · 第二塔：单体高爆发（Tesla 是近身 aoe，这是单体电弧直击）。
 	"Bolt": {"dps": 8.0, "tag": "shock", "aoe": false, "slow": 0.00, "rng": 19.0, "bounce": 1},
 	# 破甲 · 第二塔：aoe 物理群伤（Sunder 是单体破甲光环，这是群体物理压制）。
@@ -121,9 +121,9 @@ const TOWERS_EXT := {
 	"Spark": {"dps": 8.0, "tag": "shock", "aoe": false, "slow": 0.00, "rng": 20.0, "bounce": 1},
 	"Thunder": {"dps": 10.0, "tag": "shock", "aoe": false, "slow": 0.00, "rng": 22.0, "bounce": 1},
 	# ---- 穿甲包补位（远程梯度）----
-	"Ballista": {"dps": 12.0, "tag": "pierce", "aoe": false, "slow": 0.00, "rng": 30.0},
-	"Sniper": {"dps": 10.0, "tag": "pierce", "aoe": false, "slow": 0.10, "rng": 34.0},
-	"Harpoon": {"dps": 9.0, "tag": "pierce", "aoe": false, "slow": 0.00, "rng": 15.0},
+	"Ballista": {"dps": 12.0, "tag": "pierce", "aoe": false, "slow": 0.00, "rng": 30.0, "pierce": 3},
+	"Sniper": {"dps": 10.0, "tag": "pierce", "aoe": false, "slow": 0.10, "rng": 34.0, "pierce": 2},
+	"Harpoon": {"dps": 9.0, "tag": "pierce", "aoe": false, "slow": 0.00, "rng": 15.0, "pierce": 1},
 	# ---- 破甲包补位（削物抗光环扩展：tag=sunder 自动计入 `SUNDER_TYPES`）----
 	"Breaker": {"dps": 8.0, "tag": "sunder", "aoe": true, "slow": 0.00, "rng": 18.0},
 	"Shatter": {"dps": 7.0, "tag": "sunder", "aoe": false, "slow": 0.00, "rng": 20.0},
@@ -366,6 +366,13 @@ static func tower_bounce(ctype: String) -> int:
 	if not TOWERS_EXT.has(ctype):
 		return 0
 	return int(TOWERS_EXT[ctype].get("bounce", 0))
+
+
+## 🆕 贯穿：子弹可以贯穿的敌人数（每次 +25% 等效输出，见 damage_engine）。
+static func tower_pierce(ctype: String) -> int:
+	if not TOWERS_EXT.has(ctype):
+		return 0
+	return int(TOWERS_EXT[ctype].get("pierce", 0))
 
 
 ## 🆕 赏金：存活时全队累计击杀 N 只 → 获得 X 废料（可重复触发）。

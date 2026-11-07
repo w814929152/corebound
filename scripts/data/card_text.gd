@@ -277,6 +277,9 @@ static func describe(nm: String) -> String:
 	# 🆕 弹射：第 3 行写跳弹次数（替代「标记」行，因为弹跳是更关键的取舍信息）。
 	if _TD.tower_bounce(nm) > 0:
 		return "%s\n%s\n弹射 %d 次" % [r, stat_line(nm), _TD.tower_bounce(nm)]
+	# 🆕 贯穿：子弹可穿透的敌人数。
+	if _TD.tower_pierce(nm) > 0:
+		return "%s\n%s\n贯穿 %d 个" % [r, stat_line(nm), _TD.tower_pierce(nm)]
 	if _TD.TOWERS.has(nm) or _TD.TOWERS_EXT.has(nm):
 		return "%s\n%s\n%s" % [r, stat_line(nm), mark_line(nm)]
 	if _TD.REINF.has(nm) or _TD.REINF_EXT.has(nm) or _TD.REINF_EXT2.has(nm):

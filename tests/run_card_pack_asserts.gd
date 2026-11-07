@@ -1,4 +1,4 @@
-extends RefCounted
+﻿extends RefCounted
 ##
 ## headless 断言 —— 卡包（Card Pack）· 分池 / 选包 / 解锁 / 发牌
 ##
@@ -97,6 +97,7 @@ func run_all() -> bool:
 	_test_h_triggers()
 	_test_i_bounty()
 	_test_j_bounce()
+	_test_k_pierce()
 
 	# 🔴 收尾：把静态状态还原成默认，避免污染同进程内的后续套件
 	_ShopRuntime.set_active_packs([])
@@ -552,3 +553,16 @@ func _test_j_bounce() -> void:
 	_eq_int("J4 非电弧塔无弹射（Arrow）", _TD.tower_bounce("Arrow"), 0)
 	_ok("J5 Arc 卡面写明「弹射 2 次」", _CardText.describe("Arc").find("弹射 2 次") >= 0)
 	_ok("J6 无弹射塔卡面不出现「弹射」", _CardText.describe("Arrow").find("弹射") < 0)
+
+# ---------------------------------------------------------------------------
+#  K 贯穿：穿刺系子弹可穿透 N 个敌人（2026-11-07）
+# ---------------------------------------------------------------------------
+func _test_k_pierce() -> void:
+	_log("")
+	_log("--- [K] 贯穿：穿刺系子弹穿透敌人数 ---")
+	_eq_int("K1 Ballista 贯穿 3 个", _TD.tower_pierce("Ballista"), 3)
+	_eq_int("K2 Lance 贯穿 2 个", _TD.tower_pierce("Lance"), 2)
+	_eq_int("K3 Harpoon 贯穿 1 个", _TD.tower_pierce("Harpoon"), 1)
+	_eq_int("K4 非穿刺塔无贯穿（Arrow）", _TD.tower_pierce("Arrow"), 0)
+	_ok("K5 Ballista 卡面写明「贯穿 3 个」", _CardText.describe("Ballista").find("贯穿 3 个") >= 0)
+	_ok("K6 无贯穿塔卡面不出现「贯穿」", _CardText.describe("Arrow").find("贯穿") < 0)
