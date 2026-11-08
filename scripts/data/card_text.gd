@@ -279,12 +279,14 @@ static func rarity(nm: String) -> String:
 ##   🔴 全部现取自 `TOWERS` / `TOWERS_EXT`，不在此层二次定义任何数字。
 ##   🔴 **不追加**溅射 / 减速 / 标记 —— 加上去这一行就超过 9 汉字必然二次换行。
 ##      溅射与减速已写在第 1 行（`ROLE`），标记写在第 3 行（`mark_line`）。
+##   ⚠️ 2026-11-08：「伤害」= 表内 `dps` **× 攻速** 的有效值（与 `damage_engine` 同口径）；
+##      分隔符两侧不留空格（「伤害 3.3·攻速 65%」= 8.0 字），否则 3.3 这类小数会到 9.0 字顶格。
 static func stat_line(nm: String) -> String:
 	var d := _tower_def(nm)
 	if d.is_empty():
 		return ""
 	var attack_speed := _TD.tower_attack_speed(nm)
-	return "伤害 %s · 攻速 %d%%" % [
+	return "伤害 %s·攻速 %d%%" % [
 		_num(float(d["dps"]) * attack_speed), int(round(attack_speed * 100.0))]
 
 

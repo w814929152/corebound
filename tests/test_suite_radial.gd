@@ -227,7 +227,7 @@ func _test_map_layout() -> void:
 
 	# ---- E-M1 全盘自由建造，岩脊障碍除外 ----
 	var cells: Array = _BuildGrid.all_cells()
-	_check("E-M1 可建格覆盖全盘", cells.size() > 500)
+	_check_bool("E-M1 可建格覆盖全盘（>500）", cells.size() > 500, true)
 	var all_in := false
 	for c in cells:
 		if _BuildGrid.site_id_of(c).is_empty():

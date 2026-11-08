@@ -1,9 +1,10 @@
-extends RefCounted
+extends SceneTree
 ##
 ## 战斗类型系统自测 —— 零扰动 + 类型拆分 + 抗性减免 + 实时↔批处理等价
 ##
-## 跑法：
-##   <godot> --headless --path . --script res://tests/run_tests.gd -- combat_types
+## 跑法（本文件 `extends SceneTree`，故两种入口等价）：
+##   <godot> --headless --path . --script res://tests/run_combat_types_asserts.gd   # 只跑本套件
+##   <godot> --headless --path . --script res://tests/run_tests.gd -- combat_types   # 聚合入口
 ##   （亦可直接跑本脚本，但建议走 run_tests.gd 统一入口，保持九段聚合口径）
 ##
 ## 断言（4 组）：
@@ -55,6 +56,12 @@ func _make_player(cfg: Dictionary):
 	p.towers = [t1, t2]
 	p.n_hist_max = 2
 	return p
+
+
+## 🔴 双入口（2026-11-08）：`extends SceneTree` 才能被 `--script` 直跑；
+##   `run_tests.gd` 聚合走 `.new().run_all()`，`.new()` 不触发 `_initialize()`，不会双跑。
+func _initialize() -> void:
+	quit(0 if run_all() else 1)
 
 
 func run_all() -> bool:

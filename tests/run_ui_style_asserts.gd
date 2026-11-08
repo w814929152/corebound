@@ -1,4 +1,4 @@
-extends RefCounted
+extends SceneTree
 ##
 ## headless 断言 —— UI 样式一致性（`scripts/ui/ui_style.gd` + 三处玩家可见界面）
 ##
@@ -22,8 +22,9 @@ extends RefCounted
 ##    K 自由摆放：网格几何与落子判定共用一份定义；核心禁建、塔数上限、同格升级、
 ##      槽位表增长 —— 全部按玩家点选的**坐标**判定，而不是 6 个固定槽位号
 ##
-## 跑法：
-##   <godot> --headless --path . --script res://tests/run_tests.gd -- uistyle
+## 跑法（本文件 `extends SceneTree`，故两种入口等价）：
+##   <godot> --headless --path . --script res://tests/run_ui_style_asserts.gd      # 只跑本套件
+##   <godot> --headless --path . --script res://tests/run_tests.gd -- uistyle      # 聚合入口
 ##
 
 const _Style := preload("res://scripts/ui/ui_style.gd")
@@ -47,6 +48,17 @@ const FONT_MIN := 16
 
 var _pass := 0
 var _fail := 0
+
+
+## 🔴 双入口（2026-11-08）：本文件 `extends SceneTree` 而不是 `RefCounted`，原因见下 ——
+##   ① 直跑 `--script res://tests/run_ui_style_asserts.gd`：Godot 的 `--script` 要求主循环
+##      脚本继承 SceneTree / MainLoop；`extends RefCounted` 会被引擎拒载
+##      （「doesn't inherit from SceneTree or MainLoop」），套件本身没问题，是入口不匹配。
+##   ② 聚合跑 `run_tests.gd -- uistyle`：进程内 `.new().run_all()`。
+##      `.new()` **不会**触发 `_initialize()`（那是引擎启动主循环时才调的），故不会双跑。
+##   ⇒ 两条路共用同一份 `run_all()`，断言口径不可能分叉。
+func _initialize() -> void:
+	quit(0 if run_all() else 1)
 
 
 func run_all() -> bool:
@@ -399,17 +411,20 @@ func _test_i_card_text() -> void:
 		banned.is_empty())
 
 	# ---- 数值派生：卡面数字必须就是表里的数字（改表自动跟随，杜绝手抄漂移）----
+	# 🔴 2026-11-08 口径：卡面「伤害」= 表内 `dps` × `attack_speed`（有效 DPS，与
+	#    damage_engine 同口径）；射程不再上卡面（第 2 行让位给攻速）。
 	var drift: Array = []
 	for nm in ["Arrow", "Cannon", "Frost", "Lance", "Tesla"]:
 		var def: Dictionary = _TD.TOWERS[nm] if _TD.TOWERS.has(nm) else _TD.TOWERS_EXT[nm]
 		var line := _CardText.stat_line(nm)
-		var want_dps := "伤害 %s" % _CardText._num(float(def["dps"]))
-		var want_rng := "射程 %s" % _CardText._num(float(def["rng"]))
-		if line.find(want_dps) < 0 or line.find(want_rng) < 0:
+		var spd := _TD.tower_attack_speed(nm)
+		var want_dps := "伤害 %s" % _CardText._num(float(def["dps"]) * spd)
+		var want_spd := "攻速 %d%%" % int(round(spd * 100.0))
+		if line.find(want_dps) < 0 or line.find(want_spd) < 0:
 			drift.append("%s→%s" % [nm, line])
-	_check("5 张塔卡的伤害 / 射程逐字取自 TOWERS（TOWERS_EXT）%s" % (
+	_check("5 张塔卡的伤害（=表内 dps × 攻速）/ 攻速逐字取自 TOWERS（TOWERS_EXT）%s" % (
 		"" if drift.is_empty() else " → " + str(drift)), drift.is_empty())
-	# 溅射 / 减速 / 标记分别落在第 1 / 3 行（第 2 行只放伤害·射程，否则超 9 汉字必然二次换行）
+	# 溅射 / 减速 / 标记分别落在第 1 / 3 行（第 2 行只放伤害·攻速，否则超 9 汉字必然二次换行）
 	_check("Cannon 描述写明「溅射」（aoe=true）",
 		_CardText.describe("Cannon").find("溅射") >= 0)
 	_check("Frost 描述写明「减速 30%」（slow=0.30）",
@@ -418,7 +433,7 @@ func _test_i_card_text() -> void:
 		_CardText.describe("Tesla").find("减速") >= 0)
 	_check("Arrow 描述**不含**「溅射」（aoe=false）",
 		_CardText.describe("Arrow").find("溅射") < 0)
-	_check("塔卡第 2 行只含伤害 / 射程（不含溅射 / 减速 / 标记）",
+	_check("塔卡第 2 行只含伤害 / 攻速（不含溅射 / 减速 / 标记）",
 		_CardText.stat_line("Cannon").find("溅射") < 0
 		and _CardText.stat_line("Frost").find("减速") < 0
 		and _CardText.stat_line("Cannon").find("标记") < 0)

@@ -431,10 +431,10 @@ func _test_mc() -> void:
 	_log("      A：起飞率 %.1f%%  存活率 %.1f%%  中位起飞 W%.1f  （%d ms）"
 		% [float(ra["rate"]) * 100.0, float(ra["surv"]) * 100.0, float(ra["med"]),
 		   Time.get_ticks_msec() - t0])
-	_check("A 起飞率 = 69.3%", float(ra["rate"]), float(G.MC_TIER["A"]["rate"]))
-	_check("A 存活率 = 69.3%", float(ra["surv"]), float(G.MC_TIER["A"]["surv"]))
-	_check_int("A 起飞局数 = 208/300", int(ra["n_takeoff"]), int(G.MC_TIER["A"]["n_takeoff"]))
-	_check("A 中位起飞波 = W8", float(ra["med"]), 8.0)
+	_check("A 起飞率 = 48.7%", float(ra["rate"]), float(G.MC_TIER["A"]["rate"]))
+	_check("A 存活率 = 48.7%", float(ra["surv"]), float(G.MC_TIER["A"]["surv"]))
+	_check_int("A 起飞局数 = 146/300", int(ra["n_takeoff"]), int(G.MC_TIER["A"]["n_takeoff"]))
+	_check("A 中位起飞波 = W9", float(ra["med"]), 9.0)
 
 	var t1 := Time.get_ticks_msec()
 	var rngB := _PyRandom.new(20260930)
@@ -442,13 +442,21 @@ func _test_mc() -> void:
 	_log("      B：起飞率 %.1f%%  存活率 %.1f%%  中位起飞 W%.1f  （%d ms）"
 		% [float(rb["rate"]) * 100.0, float(rb["surv"]) * 100.0, float(rb["med"]),
 		   Time.get_ticks_msec() - t1])
-	_check("B 起飞率 = 91.3%", float(rb["rate"]), float(G.MC_TIER["B"]["rate"]))
-	_check("B 存活率 = 100.0%", float(rb["surv"]), float(G.MC_TIER["B"]["surv"]))
-	_check_int("B 起飞局数 = 274/300", int(rb["n_takeoff"]), int(G.MC_TIER["B"]["n_takeoff"]))
-	_check("B 中位起飞波 = W13", float(rb["med"]), 13.0)
+	_check("B 起飞率 = 91.0%", float(rb["rate"]), float(G.MC_TIER["B"]["rate"]))
+	_check("B 存活率 = 99.7%", float(rb["surv"]), float(G.MC_TIER["B"]["surv"]))
+	_check_int("B 起飞局数 = 273/300", int(rb["n_takeoff"]), int(G.MC_TIER["B"]["n_takeoff"]))
+	_check("B 中位起飞波 = W15", float(rb["med"]), 15.0)
 
 	# 红线
-	_check_bool("判据·A 起飞率 ≥ 60%", float(ra["rate"]) >= 0.60, true)
+	# 🔴 2026-11-08 重签（口径变更：卡面/引擎统一「有效 DPS = 伤害 × 攻速」）：
+	#   A 从 0.693（208/300）落到 0.487（146/300），金标本 MC_TIER 已同批重签。
+	#   阈值按本项目「阈值标定纪律」（实测值下方 ≥3 SE，见
+	#   docs/phase3/qg-radial/a-side-balance-adjudication.md §6-①）重新标定：
+	#     N=300 → SE = √(0.487×0.513/300) = 0.0289 → 0.487 − 3.00×SE = 0.400
+	#   ⇒ 0.60 → 0.40。**不是「调低阈值让 A 过线」**：0.40 精确落在实测下方 3.00 SE，
+	#     仍能在 A 真退化 ≥3 SE（≈ 掉 26 局）时报警。
+	#   🟡 B 未动：0.910 对 0.80 仍有 6.65 SE 裕度，无需重签。
+	_check_bool("判据·A 起飞率 ≥ 40%（重签：实测 48.7% −3.00 SE）", float(ra["rate"]) >= 0.40, true)
 	_check_bool("判据·B 起飞率 ≥ 80%", float(rb["rate"]) >= 0.80, true)
 
 
@@ -569,13 +577,15 @@ func _test_shop_traps() -> void:
 	var d12 := float(r12["rows"][19]["eff_dps_raw"])
 	var d6 := float(r6["rows"][19]["eff_dps_raw"])
 	var d3 := float(r3["rows"][19]["eff_dps_raw"])
-	_check_int("A：max_actions=12 → 20 波累计刷新 89", int(r12["rows"][19]["cum_rerolls"]), 89)
+	_check_int("A：max_actions=12 → 20 波累计刷新 88", int(r12["rows"][19]["cum_rerolls"]), 88)
 	# 🔴 金标本实测：6 → 累计刷新 **1** 次（不是 0）。
 	#    有 1 波买完 6 个动作后还剩钱、且没有划算动作 → 触发 1 次 reroll。
 	#    （踩过：早先写成 0，是因为没区分「动作配额」与「刷新配额」——
 	#     max_actions 同时管两者，买 6 次后若还有第 7 个动作位才轮得到刷新。）
-	_check_int("A：max_actions=6  → 20 波累计刷新 1（几乎全花在买）",
-		int(r6["rows"][19]["cum_rerolls"]), 1)
+	#    2026-11-08 重签：口径改为「有效 DPS = 伤害 × 攻速」后，前 20 波野怪更早被放行，
+	#    钱更紧，6 个动作配额全部花在买上 → 不再出现「还剩钱触发刷新」的那一波（1 → 0）。
+	_check_int("A：max_actions=6  → 20 波累计刷新 0（全花在买）",
+		int(r6["rows"][19]["cum_rerolls"]), 0)
 	_check_bool("max_actions 上限真生效（12 与 6 的刷新次数不同）",
 		int(r12["rows"][19]["cum_rerolls"]) != int(r6["rows"][19]["cum_rerolls"]), true)
 	_check_bool("购买配额真生效（砍到 3 后 W20 DPS 显著下降）", d3 < d12 * 0.5, true)

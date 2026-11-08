@@ -177,7 +177,9 @@ def compute_dps_v6(player, cfg, geo=None):
             cov = cfg["path_coverage"][path]
         per_tower.append(dict(base=base, stack=stack, syn=syn, res=res,
                               focus=foc, allin=ali, cov=cov,
-                              dps=base * stack * syn * res * foc * ali * cov))
+                              # ⚠️ 2026-11-08 口径：有效 DPS = 伤害 × 攻速（与引擎同序）
+                              dps=base * stack * syn * res * foc * ali * cov
+                                  * sv.TOWERS[t.ctype].get("aspeed", 1.0)))
 
     aoe_total = sum(tag_tower_lv.values())
     aoe = min(cfg["aoe_cap"][path], 1.0 + cfg["aoe_per"][path] * aoe_total)

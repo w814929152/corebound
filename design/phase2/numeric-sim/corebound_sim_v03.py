@@ -38,10 +38,15 @@ OUT_DIR = os.path.dirname(os.path.abspath(__file__))
 # =============================================================================
 # 1. 卡池（与 v2 POOL 完全对齐，保证回归可比）
 # =============================================================================
+# ⚠️ 2026-11-08 口径变更（v0.4 卡池 / 批次⑥）：
+#     `dps` = **伤害**（单发基准），有效 DPS = dps × aspeed。
+#     引擎侧由 `building_card_params.gd` 的 `attack_speed` 字段承担，见
+#     `damage_engine.compute_dps()` 里 `dps_i *= tower_attack_speed(ctype)`。
+#     本模型的 aspeed 必须与之逐位一致，否则金标本与引擎分叉。
 TOWERS = {
-    "Arrow":  dict(dps=10.0, tag=None,    aoe=False, slow=0.00, rng=22.0),
-    "Cannon": dict(dps=7.0,  tag="fire",  aoe=True,  slow=0.00, rng=18.0),
-    "Frost":  dict(dps=5.0,  tag="frost", aoe=False, slow=0.30, rng=20.0),
+    "Arrow":  dict(dps=10.0, aspeed=0.80, tag=None,    aoe=False, slow=0.00, rng=22.0),
+    "Cannon": dict(dps=7.0,  aspeed=0.70, tag="fire",  aoe=True,  slow=0.00, rng=18.0),
+    "Frost":  dict(dps=5.0,  aspeed=0.65, tag="frost", aoe=False, slow=0.30, rng=20.0),
 }
 REINF = {"FireUp": dict(tag="fire"), "FrostUp": dict(tag="frost")}
 ECON = {"ScrapUp": dict(), "RerollD": dict()}
@@ -360,7 +365,9 @@ def compute_dps(player: Player, cfg, geo: Geo = None):
             cov = cfg["path_coverage"][path]
         per_tower.append(dict(base=base, stack=stack, syn=syn, res=res,
                               focus=foc, allin=ali, cov=cov,
-                              dps=base * stack * syn * res * foc * ali * cov))
+                              # ⚠️ 与引擎逐字同序：先算 7 乘区，再 × aspeed
+                              dps=base * stack * syn * res * foc * ali * cov
+                                  * TOWERS[t.ctype].get("aspeed", 1.0)))
 
     subtotal = sum(p["dps"] for p in per_tower)
     # C1 AoE 密度效率（v2 legacy：只统计带 Tag 的塔的层数，Arrow 无 Tag 不计入）

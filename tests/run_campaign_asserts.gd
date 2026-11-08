@@ -1,4 +1,4 @@
-extends RefCounted
+extends SceneTree
 ##
 ## headless 断言 —— 关卡推进系统（`scripts/data/campaign_data.gd` + `scripts/gameplay/campaign.gd`）
 ##
@@ -16,8 +16,9 @@ extends RefCounted
 ##   任何环境。存档读写用 `user://save.json`（与 run_meta 的 `card_packs.json` 隔离），
 ##   测完清理，不污染真实存档。
 ##
-## 跑法：
-##   <godot> --headless --path . --script res://tests/run_tests.gd -- campaign
+## 跑法（本文件 `extends SceneTree`，故两种入口等价）：
+##   <godot> --headless --path . --script res://tests/run_campaign_asserts.gd      # 只跑本套件
+##   <godot> --headless --path . --script res://tests/run_tests.gd -- campaign     # 聚合入口
 ##
 ## ⚠️ Godot 坑（test_suite.gd 头注）：
 ##   G6 headless 无 global_script_class_cache → 一律 preload；
@@ -34,6 +35,12 @@ const _StageSelect := preload("res://scripts/ui/stage_select_overlay.gd")
 
 var _pass := 0
 var _fail := 0
+
+
+## 🔴 双入口（2026-11-08）：`extends SceneTree` 才能被 `--script` 直跑；
+##   `run_tests.gd` 聚合走 `.new().run_all()`，`.new()` 不触发 `_initialize()`，不会双跑。
+func _initialize() -> void:
+	quit(0 if run_all() else 1)
 
 
 func run_all() -> bool:

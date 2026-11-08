@@ -1,4 +1,4 @@
-﻿extends RefCounted
+extends SceneTree
 ##
 ## headless 断言 —— 扩展包（Extended Pack）· 新塔 / 新强化 / 玩家卡池开关
 ##
@@ -18,8 +18,9 @@
 ##   F 卡池开关（默认 6 张 → 开启 10 张 → 关闭回 6 张，含静态缓存清理）
 ##   G 追加顺序（扩展卡必须**追加在末尾**，不改变老卡的累积区间起点）
 ##
-## 跑法：
-##   <godot> --headless --path . --script res://tests/run_tests.gd -- extpack
+## 跑法（本文件 `extends SceneTree`，故两种入口等价）：
+##   <godot> --headless --path . --script res://tests/run_ext_pack_asserts.gd       # 只跑本套件
+##   <godot> --headless --path . --script res://tests/run_tests.gd -- extpack       # 聚合入口
 ##
 
 # 🔴 G6：headless 无 global_script_class_cache → 一律 preload
@@ -304,6 +305,12 @@ func _test_g_order() -> void:
 # ---------------------------------------------------------------------------
 #  汇总
 # ---------------------------------------------------------------------------
+## 🔴 双入口（2026-11-08）：`extends SceneTree` 才能被 `--script` 直跑；
+##   `run_tests.gd` 聚合走 `.new().run_all()`，`.new()` 不触发 `_initialize()`，不会双跑。
+func _initialize() -> void:
+	quit(0 if run_all() else 1)
+
+
 func run_all() -> bool:
 	_log("=".repeat(78))
 	_log("《守核 Corebound》扩展包 · 新塔 / 新强化 / 玩家卡池断言（headless）")

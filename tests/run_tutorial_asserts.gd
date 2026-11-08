@@ -1,4 +1,4 @@
-extends RefCounted
+extends SceneTree
 ##
 ## headless 断言 —— B-1 零教学浮层（`scripts/ui/tutorial_overlay.gd`）
 ##
@@ -27,8 +27,9 @@ extends RefCounted
 ##    A8 兜底：过 W8 且全程无受损塔（打得干净）→ 自动 DONE
 ##    A9 单向性：DONE / REPAIR 后回喂"会推进"的快照，步数不回退
 ##
-## 跑法：
-##   <godot> --headless --path . --script res://tests/run_tests.gd -- tutorial
+## 跑法（本文件 `extends SceneTree`，故两种入口等价）：
+##   <godot> --headless --path . --script res://tests/run_tutorial_asserts.gd       # 只跑本套件
+##   <godot> --headless --path . --script res://tests/run_tests.gd -- tutorial      # 聚合入口
 ##
 
 # 🔴 G6：headless 无 global_script_class_cache → 一律 preload
@@ -204,6 +205,12 @@ func _test_a9_monotonic() -> void:
 # ---------------------------------------------------------------------------
 #  汇总
 # ---------------------------------------------------------------------------
+## 🔴 双入口（2026-11-08）：`extends SceneTree` 才能被 `--script` 直跑；
+##   `run_tests.gd` 聚合走 `.new().run_all()`，`.new()` 不触发 `_initialize()`，不会双跑。
+func _initialize() -> void:
+	quit(0 if run_all() else 1)
+
+
 func run_all() -> bool:
 	_log("=".repeat(78))
 	_log("《守核 Corebound》B-1 零教学浮层 · 状态机断言（headless · 不依赖绘制）")

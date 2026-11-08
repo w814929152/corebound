@@ -1,4 +1,4 @@
-extends RefCounted
+extends SceneTree
 ##
 ## headless 断言 —— 塔等级牌（`scripts/ui/tower_level_layer.gd`）
 ##
@@ -22,8 +22,9 @@ extends RefCounted
 ##   截断"）→ 本套件 L11 必 FAIL；把 `bind_controller` 里的信号连接删掉、只留轮询 →
 ##   L15 必 FAIL（抽屉展开后签名不更新，正是实测截图里"牌飘到塔右侧 500px 外"的那个缺陷）。
 ##
-## 跑法：
-##   <godot> --headless --path . --script res://tests/run_tests.gd -- tlv
+## 跑法（本文件 `extends SceneTree`，故两种入口等价）：
+##   <godot> --headless --path . --script res://tests/run_tower_level_asserts.gd    # 只跑本套件
+##   <godot> --headless --path . --script res://tests/run_tests.gd -- tlv           # 聚合入口
 ##
 
 const _TowerLevel := preload("res://scripts/ui/tower_level_layer.gd")
@@ -64,6 +65,12 @@ class _LvWorld extends Node:
 
 	func world_scale() -> float:
 		return k
+
+
+## 🔴 双入口（2026-11-08）：`extends SceneTree` 才能被 `--script` 直跑；
+##   `run_tests.gd` 聚合走 `.new().run_all()`，`.new()` 不触发 `_initialize()`，不会双跑。
+func _initialize() -> void:
+	quit(0 if run_all() else 1)
 
 
 func run_all() -> bool:

@@ -115,6 +115,17 @@ const RADIAL8_DIAG_HEAVY: Array = [
 ]
 
 
+## 聚合 `run_*_asserts.gd`（tutorial / extpack / uistyle / tlv / cardpack / campaign / combat_types）。
+##   🔴 这些套件 `extends SceneTree`（为了 `--script` 能直跑，见各自文件头），所以聚合时
+##   必须显式 `free()` —— `SceneTree` 带 root Window 等重资源，只 `.new()` 不释放会堆泄漏告警。
+##   `var s` 刻意**不标类型**：标成 SceneTree 会让 `s.run_all()` 静态报「方法不存在」。
+func _run_suite(suite: Script) -> bool:
+	var s = suite.new()
+	var ok: bool = s.run_all()
+	s.free()
+	return ok
+
+
 func _initialize() -> void:
 	var only := ""
 	for a in OS.get_cmdline_user_args():
@@ -168,25 +179,25 @@ func _initialize() -> void:
 		ok = TestSuiteT1Aggro.new().run_all() and ok
 	# 🔴 B-1 零教学浮层（2026-11-06 · backlog ⑭）：纯 UI 状态机，进默认回归（无 MC、秒级）。
 	if only == "" or only == "tutorial":
-		ok = TestSuiteTutorial.new().run_all() and ok
+		ok = _run_suite(TestSuiteTutorial) and ok
 	# 🆕 扩展包：新塔 / 新强化 / 玩家卡池开关（金标本 TOWERS / CARD_NAMES 零污染）
 	if only == "" or only == "extpack":
-		ok = TestSuiteExtPack.new().run_all() and ok
+		ok = _run_suite(TestSuiteExtPack) and ok
 	# 🆕 UI 样式一致性（2026-11-07 · UI 优化轮）：面板/按钮/字号/调色板结构断言。
 	if only == "" or only == "uistyle":
-		ok = TestSuiteUIStyle.new().run_all() and ok
+		ok = _run_suite(TestSuiteUIStyle) and ok
 	# 🆕 塔等级牌（2026-11-07）：等级可读 + 只读快照 + 层序（纯逻辑，秒级）。
 	if only == "" or only == "tlv":
-		ok = TestSuiteTowerLevel.new().run_all() and ok
+		ok = _run_suite(TestSuiteTowerLevel) and ok
 	# 🆕 卡包（2026-11-07）：分池 / 选包 / 解锁 / 发牌域（纯逻辑 + 一次真 runtime，秒级）。
 	if only == "" or only == "cardpack":
-		ok = TestSuiteCardPack.new().run_all() and ok
+		ok = _run_suite(TestSuiteCardPack) and ok
 	# 🆕 关卡推进（2026-11-07）：推进链 / 解锁 / Ember / 存档（纯逻辑，秒级）。
 	if only == "" or only == "campaign":
-		ok = TestSuiteCampaign.new().run_all() and ok
+		ok = _run_suite(TestSuiteCampaign) and ok
 	# 🆕 战斗类型（2026-11-07）：物理/魔法/真实三类型 + 抗性 + 破甲（纯逻辑 + 一次真 runtime，秒级）。
 	if only == "" or only == "combat_types":
-		ok = TestSuiteCombatTypes.new().run_all() and ok
+		ok = _run_suite(TestSuiteCombatTypes) and ok
 	# 🔴 第五刀 · 三轴合并镜像退化逐位守护（独立入口，**不进**默认无参回归 → 九段聚合读数逐位不变）。
 	if only == "aggro_golive":
 		ok = TestSuiteAggroGolive.new().run_all() and ok

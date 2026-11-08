@@ -236,18 +236,25 @@ func _test_path_a() -> void:
 	var r := _run_case("2", "A", _build_a(), "tier")
 	_assert_case(r, G.A_TOTAL, G.A_SUBTOTAL, G.A_AOE, G.A_CF, G.A_E, G.A_KAPPA,
 		G.A_KR_TIER, G.A_PER_TOWER, G.A_CORE, G.A_LTOT, G.A_DISC, "A")
-	var rel_gdd := absf(float(r["total"]) - G.GDD_A_TOTAL) / G.GDD_A_TOTAL
-	_log("       vs GDD §10.1 文档值 10,903,440 → 相对差 %s（文档值是整数取整，非精确值）" % _sci(rel_gdd))
-	_check("A vs GDD §10.1（文档取整值 10,903,440）", float(r["total"]), G.GDD_A_TOTAL, 1e-6)
+	# 🔴 2026-11-08 口径变更：有效 DPS = 伤害 × 攻速。GDD §10.1 的 10,903,440 是 aspeed=1.0
+	#    时代的定稿值（文档未改）。故这里比对「文档值 × 攻速加权折算」，折算系数由金标本
+	#    按该构筑各塔攻速推出（A: Arrow 0.80 / Cannon 0.70）——口径再动一次就会红，不会静默漂移。
+	var want_a := G.GDD_A_TOTAL * G.AS_WEIGHT_A
+	var rel_gdd := absf(float(r["total"]) - want_a) / want_a
+	_log("       vs GDD §10.1 文档值 10,903,440 × 攻速折算 %.6f → 相对差 %s"
+		% [G.AS_WEIGHT_A, _sci(rel_gdd)])
+	_check("A vs GDD §10.1 × 攻速折算", float(r["total"]), want_a, 1e-12)
 
 
 func _test_path_b_tier() -> void:
 	var r := _run_case("3", "B", _build_b(), "tier")
 	_assert_case(r, G.B_TIER_TOTAL, G.B_TIER_SUBTOTAL, G.B_AOE, G.B_CF, G.B_E, G.B_KAPPA,
 		G.B_KR_TIER, G.B_TIER_PER_TOWER, G.B_CORE, G.B_LTOT, G.B_DISC, "B/tier")
-	var rel_gdd := absf(float(r["total"]) - G.GDD_B_TOTAL) / G.GDD_B_TOTAL
-	_log("       vs GDD §10.1 文档值 4,991,136 → 相对差 %s" % _sci(rel_gdd))
-	_check("B/tier vs GDD §10.1（文档 4,991,136）", float(r["total"]), G.GDD_B_TOTAL, 1e-6)
+	var want_b := G.GDD_B_TOTAL * G.AS_WEIGHT_B
+	var rel_gdd := absf(float(r["total"]) - want_b) / want_b
+	_log("       vs GDD §10.1 文档值 4,991,136 × 攻速折算 %.6f → 相对差 %s"
+		% [G.AS_WEIGHT_B, _sci(rel_gdd)])
+	_check("B/tier vs GDD §10.1 × 攻速折算", float(r["total"]), want_b, 1e-12)
 	_log("       ⚠️ GDD 手算写 Resonance = %s；引擎真值 = %.17f（1.05^134）"
 		% [str(G.GDD_B_RESONANCE_HANDCALC), float(r["info"]["per_tower"][2]["res"])])
 
@@ -256,8 +263,9 @@ func _test_path_b_flat() -> void:
 	var r := _run_case("4", "B", _build_b(), "flat")
 	_assert_case(r, G.B_FLAT_TOTAL, G.B_FLAT_SUBTOTAL, G.B_AOE, G.B_CF, G.B_E, G.B_KAPPA,
 		G.B_KR_FLAT, G.B_FLAT_PER_TOWER, G.B_CORE, G.B_LTOT, G.B_DISC, "B/flat")
-	var rel_gdd := absf(float(r["total"]) - G.GDD_B_TOTAL) / G.GDD_B_TOTAL
-	_log("       vs GDD §10.1 文档值 4,991,136 → 相对差 %s（超出 1e-6）" % _sci(rel_gdd))
+	var want_b := G.GDD_B_TOTAL * G.AS_WEIGHT_B
+	var rel_gdd := absf(float(r["total"]) - want_b) / want_b
+	_log("       vs GDD §10.1 文档值 4,991,136 × 攻速折算 → 相对差 %s（flat 口径差在 Arrow 的 E=9）" % _sci(rel_gdd))
 	_log("       差额 %.4f 全部来自无 Tag 的 Arrow：1.05^9=%.12f vs 1.045^9=%.12f（E=9）"
 		% [G.B_FLAT_TOTAL - G.B_TIER_TOTAL, pow(1.05, 9.0), pow(1.045, 9.0)])
 

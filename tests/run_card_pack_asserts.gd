@@ -1,4 +1,4 @@
-extends RefCounted
+extends SceneTree
 ##
 ## headless 断言 —— 卡包（Card Pack）· 分池 / 选包 / 解锁 / 发牌
 ##
@@ -19,8 +19,9 @@ extends RefCounted
 ##   F 发牌：真 runtime 连开 8 波，offers **必须全部**落在所选池内；pity 卡不得越池
 ##   G 界面结构：7 个卡包位、同尺寸（X3）、按钮四态自定义、文本 ≥16px、锁定态禁用
 ##
-## 跑法：
-##   <godot> --headless --path . --script res://tests/run_tests.gd -- cardpack
+## 跑法（本文件 `extends SceneTree`，故两种入口等价）：
+##   <godot> --headless --path . --script res://tests/run_card_pack_asserts.gd     # 只跑本套件
+##   <godot> --headless --path . --script res://tests/run_tests.gd -- cardpack     # 聚合入口
 ##
 
 const _Packs := preload("res://scripts/data/card_packs.gd")
@@ -74,6 +75,12 @@ func _eq_arr(name: String, got: Array, want: Array) -> void:
 				same = false
 				break
 	_ok(name, same, "got=%s want=%s" % [str(got), str(want)])
+
+
+## 🔴 双入口（2026-11-08）：`extends SceneTree` 才能被 `--script` 直跑；
+##   `run_tests.gd` 聚合走 `.new().run_all()`，`.new()` 不触发 `_initialize()`，不会双跑。
+func _initialize() -> void:
+	quit(0 if run_all() else 1)
 
 
 func run_all() -> bool:
@@ -626,8 +633,8 @@ func _test_m_aspd() -> void:
 	expected *= float(tower["cov"]) * _TD.tower_attack_speed("Arrow")
 	_eq_float("M8 攻速倍率确实进入实际逐塔 DPS", float(tower["dps"]), expected)
 	var names: Array = []
-	for p in _Packs.PACKS:
-		for nm in (p["cards"] as Array):
+	for pk in _Packs.PACKS:
+		for nm in (pk["cards"] as Array):
 			names.append(String(nm))
 	_ok("M4 Drummer 在卡包里（破甲包）", names.has("Drummer"))
 	_ok("M5 旧的 Cleave 已不存在于任何卡包", not names.has("Cleave"))

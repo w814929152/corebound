@@ -188,6 +188,11 @@ GODOT="<你的 Godot 可执行文件>"
 # 只跑某切片（参数必须以 slice 开头）
 "$GODOT" --headless --path . --script res://tests/run_tests.gd -- slice5
 
+# 只跑某一套结构断言（uistyle / tlv / campaign / cardpack / combat_types / extpack / tutorial）
+#   两种入口等价：单套件可直跑（`extends SceneTree`，中文输出不过 OS.execute 的 GBK 转换，不会乱码）
+"$GODOT" --headless --path . --script res://tests/run_ui_style_asserts.gd
+"$GODOT" --headless --path . --script res://tests/run_tests.gd -- uistyle
+
 # radial8 聚合闸门
 "$GODOT" --headless --path . --script res://tests/run_tests.gd -- radial8
 
@@ -199,6 +204,11 @@ GODOT="<你的 Godot 可执行文件>"
 ```
 
 > ⚠️ `--headless --script` 路径下 Godot 没有 `global_script_class_cache`，因此工程内**一律 `preload`，不写 `class_name`**。
+>
+> ⚠️ `--script` 指向的文件**必须继承 `SceneTree` / `MainLoop`**（`--script` 是「换主循环」而非「加载模块」）。
+> `tests/run_*_asserts.gd` 因此统一 `extends SceneTree` + `_initialize() -> quit(0/1)`；
+> `run_tests.gd` 的进程内聚合走 `.new().run_all()` —— `.new()` 不触发 `_initialize()`，两条入口共用同一份断言。
+> 若写成 `extends RefCounted`，直跑会被引擎拒载：「Can't load the script as it doesn't inherit from SceneTree or MainLoop」。
 
 ## 打包可玩版本
 
