@@ -31,6 +31,7 @@ extends Node2D
 
 const _SpaceModel := preload("res://scripts/geo/space_model.gd")
 const _ShopLayout := preload("res://scripts/ui/shop_layout.gd")
+const _Style := preload("res://scripts/ui/ui_style.gd")
 
 const MARGIN := 48.0
 
@@ -665,7 +666,11 @@ func _draw_kill_fragments(sc: float) -> void:
 func _draw_dmg_numbers() -> void:
 	if _dmg.is_empty():
 		return
-	var font := ThemeDB.fallback_font
+	# 🔴 §5.4：伤害数字 = 等宽数字字体（§5.2「数字必须等宽」+ §5.5 蓝图风）。
+	#    字体缺失时退回引擎 fallback（与旧口径一致）。
+	var font: Font = _Style.font_num()
+	if font == null:
+		font = ThemeDB.fallback_font
 	if font == null:
 		return
 	var base_line := float(DMG_TIER_SIZE[0]) * 0.35

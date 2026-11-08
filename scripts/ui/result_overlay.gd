@@ -38,6 +38,10 @@ var _title_label: Label
 var _body_label: Label
 var _restart_btn: Button
 var _quit_btn: Button
+# 🆕 战报读数（§5.2 数字优先：等宽数字仪表行，替代原正文里的埋数）
+var _stat_core: Label        # 核心剩余 HP
+var _stat_wave: Label        # 坚守波次
+var _stat_scrap: Label       # 本局废料
 
 
 func _init() -> void:
@@ -67,9 +71,11 @@ func _build() -> void:
 	#    往右下长，整体偏到中心右下方半个面板。改成 BOTH 后从中心向两侧对称扩张 = 真正居中。
 	_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	_panel.grow_vertical = Control.GROW_DIRECTION_BOTH
-	_panel.custom_minimum_size = Vector2(440.0, 0.0)
+	_panel.custom_minimum_size = Vector2(520.0, 0.0)
 	# 🆕 补面板样式（原先走 Godot 默认主题 → 一块无描边的灰色方块，与战场语言断裂）
-	_panel.add_theme_stylebox_override("panel", _Style.panel(_Style.C_ALLY, 2, 22.0, 20.0))
+	_panel.add_theme_stylebox_override("panel", _Style.panel(_Style.C_ALLY, 2, 26.0, 22.0))
+	# 🆕 §5.5 蓝图语言：外沿四角 L 刻线，accent 随胜负切换（show_result 内 set_chrome_accent）
+	_Style.attach_corner_chrome(_panel)
 	add_child(_panel)
 
 	var margin := MarginContainer.new()
@@ -84,20 +90,29 @@ func _build() -> void:
 	margin.add_child(vbox)
 
 	_title_label = Label.new()
-	_title_label.add_theme_font_size_override("font_size", 30)
+	_title_label.add_theme_font_size_override("font_size", 40)
+	_Style.apply_font(_title_label, "display")    # §5.4：结算标题 = Black 展示字重
 	_title_label.add_theme_color_override("font_color", _Style.C_GOLD)
 	_title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	vbox.add_child(_title_label)
 
-	vbox.add_child(_Style.hline())
-
+	# 🆕 副题（L2 常规）：一句话定性，数字细节交给下面的战报行
 	_body_label = Label.new()
 	# 🔴 T-P6-06 S1（§9.1 P0 最小字号 ≥16px）：15 → 16。
 	_body_label.add_theme_font_size_override("font_size", 16)
-	_body_label.add_theme_color_override("font_color", _Style.C_TEXT)
+	_body_label.add_theme_color_override("font_color", _Style.C_TEXT_DIM)
 	_body_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_body_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	vbox.add_child(_body_label)
+
+	vbox.add_child(_Style.hline())
+
+	# 🆕 战报块（§5.2「数字 > 文字」：终局数据用等宽读数仪表行，不再埋在正文里）
+	_stat_core = _make_stat_row(vbox, "核心剩余")
+	_stat_wave = _make_stat_row(vbox, "坚守波次")
+	_stat_scrap = _make_stat_row(vbox, "本局废料")
+
+	vbox.add_child(_Style.hline())
 
 	var hbox := HBoxContainer.new()
 	hbox.add_theme_constant_override("separation", 14)
@@ -119,6 +134,22 @@ func _build() -> void:
 	hbox.add_child(_quit_btn)
 
 
+## 战报行：名称（L2 常规，左）+ 读数（L0 等宽数字 §5.2，右）。
+##   返回读数 Label（show_result 里填数）。
+func _make_stat_row(parent: VBoxContainer, name_text: String) -> Label:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	parent.add_child(row)
+	var nm := _Style.label(name_text, 16, _Style.C_TEXT_DIM)
+	row.add_child(nm)
+	var val := _Style.label("--", 24, _Style.C_WHITE)
+	_Style.apply_font(val, "num")                 # §5.2：数字必须等宽（滚动不抖）
+	val.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	val.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(val)
+	return val
+
+
 ## 展示结算。
 ##   p_won     ：true = 通关胜利，false = 核心归零失败
 ##   p_wave    ：终局所在波次（胜利 = W20，失败 = 阵亡波）
@@ -135,13 +166,25 @@ func show_result(p_won: bool, p_wave: int, p_core_hp: float, p_core_hp_max: floa
 		# 🆕 改用 art-bible §2.2 登记色：胜利 = 辉金（收益极），失败 = 警报红（危险极）。
 		#    原来的 (0.30,0.90,0.55) 绿是表外色，与「青/橙双极」配色语言不一致。
 		_title_label.add_theme_color_override("font_color", _Style.C_GOLD)
-		_body_label.text = "守核成功！\n打完 W1 → W%d 全部波次\n核心 HP 剩余 %d / %d\n本局废料 %.0f" % [
-			p_wave, int(p_core_hp), int(p_core_hp_max), float(p_scrap)]
+		_Style.set_chrome_accent(_panel, _Style.C_GOLD)   # 🆕 刻线 accent 随胜负切换
+		_stat_core.text = "%d / %d" % [int(p_core_hp), int(p_core_hp_max)]
+		_stat_core.add_theme_color_override("font_color", _Style.C_WHITE)
+		_stat_wave.text = "W%d" % p_wave
+		_stat_wave.add_theme_color_override("font_color", _Style.C_WHITE)
+		_stat_scrap.text = "%.0f" % float(p_scrap)
+		_stat_scrap.add_theme_color_override("font_color", _Style.C_GOLD)  # §2.2 辉金 = 资源
+		_body_label.text = "守核成功 —— 打完 W1 → W%d 全部波次" % p_wave
 	else:
 		_title_label.text = "核 心 归 零 · 失 败"
 		_title_label.add_theme_color_override("font_color", _Style.C_ALERT)
-		_body_label.text = "核心在 W%d 被击穿\n构筑强度不足 —— 再试一次？\n本局废料 %.0f" % [
-			p_wave, float(p_scrap)]
+		_Style.set_chrome_accent(_panel, _Style.C_ALERT)
+		_stat_core.text = "%d / %d" % [int(p_core_hp), int(p_core_hp_max)]
+		_stat_core.add_theme_color_override("font_color", _Style.C_ALERT)
+		_stat_wave.text = "W%d" % p_wave
+		_stat_wave.add_theme_color_override("font_color", _Style.C_WHITE)
+		_stat_scrap.text = "%.0f" % float(p_scrap)
+		_stat_scrap.add_theme_color_override("font_color", _Style.C_GOLD)
+		_body_label.text = "核心在 W%d 被击穿 —— 构筑强度不足，再试一次？" % p_wave
 	visible = true
 
 

@@ -61,9 +61,15 @@ var _panel: PanelContainer
 var _title: Label
 var _mode_tag: Label
 var _slots: Array = []        # Array[PanelContainer]
+var _slot_chrome: Array = []  # 🆕 蓝图角标刻线（§5.5）：Array[Control]，accent 随可购性重绘
 var _slot_name: Array = []    # Array[Label]
+var _slot_tag: Array = []     # 🆕 Tag 电路符号芯片（§5.5）：Array[Label]
+var _slot_rarity: Array = []  # 🆕 稀有度角标 ▲（art-bible §2.3 · P1-6）：Array[Label]
 var _slot_kind: Array = []
-var _slot_price: Array = []
+var _slot_price_mark: Array = []   # 🆕 ✓/✗ 字形（§9.2 双通道）
+var _slot_price_num: Array = []    # 🆕 价格数字（等宽字体 §5.5）
+var _slot_price_unit: Array = []   # 🆕 「分」单位
+var _slot_price_row: Array = []    # 价格 HBox（颜色统一改写用）
 var _slot_desc: Array = []    # 🆕 效果描述块（恒 3 行，`card_text.gd` 派生）
 var _slot_note: Array = []
 var _slot_buy: Array = []     # Array[Button]
@@ -239,6 +245,11 @@ func _build() -> void:
 	_reroll_btn = Button.new()
 	_reroll_btn.text = "刷新 R"
 	_Style.button(_reroll_btn, "normal")
+	# 🆕 重掷图标（资产包 v1 批次②）：缺失时降级为纯文本（icon() 判空）
+	var reroll_tex := _Style.icon("ic_reroll")
+	if reroll_tex != null:
+		_reroll_btn.icon = reroll_tex
+		_reroll_btn.add_theme_constant_override("icon_max_width", 20)
 	_reroll_btn.pressed.connect(func() -> void:
 		if director != null:
 			director.emit_signal("reroll_requested"))
@@ -301,25 +312,44 @@ func _mk_heavy_btn(text: String, variant: String) -> Button:
 
 ## 单个商品位。🔴 三个位**逐字同构**：同一 SLOT_SIZE、同一字号、同一按钮变体 ——
 ##   任何逐位差异都会构成 X3「用布局暗示」。
+## 🆕 蓝图卡面（art-bible §5.5 · 2026-11-07）：直角细描边底座 + 四角刻线 chrome +
+##   Tag 电路符号芯片 + 等宽数字价格。
 func _make_slot(_i: int) -> PanelContainer:
 	var p := PanelContainer.new()
 	p.custom_minimum_size = SLOT_SIZE            # 🔴 三个位完全一致
 	p.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	p.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	p.add_theme_stylebox_override("panel", _Style.card())
+	p.add_theme_stylebox_override("panel", _Style.card_blueprint())
 	var vb := VBoxContainer.new()
 	vb.add_theme_constant_override("separation", 5)
 	p.add_child(vb)
 
-	# 序号（L3 辅助，钢灰）
+	# 序号（L3 辅助，钢灰）+ 稀有度角标（§2.3 · P1-6：▲ 数 1–5 + 边框色 = 双通道冗余）
+	var idx_row := HBoxContainer.new()
+	idx_row.add_theme_constant_override("separation", 6)
+	vb.add_child(idx_row)
 	var idx := _Style.label("商品位 %d" % (_i + 1), _Style.FONT_MIN, _Style.C_TEXT_DIM)
-	vb.add_child(idx)
+	idx.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	idx_row.add_child(idx)
+	var pips := _Style.label("", _Style.FONT_MIN, _Style.C_STEEL)
+	pips.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	idx_row.add_child(pips)
+	_slot_rarity.append(pips)
 
-	# 卡名（L1 重要，白，26px）
+	# 卡名行：卡名（L1，Black 展示字重）+ 右侧 Tag 电路符号芯片（§5.5）
+	var name_row := HBoxContainer.new()
+	name_row.add_theme_constant_override("separation", 6)
+	vb.add_child(name_row)
 	var nm := _Style.label("—", 26, _Style.C_WHITE)
+	_Style.apply_font(nm, "display")              # §5.4：卡名 = Black 展示字重（L1 主信息）
 	nm.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	vb.add_child(nm)
+	nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	name_row.add_child(nm)
 	_slot_name.append(nm)
+	var tag_chip := _Style.label("", _Style.FONT_MIN, _Style.C_TEXT_DIM)
+	tag_chip.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	name_row.add_child(tag_chip)
+	_slot_tag.append(tag_chip)
 
 	# 卡种（L2 常规）
 	var kind := _Style.label("—", _Style.FONT_MIN, _Style.C_TEXT_DIM)
@@ -327,10 +357,52 @@ func _make_slot(_i: int) -> PanelContainer:
 	vb.add_child(kind)
 	_slot_kind.append(kind)
 
-	# 价格（L1 重要；✓/✗ 字形冗余 + 颜色，§9.2 红线1 双通道）
-	var price := _Style.label("--", 20, C_DIM)
-	vb.add_child(price)
-	_slot_price.append(price)
+	# 价格行（L1 重要）：✓/✗ 标记（§9.2 双通道）+ **等宽数字**（§5.5）+ 单位
+	var price_row := HBoxContainer.new()
+	price_row.add_theme_constant_override("separation", 4)
+	vb.add_child(price_row)
+	_slot_price_row.append(price_row)
+	# 🆕 批次③：✓/✗ 从 Unicode 字形升级为 ic_check/ic_cross 图标（资产包 v1）——
+	#    形状通道不变（§9.2 红线①），颜色跟随价格（_set_price_color 改 modulate）；
+	#    图标缺失（headless）→ 回落 Unicode 字形 Label，双通道不缺席。
+	var check_tex := _Style.icon("ic_check")
+	var cross_tex := _Style.icon("ic_cross")
+	var price_mark: Control
+	if check_tex != null and cross_tex != null:
+		var mark_ic := TextureRect.new()
+		mark_ic.custom_minimum_size = Vector2(16.0, 16.0)
+		mark_ic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		mark_ic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		mark_ic.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		mark_ic.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		mark_ic.visible = false
+		mark_ic.set_meta("check", check_tex)
+		mark_ic.set_meta("cross", cross_tex)
+		price_row.add_child(mark_ic)
+		price_mark = mark_ic
+	else:
+		var mark_lb := _Style.label("", _Style.FONT_MIN, C_DIM)
+		price_row.add_child(mark_lb)
+		price_mark = mark_lb
+	_slot_price_mark.append(price_mark)
+	# 🆕 废料图标（资产包 v1 批次②）：missing 时降级为纯文本（icon() 判空返回 null）
+	var scrap_tex := _Style.icon("ic_scrap")
+	if scrap_tex != null:
+		var scrap_ic := TextureRect.new()
+		scrap_ic.texture = scrap_tex
+		scrap_ic.custom_minimum_size = Vector2(18.0, 18.0)
+		scrap_ic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		scrap_ic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		scrap_ic.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		scrap_ic.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		price_row.add_child(scrap_ic)
+	var price_num := _Style.label("--", 22, C_DIM)
+	_Style.apply_font(price_num, "num")           # §5.5：价格数字等宽（蓝图仪表读数）
+	price_row.add_child(price_num)
+	_slot_price_num.append(price_num)
+	var price_unit := _Style.label("分", _Style.FONT_MIN, C_DIM)
+	price_row.add_child(price_unit)
+	_slot_price_unit.append(price_unit)
 
 	vb.add_child(_Style.hline(0.12))
 
@@ -372,7 +444,43 @@ func _make_slot(_i: int) -> PanelContainer:
 			director.emit_signal("lock_toggled", _i))
 	vb.add_child(lock)
 	_slot_lock.append(lock)
+
+	# 🆕 蓝图 chrome（§5.5）：四角刻线，**后于** vb 加入 → 画在内容之上。
+	#    accent 存 meta，`_refresh_shop` 按可购性改写并 queue_redraw（不在 _draw 里 new）。
+	var chrome := Control.new()
+	chrome.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	chrome.set_anchors_preset(Control.PRESET_FULL_RECT)
+	chrome.set_meta("accent", "normal")
+	chrome.draw.connect(func() -> void: _draw_slot_chrome(chrome))
+	p.add_child(chrome)
+	_slot_chrome.append(chrome)
 	return p
+
+
+## §5.5 蓝图 chrome：四角 L 形刻线（工程图角标语言）。
+##   accent：normal = 钢灰 / affordable = 耀青（与描边第二通道同源）/ dim = 压暗。
+func _draw_slot_chrome(c: Control) -> void:
+	var accent: String = String(c.get_meta("accent", "normal"))
+	var col := Color(_Style.C_STEEL.r, _Style.C_STEEL.g, _Style.C_STEEL.b, 0.55)
+	if accent == "affordable":
+		col = Color(_Style.C_ALLY.r, _Style.C_ALLY.g, _Style.C_ALLY.b, 0.90)
+	elif accent == "dim":
+		col = Color(_Style.C_STEEL.r, _Style.C_STEEL.g, _Style.C_STEEL.b, 0.30)
+	var leg := 9.0
+	var t := 2.0
+	var r := c.size
+	# 左上
+	c.draw_line(Vector2(0.0, 0.0), Vector2(leg, 0.0), col, t)
+	c.draw_line(Vector2(0.0, 0.0), Vector2(0.0, leg), col, t)
+	# 右上
+	c.draw_line(Vector2(r.x - leg, 0.0), Vector2(r.x, 0.0), col, t)
+	c.draw_line(Vector2(r.x, 0.0), Vector2(r.x, leg), col, t)
+	# 左下
+	c.draw_line(Vector2(0.0, r.y - leg), Vector2(0.0, r.y), col, t)
+	c.draw_line(Vector2(0.0, r.y), Vector2(leg, r.y), col, t)
+	# 右下
+	c.draw_line(Vector2(r.x - leg, r.y), Vector2(r.x, r.y), col, t)
+	c.draw_line(Vector2(r.x, r.y - leg), Vector2(r.x, r.y), col, t)
 
 
 # ---------------------------------------------------------------------------
@@ -387,11 +495,20 @@ func _refresh_shop() -> void:
 			_stat_vals[i].text = "--"
 		for i in SLOT_COUNT:
 			_slot_name[i].text = "—"
+			_slot_tag[i].text = ""
+			_slot_rarity[i].text = ""
 			_slot_kind[i].text = "—"
-			_slot_price[i].text = "--"
+			if _slot_price_mark[i] is TextureRect:
+				_slot_price_mark[i].visible = false
+			else:
+				_slot_price_mark[i].text = ""
+			_slot_price_num[i].text = "--"
+			_slot_price_unit[i].text = ""
+			_set_price_color(i, C_DIM)
 			_slot_desc[i].text = ""
 			_slot_note[i].text = ""
-			_slots[i].add_theme_stylebox_override("panel", _Style.card("dim"))
+			_slots[i].add_theme_stylebox_override("panel", _Style.card_blueprint("dim"))
+			_set_chrome_accent(i, "dim")
 			_slot_buy[i].disabled = true
 			_slot_lock[i].disabled = true
 		_reroll_btn.disabled = true
@@ -415,14 +532,34 @@ func _refresh_shop() -> void:
 		var hl: Dictionary = s.get("highlights", {}).get(str(i), {})
 		if nm == "":
 			_slot_name[i].text = "—"
+			_slot_tag[i].text = ""
+			_slot_rarity[i].text = ""
 			_slot_kind[i].text = "此位无卡"
-			_slot_price[i].text = ""
+			if _slot_price_mark[i] is TextureRect:
+				_slot_price_mark[i].visible = false
+			else:
+				_slot_price_mark[i].text = ""
+			_slot_price_num[i].text = "--"
+			_slot_price_unit[i].text = ""
+			_set_price_color(i, C_DIM)
 			_slot_desc[i].text = ""
 			_slot_note[i].text = String(s["notes"][i])
-			_slot_price[i].add_theme_color_override("font_color", C_DIM)
-			_slots[i].add_theme_stylebox_override("panel", _Style.card("dim"))
+			_slots[i].add_theme_stylebox_override("panel", _Style.card_blueprint("dim"))
+			_set_chrome_accent(i, "dim")
 		else:
 			_slot_name[i].text = nm
+			# 🆕 稀有度（§2.3 · P1-6）：边框色/粗细 + ▲ 角标数 —— 双通道，不只靠颜色。
+			#    稀有度由 card_text 只读派生自抽取权重（SSOT），改权重卡面自动跟随。
+			var rar := _CardText.rarity(nm)
+			_slot_rarity[i].text = "▲".repeat(_Style.rarity_pips(rar))
+			_slot_rarity[i].add_theme_color_override("font_color", _Style.rarity_color(rar))
+			# 🆕 蓝图卡面（§5.5）：Tag 电路符号芯片（字形 + 颜色双通道，§9.2①）
+			var tg := _CardText.tag_of(nm)
+			if tg != "":
+				_slot_tag[i].text = "%s %s" % [_Style.tag_glyph(tg), _CardText.tag_cn(tg)]
+				_slot_tag[i].add_theme_color_override("font_color", _Style.tag_color(tg))
+			else:
+				_slot_tag[i].text = ""
 			# 🆕 效果描述块：卡名 + 卡种之外，告诉玩家「这张卡干什么」（恒 3 行）
 			_slot_desc[i].text = _CardText.describe(nm)
 			# H2：Tag 协同 → 卡种行加标记（视觉编码不写推荐类词）
@@ -434,12 +571,18 @@ func _refresh_shop() -> void:
 			# 🔴 T-P6-06 S2（art-bible §9.2 红线①「任何游戏状态不得仅靠颜色传达」）：
 			#   买得起/买不起除**颜色**外，价格前加 **✓/✗ 字形冗余**（纯加法；配色判据一字不改）。
 			var _aff := bool(s["affordable"][i])
-			_slot_price[i].text = "%s %.0f 分" % [("✓" if _aff else "✗"), price]
-			_slot_price[i].add_theme_color_override("font_color",
-				C_ACCENT if _aff else C_DIM)
-			# 卡片描边随可购性提亮（第二通道，非唯一通道）
+			if _slot_price_mark[i] is TextureRect:
+				_slot_price_mark[i].texture = _slot_price_mark[i].get_meta("cross" if not _aff else "check")
+				_slot_price_mark[i].visible = true
+			else:
+				_slot_price_mark[i].text = "✓" if _aff else "✗"
+			_slot_price_num[i].text = "%.0f" % price
+			_slot_price_unit[i].text = "分"
+			_set_price_color(i, C_ACCENT if _aff else C_DIM)
+			# 卡片描边 = 稀有度色（§2.3）；可购性由 ✓/✗ + 价格色 + 角刻线表达（第二通道）
 			_slots[i].add_theme_stylebox_override("panel",
-				_Style.card("affordable" if _aff else "normal"))
+				_Style.card_blueprint("normal", rar))
+			_set_chrome_accent(i, "affordable" if _aff else "normal")
 			var note := String(s["notes"][i])
 			if note == "" and bool(s["at_cap"][i]):
 				note = "已达上限 (+0%)"        # H4
@@ -474,6 +617,25 @@ func _refresh_shop() -> void:
 	_refresh_repair_btn(s)
 
 	_refresh_pending(s)
+
+
+## 价格行统一着色（✓/✗ 与数字同色；「分」单位恒辅助灰 —— 数字才是主通道 §5.2）。
+func _set_price_color(i: int, col: Color) -> void:
+	if _slot_price_mark[i] is TextureRect:
+		_slot_price_mark[i].modulate = col
+	else:
+		_slot_price_mark[i].add_theme_color_override("font_color", col)
+	_slot_price_num[i].add_theme_color_override("font_color", col)
+	_slot_price_unit[i].add_theme_color_override("font_color", C_DIM)
+
+
+## 蓝图 chrome accent 改写 + 重绘（🔴 只改 meta，不在刷新路径 new StyleBox）。
+func _set_chrome_accent(i: int, accent: String) -> void:
+	var c: Control = _slot_chrome[i]
+	if String(c.get_meta("accent", "")) == accent:
+		return
+	c.set_meta("accent", accent)
+	c.queue_redraw()
 
 
 ## 🔒 T1 修复入口 UI（Q-T4 三选一 · SR-R2 只标事实）：

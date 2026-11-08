@@ -26,17 +26,20 @@ signal packs_confirmed(packs: Array)
 const _Style := preload("res://scripts/ui/ui_style.gd")
 const _Packs := preload("res://scripts/data/card_packs.gd")
 const _RunMeta := preload("res://scripts/gameplay/run_meta.gd")
-const _CardText := preload("res://scripts/data/card_text.gd")
 
 ## 单包卡面尺寸（全部卡包同一尺寸 —— X3「不得用布局差异暗示」）。
-##   🔴 宽度从 208 → 180：卡包从 5 增到 7 个后，7×180 + 6×14 间距 ≈ 1344 < 1600 实际窗口，
-##     横向不溢出；高度不变（内容用 autowrap 自适应，无需加高）。
+##   🔴 宽度 180：8 包 × 180 + 7×14 间距 ≈ 1438 < 1600 实际窗口，横向不溢出。
+##   🔴 高度 292 与内容实测对齐（2026-11-07）：卡列表改**双列纯卡名网格**后
+##     内容最小高度 ≈ 266px（含 24 边距），292 留余量 —— 每卡「卡名+定位」两行堆叠
+##     的旧排法内容高达 539px（8 包 ×6 卡时代溢出瓦片边界），定位信息改由
+##     商店卡面 describe / 包 tag_line 承载，瓦片只回答「这包有哪 6 张卡」。
 const TILE_SIZE := Vector2(180.0, 292.0)
 
 var _built: bool = false
 var _tiles: Array = []          # Array[Dictionary]：{id, btn, status, name, tag, cards, roles}
 var _sel: Array = []            # Array[String] 当前勾选
-var _count: Label
+var _count_val: Label           # 🆕 已选读数（等宽数字）
+var _count_pool: Label          # 🆕 卡池读数（等宽数字）
 var _hint: Label
 var _start: Button
 var _head: Label
@@ -73,6 +76,9 @@ func _build() -> void:
 	panel.grow_vertical = Control.GROW_DIRECTION_BOTH
 	panel.custom_minimum_size = Vector2(1188.0, 0.0)
 	panel.add_theme_stylebox_override("panel", _Style.panel(_Style.C_ALLY, 2, 26.0, 22.0))
+	# 🆕 §5.5 蓝图语言：外沿四角 L 刻线（辉金 accent，与主标题同极）
+	_Style.attach_corner_chrome(panel)
+	_Style.set_chrome_accent(panel, _Style.C_GOLD)
 	add_child(panel)
 
 	var vbox := VBoxContainer.new()
@@ -80,6 +86,7 @@ func _build() -> void:
 	panel.add_child(vbox)
 
 	var title := _Style.label("选 择 卡 包", 34, _Style.C_GOLD)
+	_Style.apply_font(title, "display")           # §5.4：界面主标题 = Black 展示字重
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	vbox.add_child(title)
 
@@ -94,8 +101,8 @@ func _build() -> void:
 	row.add_theme_constant_override("separation", 14)
 	row.alignment = BoxContainer.ALIGNMENT_CENTER
 	vbox.add_child(row)
-	for p in _Packs.PACKS:
-		row.add_child(_make_tile(p))
+	for i in _Packs.PACKS.size():
+		row.add_child(_make_tile(_Packs.PACKS[i], i))
 
 	vbox.add_child(_Style.hline())
 
@@ -108,8 +115,20 @@ func _build() -> void:
 	left.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	foot.add_child(left)
 
-	_count = _Style.label("", 20, _Style.C_TEXT)
-	left.add_child(_count)
+	# 🆕 已选读数（§5.2 数字优先）：「已选 N / M 包 · 卡池 K 张」拆成
+	#   中文骨架 + 等宽数字读数 —— 数字跳变不再牵动整行基线（§5.2 等宽红线）。
+	var count_row := HBoxContainer.new()
+	count_row.add_theme_constant_override("separation", 6)
+	left.add_child(count_row)
+	count_row.add_child(_Style.label("已选", 16, _Style.C_TEXT_DIM))
+	_count_val = _Style.label("0 / 0", 22, _Style.C_GOLD)
+	_Style.apply_font(_count_val, "num")
+	count_row.add_child(_count_val)
+	count_row.add_child(_Style.label("包 · 本局卡池", 16, _Style.C_TEXT_DIM))
+	_count_pool = _Style.label("0", 22, _Style.C_WHITE)
+	_Style.apply_font(_count_pool, "num")
+	count_row.add_child(_count_pool)
+	count_row.add_child(_Style.label("张", 16, _Style.C_TEXT_DIM))
 
 	_hint = _Style.label("", 16, _Style.C_TEXT_DIM)
 	_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -128,7 +147,7 @@ func _make_start_button(parent: HBoxContainer) -> void:
 	parent.add_child(_start)
 
 
-func _make_tile(pack: Dictionary) -> Button:
+func _make_tile(pack: Dictionary, seq: int) -> Button:
 	var pid := String(pack["id"])
 	var b := Button.new()
 	b.text = ""
@@ -151,10 +170,37 @@ func _make_tile(pack: Dictionary) -> Button:
 	v.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	margin.add_child(v)
 
+	# 🆕 蓝图编号（§5.5）：等宽两位序号 —— 兼作数字键 1-9 快捷键提示（_unhandled_input 同序）。
+	#    高度占位极小（spacer 吸收），不挤 6 卡列表（见下方徽记行的实测回归注释）。
+	var idx := _Style.label("%02d" % (seq + 1), 16, _Style.C_STEEL)
+	_Style.apply_font(idx, "num")
+	v.add_child(idx)
+
+	# 🆕 卡包徽记（art/2d/icons · 资产包 v1）：id 逐字对齐 PACKS。
+	#    🔴 内联进卡名行（28px，**零增高**）—— 瓦片高度固定 292，独立成行会把
+	#       6 卡列表推出按钮边界（2026-11-07 首版 56px 独立行的实测回归）。
+	#    资产未导入 / 缺失时 `_Style.pack_emblem` 返回 null → 整块跳过（纯文本降级）。
+	var emb_tex := _Style.pack_emblem(pid)
 	var nm := _Style.label(String(pack["name"]), 22, _Style.C_WHITE)
-	nm.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_Style.apply_font(nm, "display")              # §5.4：卡包名 = Black 展示字重（与商店卡名同极）
 	nm.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	v.add_child(nm)
+	if emb_tex != null:
+		var name_row := HBoxContainer.new()
+		name_row.add_theme_constant_override("separation", 6)
+		name_row.alignment = BoxContainer.ALIGNMENT_CENTER
+		name_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var emb := TextureRect.new()
+		emb.texture = emb_tex
+		emb.custom_minimum_size = Vector2(28.0, 28.0)
+		emb.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		emb.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		emb.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		name_row.add_child(emb)
+		name_row.add_child(nm)
+		v.add_child(name_row)
+	else:
+		nm.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		v.add_child(nm)
 
 	var tag := _Style.label(String(pack["tag_line"]), 16, _Style.C_TEXT_DIM)
 	tag.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -164,19 +210,22 @@ func _make_tile(pack: Dictionary) -> Button:
 
 	v.add_child(_Style.hline())
 
+	# 🆕 卡列表 = 双列纯卡名网格（§5.2 数字/实体优先：瓦片是「货架标签」不是卡面——
+	#    每卡定位由商店 describe / tag_line 承载；8 包 ×6 卡时代两行堆叠排法实测
+	#    内容 539px，溢出瓦片边界压住底栏，故收敛为网格）。
+	var grid := GridContainer.new()
+	grid.columns = 2
+	grid.add_theme_constant_override("h_separation", 8)
+	grid.add_theme_constant_override("v_separation", 4)
+	grid.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	v.add_child(grid)
 	var card_names: Array = []
-	var card_roles: Array = []
 	for cnm in (pack["cards"] as Array):
-		var s := String(cnm)
-		var l1 := _Style.label(s, 18, _Style.C_TEXT)
+		var l1 := _Style.label(String(cnm), 16, _Style.C_TEXT)
 		l1.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		v.add_child(l1)
-		var l2 := _Style.label(_CardText.role(s), 16, _Style.C_TEXT_DIM)
-		l2.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		l2.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		v.add_child(l2)
+		l1.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		grid.add_child(l1)
 		card_names.append(l1)
-		card_roles.append(l2)
 
 	# 把状态行顶到底部（中间留白随卡片高度变化）
 	var spacer := Control.new()
@@ -191,7 +240,7 @@ func _make_tile(pack: Dictionary) -> Button:
 
 	_tiles.append({
 		"id": pid, "btn": b, "name": nm, "tag": tag, "status": status,
-		"cards": card_names, "roles": card_roles,
+		"cards": card_names,
 	})
 	return b
 
@@ -211,14 +260,25 @@ func close() -> void:
 	visible = false
 
 
+## 所选包的**并集去重**张数（建筑-only 口径：同一座塔可能出现在多个包里）。
+func _pool_size(sel: Array) -> int:
+	var seen := {}
+	for pid in sel:
+		for nm in _Packs.cards_of(String(pid)):
+			seen[String(nm)] = true
+	return seen.size()
+
+
 func _refresh() -> void:
 	var best := _RunMeta.best_wave()
 	var unlocked := _Packs.unlocked_ids(best)
 	var req := _Packs.required_picks(best)
 	var nxt := _RunMeta.next_unlock_wave()
 
-	_head.text = "本局卡池 = 所选卡包的并集（每包 %d 张，选 %d 包 = %d 张）" % [
-		_Packs.CARDS_PER_PACK, req, req * _Packs.CARDS_PER_PACK]
+	# 🆕 2026-11-07：卡包只收建筑卡 → 同类塔会跨包共享，池子是**并集去重**后的张数，
+	#   不能再直接拿「包数 × 6」当卡池读数（那会把重复的塔算两遍）。
+	_head.text = "本局卡池 = 所选卡包的并集（每包 %d 张建筑卡，跨包重复的塔只算一张）" % \
+		_Packs.CARDS_PER_PACK
 	if nxt > 0:
 		_head.text += "\n最佳波次 W%d · 到达 W%d 解锁下一个卡包" % [best, nxt]
 	elif nxt < 0:
@@ -248,17 +308,14 @@ func _refresh() -> void:
 				_Style.button(b, "normal")
 				st.text = "点击选入"
 				st.add_theme_color_override("font_color", _Style.C_TEXT_DIM)
-		# 卡名 / 定位：锁定态压暗（只用透明度档位，不改色相 —— 不改动信息本身）
-		#   🔴 两档颜色要分开：卡名是主信息（C_TEXT），定位是辅信息（C_TEXT_DIM）。
+		# 卡名：锁定态压暗（只用透明度档位，不改色相 —— 不改动信息本身）
+		#   🔴 主信息（C_TEXT）/ 辅信息分档着色；角色定位已移出瓦片（见 _make_tile 网格注释）
 		for l in (t["cards"] as Array):
 			(l as Label).add_theme_color_override("font_color",
 				_Style.C_STEEL if locked else _Style.C_TEXT)
-		for l in (t["roles"] as Array):
-			(l as Label).add_theme_color_override("font_color",
-				_Style.C_STEEL if locked else _Style.C_TEXT_DIM)
 
-	_count.text = "已选 %d / %d 包 · 本局卡池 %d 张" % [
-		_sel.size(), req, _sel.size() * _Packs.CARDS_PER_PACK]
+	_count_val.text = "%d / %d" % [_sel.size(), req]
+	_count_pool.text = "%d" % _pool_size(_sel)
 	_start.disabled = _sel.size() != req
 	if _start.disabled:
 		_hint.text = "选满 %d 个卡包后才能开始（已解锁 %d 个）" % [req, unlocked.size()]

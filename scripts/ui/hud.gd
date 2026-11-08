@@ -57,7 +57,7 @@ var _start_wave_btn: Button
 var _banner: Label
 var _debug_panel: PanelContainer
 ## 🆕 缓存 StyleBox（`_draw` 每帧调用，不得在绘制里 new StyleBoxFlat → 每帧分配）。
-var _box_score: StyleBoxFlat
+var _box_score: StyleBox
 var _box_bar_track: StyleBoxFlat
 var _box_bar_fill: StyleBoxFlat
 var _box_bar_fill_elite: StyleBoxFlat
@@ -249,11 +249,14 @@ func _build() -> void:
 	_score_caption.text = "废料"
 	_score_caption.add_theme_font_size_override("font_size", 16)
 	_score_caption.add_theme_color_override("font_color", C_TEXT_DIM)
+	_Style.apply_font(_score_caption, "medium")   # §5.4：小标题 = Medium
 	add_child(_score_caption)
 
 	_score_label = Label.new()
 	_score_label.add_theme_font_size_override("font_size", 44)
 	_score_label.add_theme_color_override("font_color", C_GOLD)
+	# §5.2「数字必须等宽」：积分 = 纯数字读数 → JetBrains Mono（滚动 / 脉冲时不再左右抖）
+	_Style.apply_font(_score_label, "num")
 	_score_label.text = "0"
 	add_child(_score_label)
 
@@ -262,6 +265,7 @@ func _build() -> void:
 	_wave_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_wave_label.add_theme_font_size_override("font_size", 42)
 	_wave_label.add_theme_color_override("font_color", C_WHITE)
+	_Style.apply_font(_wave_label, "display")     # §5.4：L0 波次号 = Black 展示字重
 	_wave_label.text = "WAVE 1"
 	add_child(_wave_label)
 
@@ -289,6 +293,7 @@ func _build() -> void:
 	_banner.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_banner.add_theme_font_size_override("font_size", 96)
 	_banner.add_theme_color_override("font_color", C_WHITE)
+	_Style.apply_font(_banner, "display")         # §5.4：波次横幅 = Black 展示字重
 	_banner.add_theme_constant_override("outline_size", 8)
 	_banner.add_theme_color_override("font_outline_color", C_GOLD)
 	_banner.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -584,7 +589,9 @@ func _draw() -> void:
 		var fill_box := _box_bar_fill_elite if _wave_elite else _box_bar_fill
 		draw_style_box(fill_box, Rect2(bx, by, fill_w, WAVE_BAR_H))
 	# 🆕 进度读数（数字优先 §5.2）：`已出 / 总数`，居中于条下
-	var font := ThemeDB.fallback_font
+	#   🔴 §5.4：读数 = 等宽数字字体；「精英波」提示 = Medium 正文字体（CJK）
+	var font := _Style.font_num()
+	var font_cjk := _Style.font_medium()
 	if font != null:
 		if _wave_total > 0:
 			var cnt := "%d / %d" % [_wave_spawned, _wave_total]
@@ -595,10 +602,10 @@ func _draw() -> void:
 		#   🔴 决策期文案 = "下一波：精英波"（预告，仅决策期）；战斗态 = "精英波"（当前状态）。
 		#   无数字、无倒计时、无进度条（T-E1③ / E-B12 零择时读数）。
 		#   🆕 位置改到进度条**左侧右对齐**，避免与 WAVE 大字／读数行叠压。
-		if _wave_elite:
+		if _wave_elite and font_cjk != null:
 			var et := ("精英波" if _wave_in_combat else "下一波：精英波")
-			var ew: float = font.get_string_size(et, HORIZONTAL_ALIGNMENT_LEFT, -1, 16).x
-			draw_string(font, Vector2(bx - 12.0 - ew, by + 9.0), et,
+			var ew: float = font_cjk.get_string_size(et, HORIZONTAL_ALIGNMENT_LEFT, -1, 16).x
+			draw_string(font_cjk, Vector2(bx - 12.0 - ew, by + 9.0), et,
 				HORIZONTAL_ALIGNMENT_LEFT, -1, 16, C_ALERT)
 
 

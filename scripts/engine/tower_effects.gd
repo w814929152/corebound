@@ -18,7 +18,7 @@ extends RefCounted
 ##
 ## 🔴 为什么死亡触发**当波不生效**：`damage_engine` 的 dps 在波首算死（battle 循环
 ##   等价性的前提，见 `wave_director` 文件头）。阵亡加成写进 h → 下一波 dps 才读到。
-##   这是刻意口径，不是 bug（见 §测试 H4）。
+##   这是刻意口径，不是 bug（见 §测试 H12–H14）。
 ##
 ## 🔴 金标本零扰动：金标本走 `wave_sim` + 只买 `TOWERS` 基础塔，本文件的触发塔
 ##   全在 `TOWERS_EXT`；且 `apply_trigger` 对没有 effect 的塔是纯 no-op。

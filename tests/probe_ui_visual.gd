@@ -80,6 +80,15 @@ func _run() -> void:
 	root.remove_child(res)
 	res.free()
 
+	# ③b 结算（失败 · 警报红 accent）—— 🆕 战报行 + 刻线 accent 随胜负切换
+	var res2: CanvasLayer = _Result.new()
+	root.add_child(res2)
+	res2.show_result(false, 14, 0.0, 1000.0, 207.0)
+	await _sleep(0.3)
+	var ok3b: bool = await _shot("03b-result-lose")
+	root.remove_child(res2)
+	res2.free()
+
 	# ④ 受损塔处置弹窗
 	var dlg: CanvasLayer = _DisabledDialog.new()
 	root.add_child(dlg)
@@ -90,5 +99,5 @@ func _run() -> void:
 	await _sleep(0.3)
 	var ok4: bool = await _shot("04-disabled-dialog")
 
-	print("[ui-visual] ALL = %s" % str(ok1 and ok2 and ok3 and ok4))
-	quit(0 if (ok1 and ok2 and ok3 and ok4) else 1)
+	print("[ui-visual] ALL = %s" % str(ok1 and ok2 and ok3 and ok3b and ok4))
+	quit(0 if (ok1 and ok2 and ok3 and ok3b and ok4) else 1)

@@ -41,7 +41,7 @@ var _hp_max: float = 1000.0
 var _prev_filled: int = -1
 var _shatter: Dictionary = {}
 ## 🆕 缓存 StyleBox（`_draw` 每帧跑，不得在绘制里 new）
-var _box_slot: StyleBoxFlat
+var _box_slot: StyleBox
 var _box_seg: StyleBoxFlat
 var _box_seg_low: StyleBoxFlat
 var _box_seg_empty: StyleBoxFlat
@@ -181,7 +181,9 @@ func _draw() -> void:
 		draw_rect(gr, Color(1.0, 1.0, 1.0, 0.85 * sp))
 
 	# 数字（L0）：720 / 1000 —— 🆕 字号 30 → 22，抬到血条上方留白区，不再压住条顶
-	var font := ThemeDB.fallback_font
+	#   🔴 §5.4：血量读数 = 等宽数字字体（受击抖动时不再左右跳）；「核心」= Medium
+	var font := _Style.font_num()
+	var font_cjk := _Style.font_medium()
 	if font != null:
 		var txt := "%d / %d" % [int(round(_hp)), int(round(_hp_max))]
 		var fs := 22
@@ -189,6 +191,7 @@ func _draw() -> void:
 		draw_string(font, Vector2((float(vs.x) - tw) * 0.5, y0 - 10.0),
 			txt, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, C_TEXT)
 		# 🆕 左侧说明「核心」：右对齐贴在底槽左沿外，垂直居中于条
-		var cw: float = font.get_string_size(CORE_CAP, HORIZONTAL_ALIGNMENT_LEFT, -1, 16).x
-		draw_string(font, Vector2(x0 - PAD - 14.0 - cw, y0 + SEG_H * 0.5 + 5.0),
-			CORE_CAP, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, C_TEXT)
+		if font_cjk != null:
+			var cw: float = font_cjk.get_string_size(CORE_CAP, HORIZONTAL_ALIGNMENT_LEFT, -1, 16).x
+			draw_string(font_cjk, Vector2(x0 - PAD - 14.0 - cw, y0 + SEG_H * 0.5 + 5.0),
+				CORE_CAP, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, C_TEXT)

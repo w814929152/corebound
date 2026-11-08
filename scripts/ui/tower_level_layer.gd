@@ -51,6 +51,8 @@ const C_CHIP_BG := Color(0.063, 0.078, 0.137, 0.90)  # 深底（保证亮塔身 
 const C_TEXT := Color(0.925, 0.980, 1.000, 0.96)     # #EAFBFF 近白（与核心内芯同族）
 const C_DISABLED := Color(0.55, 0.57, 0.62, 0.60)    # 停机塔：整牌压暗（与塔身压暗同义）
 
+const _Style := preload("res://scripts/ui/ui_style.gd")
+
 ## 轮询周期（s）。🔴 15Hz：等级只在买卡/拆塔/复活时变，没必要逐帧重排文字。
 ##   成本口径：一次 `snapshot()` ≈ `MonsterLayer._draw_radial_towers()` **每帧**已经在调的那次
 ##   → 15Hz 只是它的 1/4，可忽略（见 `docs/phase6/performance-profile.md` 的渲染占比）。
@@ -157,7 +159,11 @@ func _draw() -> void:
 	_rebuild(true)
 	if _entries.is_empty():
 		return
-	var font := ThemeDB.fallback_font
+	# 🔴 §5.4：等级读数 = 等宽数字字体（`Lv 120` 数字不抖，且对齐蓝图风 §5.5）。
+	#    字体缺失时退回引擎 fallback（与旧口径一致）。
+	var font: Font = _Style.font_num()
+	if font == null:
+		font = ThemeDB.fallback_font
 	if font == null:
 		return
 	var sc: float = world_layer.world_scale()

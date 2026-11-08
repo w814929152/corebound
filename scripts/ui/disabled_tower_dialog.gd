@@ -98,6 +98,7 @@ func _build() -> void:
 
 	_title_label = Label.new()
 	_title_label.add_theme_font_size_override("font_size", 18)
+	_Style.apply_font(_title_label, "medium")     # §5.4：弹窗标题 = Medium
 	_title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	vbox.add_child(_title_label)
 

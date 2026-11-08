@@ -1,0 +1,598 @@
+{
+  "pack": "corebound-art-pack",
+  "version": "v1",
+  "generated": "procedural(PIL 4x supersample)",
+  "palette_source": "design/art/art-bible.md §2.2/§2.3",
+  "naming": "art-bible §10.2 snake_case",
+  "assets": [
+    {
+      "file": "icons/ic_check_small_v1.png",
+      "size": [
+        64,
+        64
+      ]
+    },
+    {
+      "file": "icons/ic_check_v1.png",
+      "size": [
+        128,
+        128
+      ]
+    },
+    {
+      "file": "icons/ic_core_small_v1.png",
+      "size": [
+        64,
+        64
+      ]
+    },
+    {
+      "file": "icons/ic_core_v1.png",
+      "size": [
+        128,
+        128
+      ]
+    },
+    {
+      "file": "icons/ic_cross_small_v1.png",
+      "size": [
+        64,
+        64
+      ]
+    },
+    {
+      "file": "icons/ic_cross_v1.png",
+      "size": [
+        128,
+        128
+      ]
+    },
+    {
+      "file": "icons/ic_elite_small_v1.png",
+      "size": [
+        64,
+        64
+      ]
+    },
+    {
+      "file": "icons/ic_elite_v1.png",
+      "size": [
+        128,
+        128
+      ]
+    },
+    {
+      "file": "icons/ic_lock_small_v1.png",
+      "size": [
+        64,
+        64
+      ]
+    },
+    {
+      "file": "icons/ic_lock_v1.png",
+      "size": [
+        128,
+        128
+      ]
+    },
+    {
+      "file": "icons/ic_pack_arc_small_v1.png",
+      "size": [
+        64,
+        64
+      ]
+    },
+    {
+      "file": "icons/ic_pack_arc_v1.png",
+      "size": [
+        128,
+        128
+      ]
+    },
+    {
+      "file": "icons/ic_pack_cinder_small_v1.png",
+      "size": [
+        64,
+        64
+      ]
+    },
+    {
+      "file": "icons/ic_pack_cinder_v1.png",
+      "size": [
+        128,
+        128
+      ]
+    },
+    {
+      "file": "icons/ic_pack_core_small_v1.png",
+      "size": [
+        64,
+        64
+      ]
+    },
+    {
+      "file": "icons/ic_pack_core_v1.png",
+      "size": [
+        128,
+        128
+      ]
+    },
+    {
+      "file": "icons/ic_pack_hex_small_v1.png",
+      "size": [
+        64,
+        64
+      ]
+    },
+    {
+      "file": "icons/ic_pack_hex_v1.png",
+      "size": [
+        128,
+        128
+      ]
+    },
+    {
+      "file": "icons/ic_pack_pierce_small_v1.png",
+      "size": [
+        64,
+        64
+      ]
+    },
+    {
+      "file": "icons/ic_pack_pierce_v1.png",
+      "size": [
+        128,
+        128
+      ]
+    },
+    {
+      "file": "icons/ic_pack_rime_small_v1.png",
+      "size": [
+        64,
+        64
+      ]
+    },
+    {
+      "file": "icons/ic_pack_rime_v1.png",
+      "size": [
+        128,
+        128
+      ]
+    },
+    {
+      "file": "icons/ic_pack_sunder_small_v1.png",
+      "size": [
+        64,
+        64
+      ]
+    },
+    {
+      "file": "icons/ic_pack_sunder_v1.png",
+      "size": [
+        128,
+        128
+      ]
+    },
+    {
+      "file": "icons/ic_pack_true_small_v1.png",
+      "size": [
+        64,
+        64
+      ]
+    },
+    {
+      "file": "icons/ic_pack_true_v1.png",
+      "size": [
+        128,
+        128
+      ]
+    },
+    {
+      "file": "icons/ic_proto_arrow_small_v1.png",
+      "size": [
+        64,
+        64
+      ]
+    },
+    {
+      "file": "icons/ic_proto_arrow_v1.png",
+      "size": [
+        128,
+        128
+      ]
+    },
+    {
+      "file": "icons/ic_proto_cannon_small_v1.png",
+      "size": [
+        64,
+        64
+      ]
+    },
+    {
+      "file": "icons/ic_proto_cannon_v1.png",
+      "size": [
+        128,
+        128
+      ]
+    },
+    {
+      "file": "icons/ic_proto_frost_small_v1.png",
+      "size": [
+        64,
+        64
+      ]
+    },
+    {
+      "file": "icons/ic_proto_frost_v1.png",
+      "size": [
+        128,
+        128
+      ]
+    },
+    {
+      "file": "icons/ic_repair_small_v1.png",
+      "size": [
+        64,
+        64
+      ]
+    },
+    {
+      "file": "icons/ic_repair_v1.png",
+      "size": [
+        128,
+        128
+      ]
+    },
+    {
+      "file": "icons/ic_reroll_small_v1.png",
+      "size": [
+        64,
+        64
+      ]
+    },
+    {
+      "file": "icons/ic_reroll_v1.png",
+      "size": [
+        128,
+        128
+      ]
+    },
+    {
+      "file": "icons/ic_salvage_small_v1.png",
+      "size": [
+        64,
+        64
+      ]
+    },
+    {
+      "file": "icons/ic_salvage_v1.png",
+      "size": [
+        128,
+        128
+      ]
+    },
+    {
+      "file": "icons/ic_scrap_small_v1.png",
+      "size": [
+        64,
+        64
+      ]
+    },
+    {
+      "file": "icons/ic_scrap_v1.png",
+      "size": [
+        128,
+        128
+      ]
+    },
+    {
+      "file": "icons/ic_tag_econ_small_v1.png",
+      "size": [
+        64,
+        64
+      ]
+    },
+    {
+      "file": "icons/ic_tag_econ_v1.png",
+      "size": [
+        128,
+        128
+      ]
+    },
+    {
+      "file": "icons/ic_tag_fire_small_v1.png",
+      "size": [
+        64,
+        64
+      ]
+    },
+    {
+      "file": "icons/ic_tag_fire_v1.png",
+      "size": [
+        128,
+        128
+      ]
+    },
+    {
+      "file": "icons/ic_tag_frost_small_v1.png",
+      "size": [
+        64,
+        64
+      ]
+    },
+    {
+      "file": "icons/ic_tag_frost_v1.png",
+      "size": [
+        128,
+        128
+      ]
+    },
+    {
+      "file": "icons/ic_tag_magic_small_v1.png",
+      "size": [
+        64,
+        64
+      ]
+    },
+    {
+      "file": "icons/ic_tag_magic_v1.png",
+      "size": [
+        128,
+        128
+      ]
+    },
+    {
+      "file": "icons/ic_tag_phys_small_v1.png",
+      "size": [
+        64,
+        64
+      ]
+    },
+    {
+      "file": "icons/ic_tag_phys_v1.png",
+      "size": [
+        128,
+        128
+      ]
+    },
+    {
+      "file": "icons/ic_tag_pierce_small_v1.png",
+      "size": [
+        64,
+        64
+      ]
+    },
+    {
+      "file": "icons/ic_tag_pierce_v1.png",
+      "size": [
+        128,
+        128
+      ]
+    },
+    {
+      "file": "icons/ic_tag_shock_small_v1.png",
+      "size": [
+        64,
+        64
+      ]
+    },
+    {
+      "file": "icons/ic_tag_shock_v1.png",
+      "size": [
+        128,
+        128
+      ]
+    },
+    {
+      "file": "icons/ic_tag_true_small_v1.png",
+      "size": [
+        64,
+        64
+      ]
+    },
+    {
+      "file": "icons/ic_tag_true_v1.png",
+      "size": [
+        128,
+        128
+      ]
+    },
+    {
+      "file": "icons/ic_timer_small_v1.png",
+      "size": [
+        64,
+        64
+      ]
+    },
+    {
+      "file": "icons/ic_timer_v1.png",
+      "size": [
+        128,
+        128
+      ]
+    },
+    {
+      "file": "icons/ic_tower_small_v1.png",
+      "size": [
+        64,
+        64
+      ]
+    },
+    {
+      "file": "icons/ic_tower_v1.png",
+      "size": [
+        128,
+        128
+      ]
+    },
+    {
+      "file": "icons/ic_wave_small_v1.png",
+      "size": [
+        64,
+        64
+      ]
+    },
+    {
+      "file": "icons/ic_wave_v1.png",
+      "size": [
+        128,
+        128
+      ]
+    },
+    {
+      "file": "ui/ui_btn_danger_v1.png",
+      "size": [
+        240,
+        88
+      ],
+      "nine_slice": {
+        "left": 24,
+        "top": 24,
+        "right": 24,
+        "bottom": 24
+      }
+    },
+    {
+      "file": "ui/ui_btn_ghost_v1.png",
+      "size": [
+        240,
+        88
+      ],
+      "nine_slice": {
+        "left": 24,
+        "top": 24,
+        "right": 24,
+        "bottom": 24
+      }
+    },
+    {
+      "file": "ui/ui_btn_normal_v1.png",
+      "size": [
+        240,
+        88
+      ],
+      "nine_slice": {
+        "left": 24,
+        "top": 24,
+        "right": 24,
+        "bottom": 24
+      }
+    },
+    {
+      "file": "ui/ui_btn_primary_v1.png",
+      "size": [
+        240,
+        88
+      ],
+      "nine_slice": {
+        "left": 24,
+        "top": 24,
+        "right": 24,
+        "bottom": 24
+      }
+    },
+    {
+      "file": "ui/ui_btn_unavail_v1.png",
+      "size": [
+        240,
+        88
+      ],
+      "nine_slice": {
+        "left": 24,
+        "top": 24,
+        "right": 24,
+        "bottom": 24
+      }
+    },
+    {
+      "file": "ui/ui_card_frame_common_v1.png",
+      "size": [
+        512,
+        716
+      ],
+      "nine_slice": {
+        "left": 40,
+        "top": 40,
+        "right": 40,
+        "bottom": 40
+      },
+      "rarity": "common"
+    },
+    {
+      "file": "ui/ui_card_frame_epic_v1.png",
+      "size": [
+        512,
+        716
+      ],
+      "nine_slice": {
+        "left": 40,
+        "top": 40,
+        "right": 40,
+        "bottom": 40
+      },
+      "rarity": "epic"
+    },
+    {
+      "file": "ui/ui_card_frame_legendary_v1.png",
+      "size": [
+        512,
+        716
+      ],
+      "nine_slice": {
+        "left": 40,
+        "top": 40,
+        "right": 40,
+        "bottom": 40
+      },
+      "rarity": "legendary"
+    },
+    {
+      "file": "ui/ui_card_frame_rare_v1.png",
+      "size": [
+        512,
+        716
+      ],
+      "nine_slice": {
+        "left": 40,
+        "top": 40,
+        "right": 40,
+        "bottom": 40
+      },
+      "rarity": "rare"
+    },
+    {
+      "file": "ui/ui_card_frame_uncommon_v1.png",
+      "size": [
+        512,
+        716
+      ],
+      "nine_slice": {
+        "left": 40,
+        "top": 40,
+        "right": 40,
+        "bottom": 40
+      },
+      "rarity": "uncommon"
+    },
+    {
+      "file": "ui/ui_panel_9slice_v1.png",
+      "size": [
+        512,
+        512
+      ],
+      "nine_slice": {
+        "left": 32,
+        "top": 32,
+        "right": 32,
+        "bottom": 32
+      }
+    },
+    {
+      "file": "ui/ui_panel_alert_9slice_v1.png",
+      "size": [
+        512,
+        512
+      ]
+    }
+  ]
+}
