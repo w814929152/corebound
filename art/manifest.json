@@ -1,780 +1,1144 @@
 {
-  "pack": "corebound-art-pack",
-  "version": "v1",
-  "generated": "procedural(PIL 4x supersample)",
-  "palette_source": "design/art/art-bible.md §2.2/§2.3",
-  "naming": "art-bible §10.2 snake_case",
-  "assets": [
-    {
-      "file": "icons/ic_check_small_v1.png",
-      "size": [
-        64,
-        64
-      ]
-    },
-    {
-      "file": "icons/ic_check_v1.png",
-      "size": [
-        128,
-        128
-      ]
-    },
-    {
-      "file": "icons/ic_coin_v1.png",
-      "size": [
-        64,
-        64
-      ]
-    },
-    {
-      "file": "icons/ic_core_small_v1.png",
-      "size": [
-        64,
-        64
-      ]
-    },
-    {
-      "file": "icons/ic_core_v1.png",
-      "size": [
-        128,
-        128
-      ]
-    },
-    {
-      "file": "icons/ic_cross_small_v1.png",
-      "size": [
-        64,
-        64
-      ]
-    },
-    {
-      "file": "icons/ic_cross_v1.png",
-      "size": [
-        128,
-        128
-      ]
-    },
-    {
-      "file": "icons/ic_elite_small_v1.png",
-      "size": [
-        64,
-        64
-      ]
-    },
-    {
-      "file": "icons/ic_elite_v1.png",
-      "size": [
-        128,
-        128
-      ]
-    },
-    {
-      "file": "icons/ic_lock_small_v1.png",
-      "size": [
-        64,
-        64
-      ]
-    },
-    {
-      "file": "icons/ic_lock_v1.png",
-      "size": [
-        128,
-        128
-      ]
-    },
-    {
-      "file": "icons/ic_pack_arc_small_v1.png",
-      "size": [
-        64,
-        64
-      ]
-    },
-    {
-      "file": "icons/ic_pack_arc_v1.png",
-      "size": [
-        128,
-        128
-      ]
-    },
-    {
-      "file": "icons/ic_pack_cinder_small_v1.png",
-      "size": [
-        64,
-        64
-      ]
-    },
-    {
-      "file": "icons/ic_pack_cinder_v1.png",
-      "size": [
-        128,
-        128
-      ]
-    },
-    {
-      "file": "icons/ic_pack_core_small_v1.png",
-      "size": [
-        64,
-        64
-      ]
-    },
-    {
-      "file": "icons/ic_pack_core_v1.png",
-      "size": [
-        128,
-        128
-      ]
-    },
-    {
-      "file": "icons/ic_pack_hex_small_v1.png",
-      "size": [
-        64,
-        64
-      ]
-    },
-    {
-      "file": "icons/ic_pack_hex_v1.png",
-      "size": [
-        128,
-        128
-      ]
-    },
-    {
-      "file": "icons/ic_pack_pierce_small_v1.png",
-      "size": [
-        64,
-        64
-      ]
-    },
-    {
-      "file": "icons/ic_pack_pierce_v1.png",
-      "size": [
-        128,
-        128
-      ]
-    },
-    {
-      "file": "icons/ic_pack_rime_small_v1.png",
-      "size": [
-        64,
-        64
-      ]
-    },
-    {
-      "file": "icons/ic_pack_rime_v1.png",
-      "size": [
-        128,
-        128
-      ]
-    },
-    {
-      "file": "icons/ic_pack_sunder_small_v1.png",
-      "size": [
-        64,
-        64
-      ]
-    },
-    {
-      "file": "icons/ic_pack_sunder_v1.png",
-      "size": [
-        128,
-        128
-      ]
-    },
-    {
-      "file": "icons/ic_pack_true_small_v1.png",
-      "size": [
-        64,
-        64
-      ]
-    },
-    {
-      "file": "icons/ic_pack_true_v1.png",
-      "size": [
-        128,
-        128
-      ]
-    },
-    {
-      "file": "icons/ic_proto_arrow_small_v1.png",
-      "size": [
-        64,
-        64
-      ]
-    },
-    {
-      "file": "icons/ic_proto_arrow_v1.png",
-      "size": [
-        128,
-        128
-      ]
-    },
-    {
-      "file": "icons/ic_proto_cannon_small_v1.png",
-      "size": [
-        64,
-        64
-      ]
-    },
-    {
-      "file": "icons/ic_proto_cannon_v1.png",
-      "size": [
-        128,
-        128
-      ]
-    },
-    {
-      "file": "icons/ic_proto_frost_small_v1.png",
-      "size": [
-        64,
-        64
-      ]
-    },
-    {
-      "file": "icons/ic_proto_frost_v1.png",
-      "size": [
-        128,
-        128
-      ]
-    },
-    {
-      "file": "icons/ic_repair_small_v1.png",
-      "size": [
-        64,
-        64
-      ]
-    },
-    {
-      "file": "icons/ic_repair_v1.png",
-      "size": [
-        128,
-        128
-      ]
-    },
-    {
-      "file": "icons/ic_reroll_small_v1.png",
-      "size": [
-        64,
-        64
-      ]
-    },
-    {
-      "file": "icons/ic_reroll_v1.png",
-      "size": [
-        128,
-        128
-      ]
-    },
-    {
-      "file": "icons/ic_salvage_small_v1.png",
-      "size": [
-        64,
-        64
-      ]
-    },
-    {
-      "file": "icons/ic_salvage_v1.png",
-      "size": [
-        128,
-        128
-      ]
-    },
-    {
-      "file": "icons/ic_scrap_small_v1.png",
-      "size": [
-        64,
-        64
-      ]
-    },
-    {
-      "file": "icons/ic_scrap_v1.png",
-      "size": [
-        128,
-        128
-      ]
-    },
-    {
-      "file": "icons/ic_tag_econ_small_v1.png",
-      "size": [
-        64,
-        64
-      ]
-    },
-    {
-      "file": "icons/ic_tag_econ_v1.png",
-      "size": [
-        128,
-        128
-      ]
-    },
-    {
-      "file": "icons/ic_tag_fire_small_v1.png",
-      "size": [
-        64,
-        64
-      ]
-    },
-    {
-      "file": "icons/ic_tag_fire_v1.png",
-      "size": [
-        128,
-        128
-      ]
-    },
-    {
-      "file": "icons/ic_tag_frost_small_v1.png",
-      "size": [
-        64,
-        64
-      ]
-    },
-    {
-      "file": "icons/ic_tag_frost_v1.png",
-      "size": [
-        128,
-        128
-      ]
-    },
-    {
-      "file": "icons/ic_tag_magic_small_v1.png",
-      "size": [
-        64,
-        64
-      ]
-    },
-    {
-      "file": "icons/ic_tag_magic_v1.png",
-      "size": [
-        128,
-        128
-      ]
-    },
-    {
-      "file": "icons/ic_tag_phys_small_v1.png",
-      "size": [
-        64,
-        64
-      ]
-    },
-    {
-      "file": "icons/ic_tag_phys_v1.png",
-      "size": [
-        128,
-        128
-      ]
-    },
-    {
-      "file": "icons/ic_tag_pierce_small_v1.png",
-      "size": [
-        64,
-        64
-      ]
-    },
-    {
-      "file": "icons/ic_tag_pierce_v1.png",
-      "size": [
-        128,
-        128
-      ]
-    },
-    {
-      "file": "icons/ic_tag_shock_small_v1.png",
-      "size": [
-        64,
-        64
-      ]
-    },
-    {
-      "file": "icons/ic_tag_shock_v1.png",
-      "size": [
-        128,
-        128
-      ]
-    },
-    {
-      "file": "icons/ic_tag_true_small_v1.png",
-      "size": [
-        64,
-        64
-      ]
-    },
-    {
-      "file": "icons/ic_tag_true_v1.png",
-      "size": [
-        128,
-        128
-      ]
-    },
-    {
-      "file": "icons/ic_timer_small_v1.png",
-      "size": [
-        64,
-        64
-      ]
-    },
-    {
-      "file": "icons/ic_timer_v1.png",
-      "size": [
-        128,
-        128
-      ]
-    },
-    {
-      "file": "icons/ic_tower_small_v1.png",
-      "size": [
-        64,
-        64
-      ]
-    },
-    {
-      "file": "icons/ic_tower_v1.png",
-      "size": [
-        128,
-        128
-      ]
-    },
-    {
-      "file": "icons/ic_wave_small_v1.png",
-      "size": [
-        64,
-        64
-      ]
-    },
-    {
-      "file": "icons/ic_wave_v1.png",
-      "size": [
-        128,
-        128
-      ]
-    },
-    {
-      "file": "sprites/sp_core_v1.png",
-      "size": [
-        256,
-        256
-      ]
-    },
-    {
-      "file": "sprites/sp_minion_v1.png",
-      "size": [
-        64,
-        64
-      ]
-    },
-    {
-      "file": "sprites/sp_mon_rush_elite_v1.png",
-      "size": [
-        128,
-        128
-      ]
-    },
-    {
-      "file": "sprites/sp_mon_rush_v1.png",
-      "size": [
-        128,
-        128
-      ]
-    },
-    {
-      "file": "sprites/sp_mon_swarm_elite_v1.png",
-      "size": [
-        128,
-        128
-      ]
-    },
-    {
-      "file": "sprites/sp_mon_swarm_v1.png",
-      "size": [
-        128,
-        128
-      ]
-    },
-    {
-      "file": "sprites/sp_mon_tank_elite_v1.png",
-      "size": [
-        128,
-        128
-      ]
-    },
-    {
-      "file": "sprites/sp_mon_tank_v1.png",
-      "size": [
-        128,
-        128
-      ]
-    },
-    {
-      "file": "sprites/sp_proj_bolt_v1.png",
-      "size": [
-        64,
-        64
-      ]
-    },
-    {
-      "file": "sprites/sp_proj_dot_v1.png",
-      "size": [
-        64,
-        64
-      ]
-    },
-    {
-      "file": "sprites/sp_tower_arrow_v1.png",
-      "size": [
-        128,
-        128
-      ]
-    },
-    {
-      "file": "sprites/sp_tower_bolt_v1.png",
-      "size": [
-        128,
-        128
-      ]
-    },
-    {
-      "file": "sprites/sp_tower_cannon_v1.png",
-      "size": [
-        128,
-        128
-      ]
-    },
-    {
-      "file": "sprites/sp_tower_ember_v1.png",
-      "size": [
-        128,
-        128
-      ]
-    },
-    {
-      "file": "sprites/sp_tower_frost_v1.png",
-      "size": [
-        128,
-        128
-      ]
-    },
-    {
-      "file": "sprites/sp_tower_hex_v1.png",
-      "size": [
-        128,
-        128
-      ]
-    },
-    {
-      "file": "sprites/sp_tower_icicle_v1.png",
-      "size": [
-        128,
-        128
-      ]
-    },
-    {
-      "file": "sprites/sp_tower_javelin_v1.png",
-      "size": [
-        128,
-        128
-      ]
-    },
-    {
-      "file": "sprites/sp_tower_lance_v1.png",
-      "size": [
-        128,
-        128
-      ]
-    },
-    {
-      "file": "sprites/sp_tower_maul_v1.png",
-      "size": [
-        128,
-        128
-      ]
-    },
-    {
-      "file": "sprites/sp_tower_oblivion_v1.png",
-      "size": [
-        128,
-        128
-      ]
-    },
-    {
-      "file": "sprites/sp_tower_rune_v1.png",
-      "size": [
-        128,
-        128
-      ]
-    },
-    {
-      "file": "sprites/sp_tower_sunder_v1.png",
-      "size": [
-        128,
-        128
-      ]
-    },
-    {
-      "file": "sprites/sp_tower_tesla_v1.png",
-      "size": [
-        128,
-        128
-      ]
-    },
-    {
-      "file": "sprites/sp_tower_void_v1.png",
-      "size": [
-        128,
-        128
-      ]
-    },
-    {
-      "file": "ui/ui_btn_danger_v1.png",
-      "size": [
-        240,
-        88
-      ],
-      "nine_slice": {
-        "left": 24,
-        "top": 24,
-        "right": 24,
-        "bottom": 24
-      }
-    },
-    {
-      "file": "ui/ui_btn_ghost_v1.png",
-      "size": [
-        240,
-        88
-      ],
-      "nine_slice": {
-        "left": 24,
-        "top": 24,
-        "right": 24,
-        "bottom": 24
-      }
-    },
-    {
-      "file": "ui/ui_btn_normal_v1.png",
-      "size": [
-        240,
-        88
-      ],
-      "nine_slice": {
-        "left": 24,
-        "top": 24,
-        "right": 24,
-        "bottom": 24
-      }
-    },
-    {
-      "file": "ui/ui_btn_primary_v1.png",
-      "size": [
-        240,
-        88
-      ],
-      "nine_slice": {
-        "left": 24,
-        "top": 24,
-        "right": 24,
-        "bottom": 24
-      }
-    },
-    {
-      "file": "ui/ui_btn_unavail_v1.png",
-      "size": [
-        240,
-        88
-      ],
-      "nine_slice": {
-        "left": 24,
-        "top": 24,
-        "right": 24,
-        "bottom": 24
-      }
-    },
-    {
-      "file": "ui/ui_card_frame_common_v1.png",
-      "size": [
-        512,
-        716
-      ],
-      "nine_slice": {
-        "left": 40,
-        "top": 40,
-        "right": 40,
-        "bottom": 40
-      },
-      "rarity": "common"
-    },
-    {
-      "file": "ui/ui_card_frame_epic_v1.png",
-      "size": [
-        512,
-        716
-      ],
-      "nine_slice": {
-        "left": 40,
-        "top": 40,
-        "right": 40,
-        "bottom": 40
-      },
-      "rarity": "epic"
-    },
-    {
-      "file": "ui/ui_card_frame_legendary_v1.png",
-      "size": [
-        512,
-        716
-      ],
-      "nine_slice": {
-        "left": 40,
-        "top": 40,
-        "right": 40,
-        "bottom": 40
-      },
-      "rarity": "legendary"
-    },
-    {
-      "file": "ui/ui_card_frame_rare_v1.png",
-      "size": [
-        512,
-        716
-      ],
-      "nine_slice": {
-        "left": 40,
-        "top": 40,
-        "right": 40,
-        "bottom": 40
-      },
-      "rarity": "rare"
-    },
-    {
-      "file": "ui/ui_card_frame_uncommon_v1.png",
-      "size": [
-        512,
-        716
-      ],
-      "nine_slice": {
-        "left": 40,
-        "top": 40,
-        "right": 40,
-        "bottom": 40
-      },
-      "rarity": "uncommon"
-    },
-    {
-      "file": "ui/ui_panel_9slice_v1.png",
-      "size": [
-        512,
-        512
-      ],
-      "nine_slice": {
-        "left": 32,
-        "top": 32,
-        "right": 32,
-        "bottom": 32
-      }
-    },
-    {
-      "file": "ui/ui_panel_alert_9slice_v1.png",
-      "size": [
-        512,
-        512
-      ]
-    }
-  ]
+ "pack": "corebound-art-pack",
+ "version": "v1",
+ "generated": "procedural(PIL 4x supersample)",
+ "palette_source": "design/art/art-bible.md §2.2/§2.3",
+ "naming": "art-bible §10.2 snake_case",
+ "assets": [
+  {
+   "file": "cards/card_arrow_v1_460.png",
+   "size": [
+    460,
+    460
+   ]
+  },
+  {
+   "file": "cards/card_arrow_v1_t.png",
+   "size": [
+    1024,
+    1024
+   ]
+  },
+  {
+   "file": "cards/card_cannon_v1_460.png",
+   "size": [
+    460,
+    460
+   ]
+  },
+  {
+   "file": "cards/card_cannon_v1_t.png",
+   "size": [
+    1024,
+    1024
+   ]
+  },
+  {
+   "file": "cards/card_catapult_v1_460.png",
+   "size": [
+    460,
+    460
+   ]
+  },
+  {
+   "file": "cards/card_catapult_v1_t.png",
+   "size": [
+    1024,
+    1024
+   ]
+  },
+  {
+   "file": "cards/card_foundry_v1_460.png",
+   "size": [
+    460,
+    460
+   ]
+  },
+  {
+   "file": "cards/card_foundry_v1_t.png",
+   "size": [
+    1024,
+    1024
+   ]
+  },
+  {
+   "file": "cards/card_frost_v1_460.png",
+   "size": [
+    460,
+    460
+   ]
+  },
+  {
+   "file": "cards/card_frost_v1_t.png",
+   "size": [
+    1024,
+    1024
+   ]
+  },
+  {
+   "file": "cards/card_harrier_v1_460.png",
+   "size": [
+    460,
+    460
+   ]
+  },
+  {
+   "file": "cards/card_harrier_v1_t.png",
+   "size": [
+    1024,
+    1024
+   ]
+  },
+  {
+   "file": "cards/card_kinetic_v1_460.png",
+   "size": [
+    460,
+    460
+   ]
+  },
+  {
+   "file": "cards/card_kinetic_v1_t.png",
+   "size": [
+    1024,
+    1024
+   ]
+  },
+  {
+   "file": "cards/card_ranger_v1_460.png",
+   "size": [
+    460,
+    460
+   ]
+  },
+  {
+   "file": "cards/card_ranger_v1_t.png",
+   "size": [
+    1024,
+    1024
+   ]
+  },
+  {
+   "file": "cards/card_scout_v1_460.png",
+   "size": [
+    460,
+    460
+   ]
+  },
+  {
+   "file": "cards/card_scout_v1_t.png",
+   "size": [
+    1024,
+    1024
+   ]
+  },
+  {
+   "file": "cards/card_sentry_v1_460.png",
+   "size": [
+    460,
+    460
+   ]
+  },
+  {
+   "file": "cards/card_sentry_v1_t.png",
+   "size": [
+    1024,
+    1024
+   ]
+  },
+  {
+   "file": "icons/ic_check_small_v1.png",
+   "size": [
+    64,
+    64
+   ]
+  },
+  {
+   "file": "icons/ic_check_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "icons/ic_coin_v1.png",
+   "size": [
+    64,
+    64
+   ]
+  },
+  {
+   "file": "icons/ic_core_small_v1.png",
+   "size": [
+    64,
+    64
+   ]
+  },
+  {
+   "file": "icons/ic_core_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "icons/ic_cross_small_v1.png",
+   "size": [
+    64,
+    64
+   ]
+  },
+  {
+   "file": "icons/ic_cross_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "icons/ic_elite_small_v1.png",
+   "size": [
+    64,
+    64
+   ]
+  },
+  {
+   "file": "icons/ic_elite_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "icons/ic_lock_small_v1.png",
+   "size": [
+    64,
+    64
+   ]
+  },
+  {
+   "file": "icons/ic_lock_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "icons/ic_pack_arc_small_v1.png",
+   "size": [
+    64,
+    64
+   ]
+  },
+  {
+   "file": "icons/ic_pack_arc_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "icons/ic_pack_cinder_small_v1.png",
+   "size": [
+    64,
+    64
+   ]
+  },
+  {
+   "file": "icons/ic_pack_cinder_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "icons/ic_pack_core_small_v1.png",
+   "size": [
+    64,
+    64
+   ]
+  },
+  {
+   "file": "icons/ic_pack_core_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "icons/ic_pack_hex_small_v1.png",
+   "size": [
+    64,
+    64
+   ]
+  },
+  {
+   "file": "icons/ic_pack_hex_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "icons/ic_pack_pierce_small_v1.png",
+   "size": [
+    64,
+    64
+   ]
+  },
+  {
+   "file": "icons/ic_pack_pierce_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "icons/ic_pack_rime_small_v1.png",
+   "size": [
+    64,
+    64
+   ]
+  },
+  {
+   "file": "icons/ic_pack_rime_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "icons/ic_pack_sunder_small_v1.png",
+   "size": [
+    64,
+    64
+   ]
+  },
+  {
+   "file": "icons/ic_pack_sunder_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "icons/ic_pack_true_small_v1.png",
+   "size": [
+    64,
+    64
+   ]
+  },
+  {
+   "file": "icons/ic_pack_true_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "icons/ic_proto_arrow_small_v1.png",
+   "size": [
+    64,
+    64
+   ]
+  },
+  {
+   "file": "icons/ic_proto_arrow_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "icons/ic_proto_cannon_small_v1.png",
+   "size": [
+    64,
+    64
+   ]
+  },
+  {
+   "file": "icons/ic_proto_cannon_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "icons/ic_proto_frost_small_v1.png",
+   "size": [
+    64,
+    64
+   ]
+  },
+  {
+   "file": "icons/ic_proto_frost_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "icons/ic_repair_small_v1.png",
+   "size": [
+    64,
+    64
+   ]
+  },
+  {
+   "file": "icons/ic_repair_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "icons/ic_reroll_small_v1.png",
+   "size": [
+    64,
+    64
+   ]
+  },
+  {
+   "file": "icons/ic_reroll_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "icons/ic_salvage_small_v1.png",
+   "size": [
+    64,
+    64
+   ]
+  },
+  {
+   "file": "icons/ic_salvage_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "icons/ic_scrap_small_v1.png",
+   "size": [
+    64,
+    64
+   ]
+  },
+  {
+   "file": "icons/ic_scrap_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "icons/ic_tag_econ_small_v1.png",
+   "size": [
+    64,
+    64
+   ]
+  },
+  {
+   "file": "icons/ic_tag_econ_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "icons/ic_tag_fire_small_v1.png",
+   "size": [
+    64,
+    64
+   ]
+  },
+  {
+   "file": "icons/ic_tag_fire_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "icons/ic_tag_frost_small_v1.png",
+   "size": [
+    64,
+    64
+   ]
+  },
+  {
+   "file": "icons/ic_tag_frost_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "icons/ic_tag_magic_small_v1.png",
+   "size": [
+    64,
+    64
+   ]
+  },
+  {
+   "file": "icons/ic_tag_magic_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "icons/ic_tag_phys_small_v1.png",
+   "size": [
+    64,
+    64
+   ]
+  },
+  {
+   "file": "icons/ic_tag_phys_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "icons/ic_tag_pierce_small_v1.png",
+   "size": [
+    64,
+    64
+   ]
+  },
+  {
+   "file": "icons/ic_tag_pierce_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "icons/ic_tag_shock_small_v1.png",
+   "size": [
+    64,
+    64
+   ]
+  },
+  {
+   "file": "icons/ic_tag_shock_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "icons/ic_tag_true_small_v1.png",
+   "size": [
+    64,
+    64
+   ]
+  },
+  {
+   "file": "icons/ic_tag_true_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "icons/ic_timer_small_v1.png",
+   "size": [
+    64,
+    64
+   ]
+  },
+  {
+   "file": "icons/ic_timer_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "icons/ic_tower_small_v1.png",
+   "size": [
+    64,
+    64
+   ]
+  },
+  {
+   "file": "icons/ic_tower_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "icons/ic_wave_small_v1.png",
+   "size": [
+    64,
+    64
+   ]
+  },
+  {
+   "file": "icons/ic_wave_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "maps/map_terrain_fusion_v1.png",
+   "size": [
+    1024,
+    1024
+   ]
+  },
+  {
+   "file": "maps/map_terrain_tri_fissure_v1.png",
+   "size": [
+    1024,
+    1024
+   ]
+  },
+  {
+   "file": "maps/map_terrain_variant_a_v1.png",
+   "size": [
+    1024,
+    1024
+   ]
+  },
+  {
+   "file": "maps/map_terrain_variant_b_v1.png",
+   "size": [
+    1024,
+    1024
+   ]
+  },
+  {
+   "file": "maps/map_terrain_variant_c_v1.png",
+   "size": [
+    1024,
+    1024
+   ]
+  },
+  {
+   "file": "maps/map_terrain_variant_d_v1.png",
+   "size": [
+    1024,
+    1024
+   ]
+  },
+  {
+   "file": "maps/map_terrain_variant_e_v1.png",
+   "size": [
+    1024,
+    1024
+   ]
+  },
+  {
+   "file": "maps/map_terrain_variant_f_v1.png",
+   "size": [
+    1024,
+    1024
+   ]
+  },
+  {
+   "file": "maps/map_terrain_variant_g_v1.png",
+   "size": [
+    1024,
+    1024
+   ]
+  },
+  {
+   "file": "maps/map_terrain_variant_h_v1.png",
+   "size": [
+    1024,
+    1024
+   ]
+  },
+  {
+   "file": "sprites/sp_core_v1.png",
+   "size": [
+    256,
+    256
+   ]
+  },
+  {
+   "file": "sprites/sp_minion_v1.png",
+   "size": [
+    64,
+    64
+   ]
+  },
+  {
+   "file": "sprites/sp_mon_rush_elite_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "sprites/sp_mon_rush_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "sprites/sp_mon_swarm_elite_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "sprites/sp_mon_swarm_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "sprites/sp_mon_tank_elite_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "sprites/sp_mon_tank_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "sprites/sp_proj_bolt_v1.png",
+   "size": [
+    64,
+    64
+   ]
+  },
+  {
+   "file": "sprites/sp_proj_dot_v1.png",
+   "size": [
+    64,
+    64
+   ]
+  },
+  {
+   "file": "sprites/sp_tower_arrow_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "sprites/sp_tower_bolt_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "sprites/sp_tower_cannon_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "sprites/sp_tower_ember_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "sprites/sp_tower_frost_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "sprites/sp_tower_hex_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "sprites/sp_tower_icicle_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "sprites/sp_tower_javelin_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "sprites/sp_tower_lance_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "sprites/sp_tower_maul_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "sprites/sp_tower_oblivion_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "sprites/sp_tower_rune_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "sprites/sp_tower_sunder_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "sprites/sp_tower_tesla_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "sprites/sp_tower_void_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "ui/keyart_hero_v1.png",
+   "size": [
+    1920,
+    1080
+   ]
+  },
+  {
+   "file": "ui/keyart_menu_bg_v1.png",
+   "size": [
+    1920,
+    1080
+   ]
+  },
+  {
+   "file": "ui/keyart_menu_hero_v1.png",
+   "size": [
+    1920,
+    1080
+   ]
+  },
+  {
+   "file": "ui/ui_btn_danger_v1.png",
+   "size": [
+    240,
+    88
+   ],
+   "nine_slice": {
+    "left": 24,
+    "top": 24,
+    "right": 24,
+    "bottom": 24
+   }
+  },
+  {
+   "file": "ui/ui_btn_ghost_v1.png",
+   "size": [
+    240,
+    88
+   ],
+   "nine_slice": {
+    "left": 24,
+    "top": 24,
+    "right": 24,
+    "bottom": 24
+   }
+  },
+  {
+   "file": "ui/ui_btn_normal_v1.png",
+   "size": [
+    240,
+    88
+   ],
+   "nine_slice": {
+    "left": 24,
+    "top": 24,
+    "right": 24,
+    "bottom": 24
+   }
+  },
+  {
+   "file": "ui/ui_btn_primary_v1.png",
+   "size": [
+    240,
+    88
+   ],
+   "nine_slice": {
+    "left": 24,
+    "top": 24,
+    "right": 24,
+    "bottom": 24
+   }
+  },
+  {
+   "file": "ui/ui_btn_unavail_v1.png",
+   "size": [
+    240,
+    88
+   ],
+   "nine_slice": {
+    "left": 24,
+    "top": 24,
+    "right": 24,
+    "bottom": 24
+   }
+  },
+  {
+   "file": "ui/ui_card_frame_common_v1.png",
+   "size": [
+    512,
+    716
+   ],
+   "nine_slice": {
+    "left": 40,
+    "top": 40,
+    "right": 40,
+    "bottom": 40
+   },
+   "rarity": "common"
+  },
+  {
+   "file": "ui/ui_card_frame_epic_v1.png",
+   "size": [
+    512,
+    716
+   ],
+   "nine_slice": {
+    "left": 40,
+    "top": 40,
+    "right": 40,
+    "bottom": 40
+   },
+   "rarity": "epic"
+  },
+  {
+   "file": "ui/ui_card_frame_legendary_v1.png",
+   "size": [
+    512,
+    716
+   ],
+   "nine_slice": {
+    "left": 40,
+    "top": 40,
+    "right": 40,
+    "bottom": 40
+   },
+   "rarity": "legendary"
+  },
+  {
+   "file": "ui/ui_card_frame_rare_v1.png",
+   "size": [
+    512,
+    716
+   ],
+   "nine_slice": {
+    "left": 40,
+    "top": 40,
+    "right": 40,
+    "bottom": 40
+   },
+   "rarity": "rare"
+  },
+  {
+   "file": "ui/ui_card_frame_uncommon_v1.png",
+   "size": [
+    512,
+    716
+   ],
+   "nine_slice": {
+    "left": 40,
+    "top": 40,
+    "right": 40,
+    "bottom": 40
+   },
+   "rarity": "uncommon"
+  },
+  {
+   "file": "ui/ui_core_seg_fill_low_v1.png",
+   "size": [
+    28,
+    22
+   ]
+  },
+  {
+   "file": "ui/ui_core_seg_fill_v1.png",
+   "size": [
+    28,
+    22
+   ]
+  },
+  {
+   "file": "ui/ui_core_seg_slot_v1.png",
+   "size": [
+    28,
+    22
+   ]
+  },
+  {
+   "file": "ui/ui_hud_corner_v1.png",
+   "size": [
+    72,
+    72
+   ]
+  },
+  {
+   "file": "ui/ui_hud_plate_score_v1.png",
+   "size": [
+    232,
+    104
+   ]
+  },
+  {
+   "file": "ui/ui_hud_plate_wave_v1.png",
+   "size": [
+    348,
+    36
+   ]
+  },
+  {
+   "file": "ui/ui_map_badge_ch1_v1.png",
+   "size": [
+    32,
+    32
+   ]
+  },
+  {
+   "file": "ui/ui_map_badge_ch2_v1.png",
+   "size": [
+    32,
+    32
+   ]
+  },
+  {
+   "file": "ui/ui_map_badge_ch3_v1.png",
+   "size": [
+    32,
+    32
+   ]
+  },
+  {
+   "file": "ui/ui_map_badge_ch4_v1.png",
+   "size": [
+    32,
+    32
+   ]
+  },
+  {
+   "file": "ui/ui_map_node_core_v1.png",
+   "size": [
+    112,
+    112
+   ]
+  },
+  {
+   "file": "ui/ui_map_node_halo_v1.png",
+   "size": [
+    80,
+    80
+   ]
+  },
+  {
+   "file": "ui/ui_map_node_locked_v1.png",
+   "size": [
+    64,
+    64
+   ]
+  },
+  {
+   "file": "ui/ui_map_node_v1.png",
+   "size": [
+    64,
+    64
+   ]
+  },
+  {
+   "file": "ui/ui_panel_9slice_v1.png",
+   "size": [
+    512,
+    512
+   ],
+   "nine_slice": {
+    "left": 32,
+    "top": 32,
+    "right": 32,
+    "bottom": 32
+   }
+  },
+  {
+   "file": "ui/ui_panel_alert_9slice_v1.png",
+   "size": [
+    512,
+    512
+   ]
+  },
+  {
+   "file": "ui/ui_wave_cap_v1.png",
+   "size": [
+    8,
+    18
+   ]
+  },
+  {
+   "file": "ui/ui_wave_fill_elite_v1.png",
+   "size": [
+    300,
+    10
+   ]
+  },
+  {
+   "file": "ui/ui_wave_fill_v1.png",
+   "size": [
+    300,
+    10
+   ]
+  },
+  {
+   "file": "ui/ui_wave_track_v1.png",
+   "size": [
+    300,
+    10
+   ]
+  },
+  {
+   "file": "ui/keyart_stage_bg_v1.png",
+   "size": [
+    1920,
+    1080
+   ]
+  }
+ ]
 }

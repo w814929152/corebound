@@ -312,6 +312,14 @@
   统一经 `scripts/ui/ui_style.gd` 字体注册表取用（`font_body` / `font_medium` /
   `font_display` / `font_num`），工程级兜底 = `project.godot` `gui/theme/custom_font`。
   🔴 红线与调色板同管法：**不得在界面里直接 `load()` 字体或二次发明字重**。
+- 🆕 **字重抬档（2026-11-08，用户反馈「文本看不清」）**：body 400→**500**、
+  medium 500→**700**、num 400→**700**、display 900 不变；工程级兜底
+  `theme/custom_font` 同步从裸 ttf（400）改为 `assets/fonts/notosans_sc_body.tres`（500）。
+- 🔴 **大坑（2026-11-08 实机墨量探针 `tools/probe_font_weight.gd` 实测）**：
+  `FontVariation.variation_opentype` 的键**必须是 OpenType tag 整数**——
+  String 键（如 `{"wght": 700}`）会被 Godot **静默忽略**，字重永远落在默认 400。
+  正确写法：`{2003265652: 700}`（= `TextServer.name_to_tag("wght")`）。
+  此前注册表（2026-11-07 接入）一直因本问题全档渲染为 400，即「看不清」的根因。
 
 ### 5.5 锚点 5 · 卡牌 = 机械蓝图（Cards as Blueprints）
 

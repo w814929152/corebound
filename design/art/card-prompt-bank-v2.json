@@ -1,0 +1,592 @@
+{
+ "bank": "card-prompt-bank-v2",
+ "version": "v2",
+ "date": "2026-11-08",
+ "source": "scripts/data/card_packs.gd v0.4 (8 packs x 10 = 80 building cards)",
+ "anchor_ref": "design/art/card-illustration-style-v1.md 2.2 (v4 medium density)",
+ "supersedes": "card-prompt-bank-v1.json (v1 free-form object, too dense)",
+ "spec": {
+  "density_version": "v4 (medium: 6-8 shape blocks)",
+  "size": "1024x1024 generate -> keyout -> fit into 460x460 card safe area",
+  "view": "strict frontal elevation, symmetrical (a few cards allow a 20-45 degree functional element)",
+  "shape_blocks": "6-8 per card",
+  "structure_segments": "2-3 stacked segments, <=2 horizontal seams",
+  "feature_rule": "exactly ONE functional part, its orientation spelled out in words (horizontal/vertical/downward/angle)",
+  "accent_rule": "1 main accent block + at most 2 small same-hue accents; single hue only",
+  "palette": "dark navy + 2 muted steel greys + 1 accent = 4 tones max",
+  "background": "solid flat #141726, optional single-layer grid under 6% contrast, no frame border",
+  "negatives": "no gradient, no shading, no glow, no halo, no lens flare, no painterly texture, no stipple, no hatching, no gear trains, no rivet rows, no layered armour, no circuitry, no ornament, no small greebles, no text, no numbers, no watermark, no logo, no characters, no scene, no environment, not isometric, not 3/4, not top-down, not a chess piece, not a lighthouse"
+ },
+ "accent_by_pack": {
+  "core": "#3ED0E8",
+  "cinder": "#FF6B3D",
+  "rime": "#3ED0E8",
+  "pierce": "#3EA8FF",
+  "arc": "#FFC94A",
+  "sunder": "#9AA5B1",
+  "hex": "#B45CFF",
+  "true": "#7A5CFF"
+ },
+ "cards": {
+  "Foundry": {
+   "pack": "core",
+   "accent": "#FFC94A",
+   "structure": "a squat wide furnace block on a low stepped plinth, with a rounded dome cap",
+   "feature": "ONE strictly horizontal rectangular tap slot on the front face near the base",
+   "accent_block": "a molten metal pool filling the tap slot, plus one small round port above it"
+  },
+  "Arrow": {
+   "pack": "core",
+   "accent": "#3ED0E8",
+   "structure": "a tall tapered shaft on a wide stepped plinth, capped by a small block with a narrow horizontal window",
+   "feature": "ONE strictly horizontal ballista arm near the top, with a short vertical bowstring strut beneath it, perfectly level",
+   "accent_block": "the horizontal arm, plus a round energy port on the plinth face"
+  },
+  "Cannon": {
+   "pack": "core",
+   "accent": "#3ED0E8",
+   "structure": "a wide squat gun turret seen straight from the front: a broad rectangular gun shield standing vertically on a stepped base",
+   "feature": "ONE big circular gun muzzle in the centre of the shield, drawn as two concentric circles, facing the viewer directly",
+   "accent_block": "the inner muzzle circle only"
+  },
+  "Frost": {
+   "pack": "core",
+   "accent": "#3ED0E8",
+   "structure": "a slim hexagonal column on a low base, with a wider hexagonal crown, body in mid steel grey, clearly lighter than the background",
+   "feature": "ONE large bright vertical coolant slot running down the centre of the crown, the brightest and most saturated cyan area in the image",
+   "accent_block": "the coolant slot, plus a thin band at the column base"
+  },
+  "Scout": {
+   "pack": "core",
+   "accent": "#FFC94A",
+   "structure": "a tall thin mast on a small plinth, capped with a wide flat plate",
+   "feature": "ONE strictly horizontal optical bar mounted just above the flat plate",
+   "accent_block": "the optical bar lens only"
+  },
+  "Kinetic": {
+   "pack": "core",
+   "accent": "#3ED0E8",
+   "structure": "a heavy anvil block on a wide stepped plinth",
+   "feature": "ONE strictly horizontal piston bar above the anvil, with two vertical hammer rods hanging from its ends",
+   "accent_block": "a small steel prism set in the anvil front face"
+  },
+  "Ranger": {
+   "pack": "core",
+   "accent": "#3ED0E8",
+   "structure": "a tall slim shaft on a low base, capped with a narrow box head",
+   "feature": "ONE very long horizontal rifle barrel through the box head, perfectly level",
+   "accent_block": "a small sight disc on the box head front"
+  },
+  "Sentry": {
+   "pack": "core",
+   "accent": "#C8D2DC",
+   "structure": "a wide squat pylon with a flared skirt base, body in dark steel grey",
+   "feature": "ONE large flat hexagon plate mounted vertically on the front of the pylon, facing the viewer directly",
+   "accent_block": "the hexagon centre, in bright polished steel #C8D2DC — clearly lighter than the body"
+  },
+  "Catapult": {
+   "pack": "core",
+   "accent": "#FF6B3D",
+   "structure": "a wide chassis block on a low track base, seen straight from the front, both sides symmetric",
+   "feature": "ONE straight tapered throwing beam standing perfectly vertical in the exact centre, with a U-shaped stone basket at its top",
+   "accent_block": "the basket interior"
+  },
+  "Harrier": {
+   "pack": "core",
+   "accent": "#3ED0E8",
+   "structure": "a squat wide body on a small base, seen straight from the front, no face-like layout, no eyes, no mouth, not a mask",
+   "feature": "ONE pair of vertical drum launchers standing side by side on top of the body, each drum facing the viewer as a flat circle",
+   "accent_block": "the two drum faces, nothing else"
+  },
+  "Vanguard": {
+   "pack": "cinder",
+   "accent": "#FF6B3D",
+   "structure": "a tall block body with an angled prow, on a low base",
+   "feature": "ONE slanted prow plate across the upper body, angled 20 degrees",
+   "accent_block": "a slit along the prow edge"
+  },
+  "Ember": {
+   "pack": "cinder",
+   "accent": "#FF6B3D",
+   "structure": "a short cylindrical brazier on a tripod base",
+   "feature": "ONE vertical flame core column rising from the brazier mouth",
+   "accent_block": "the flame core only"
+  },
+  "Blaze": {
+   "pack": "cinder",
+   "accent": "#FF6B3D",
+   "structure": "a wide furnace block with a domed top",
+   "feature": "ONE wide open combustion mouth, strictly horizontal, across the mid body",
+   "accent_block": "the mouth interior"
+  },
+  "Cinder": {
+   "pack": "cinder",
+   "accent": "#FF6B3D",
+   "structure": "a slim tall shaft on a low base, tapering to a narrow tip",
+   "feature": "ONE strict vertical nozzle at the very top",
+   "accent_block": "the nozzle mouth"
+  },
+  "Pyre": {
+   "pack": "cinder",
+   "accent": "#FF6B3D",
+   "structure": "a stacked basket tower of three tiers on a low plinth",
+   "feature": "ONE strict vertical fuse line running up the front face",
+   "accent_block": "the fuse line only"
+  },
+  "Maul": {
+   "pack": "cinder",
+   "accent": "#FF6B3D",
+   "structure": "a wide squat body on a heavy plinth",
+   "feature": "ONE massive horizontal hammer head suspended above the body, with two vertical guide rods",
+   "accent_block": "the hammer head face"
+  },
+  "Furnace": {
+   "pack": "cinder",
+   "accent": "#FF6B3D",
+   "structure": "a tall blast furnace drum with a domed firebox top",
+   "feature": "ONE horizontal tuyere pipe crossing the lower body",
+   "accent_block": "a slit in the firebox dome"
+  },
+  "Wildfire": {
+   "pack": "cinder",
+   "accent": "#FF6B3D",
+   "structure": "a squat canister body on a low base",
+   "feature": "ONE strictly horizontal nozzle bar across the top, four nozzles in a row",
+   "accent_block": "the four nozzle mouths"
+  },
+  "Ashen": {
+   "pack": "cinder",
+   "accent": "#9AA5B1",
+   "structure": "a short wide mortar body on a low base",
+   "feature": "ONE short thick barrel angled upward at 30 degrees",
+   "accent_block": "a small cracked vent on the body face"
+  },
+  "Hellfire": {
+   "pack": "cinder",
+   "accent": "#FF6B3D",
+   "structure": "a tall slim body with a tapered crown",
+   "feature": "ONE extremely long horizontal lance barrel passing through the crown",
+   "accent_block": "the barrel core only"
+  },
+  "Drillmaster": {
+   "pack": "rime",
+   "accent": "#9AA5B1",
+   "structure": "a raised podium block on a wide stepped base",
+   "feature": "ONE strict vertical horn post standing on the podium",
+   "accent_block": "a band across the podium face"
+  },
+  "Icicle": {
+   "pack": "rime",
+   "accent": "#3ED0E8",
+   "structure": "a slim column under a wide flat canopy",
+   "feature": "ONE row of downward-pointing spikes hanging under the canopy rim",
+   "accent_block": "the spike row"
+  },
+  "Glacier": {
+   "pack": "rime",
+   "accent": "#3ED0E8",
+   "structure": "a faceted ice monolith of three stacked segments on a low base",
+   "feature": "ONE chisel-shaped crown standing at the top, its cutting edge pointing upward",
+   "accent_block": "the crown face"
+  },
+  "Hail": {
+   "pack": "rime",
+   "accent": "#3ED0E8",
+   "structure": "a tripod frame under a small flat cap",
+   "feature": "ONE strictly horizontal bar holding three open spherical dispensers",
+   "accent_block": "the three dispenser mouths"
+  },
+  "Permafrost": {
+   "pack": "rime",
+   "accent": "#3ED0E8",
+   "structure": "a wide frozen ground plate with a central column",
+   "feature": "ONE strict vertical frost column standing above the plate",
+   "accent_block": "a band near the column base"
+  },
+  "Purity": {
+   "pack": "rime",
+   "accent": "#7A5CFF",
+   "structure": "a slim vertical ring frame on a low base",
+   "feature": "ONE strict vertical light slot through the ring centre",
+   "accent_block": "the slot only"
+  },
+  "Snowfall": {
+   "pack": "rime",
+   "accent": "#3ED0E8",
+   "structure": "a wide dome ceiling on a slim column",
+   "feature": "ONE row of hanging icicles under the dome rim",
+   "accent_block": "a small vent at the dome top"
+  },
+  "Shard": {
+   "pack": "rime",
+   "accent": "#3ED0E8",
+   "structure": "a low launch frame on a wide base",
+   "feature": "ONE strictly horizontal rail carrying three upright ice darts",
+   "accent_block": "the three dart tips"
+  },
+  "Whiteout": {
+   "pack": "rime",
+   "accent": "#3ED0E8",
+   "structure": "a circular housing disc on a short stand",
+   "feature": "ONE large fan blade crossing the disc face diagonally",
+   "accent_block": "the hub only"
+  },
+  "Avalanche": {
+   "pack": "rime",
+   "accent": "#3ED0E8",
+   "structure": "a broad squat mortar body on a low base",
+   "feature": "ONE wide short barrel angled upward at 40 degrees",
+   "accent_block": "the muzzle interior"
+  },
+  "Martyr": {
+   "pack": "pierce",
+   "accent": "#9AA5B1",
+   "structure": "a solid steel plinth block",
+   "feature": "ONE broken spear planted vertically with a 10 degree tilt",
+   "accent_block": "the break face"
+  },
+  "Lance": {
+   "pack": "pierce",
+   "accent": "#3EA8FF",
+   "structure": "an extremely tall thin spire on a wide tripod base",
+   "feature": "ONE needle point at the very top, pointing straight up",
+   "accent_block": "a band at the spire base"
+  },
+  "Javelin": {
+   "pack": "pierce",
+   "accent": "#3EA8FF",
+   "structure": "a slim gantry frame on a low base",
+   "feature": "ONE strictly horizontal rack holding three parallel spears",
+   "accent_block": "the three spear tips"
+  },
+  "Ballista": {
+   "pack": "pierce",
+   "accent": "#3EA8FF",
+   "structure": "a wide box frame on a stepped base",
+   "feature": "ONE strictly horizontal bow arm pair across the frame, with a taut cable",
+   "accent_block": "the cable only"
+  },
+  "Sniper": {
+   "pack": "pierce",
+   "accent": "#3EA8FF",
+   "structure": "a tall slim body on a low base",
+   "feature": "ONE extremely long horizontal barrel at the top, perfectly level",
+   "accent_block": "a small dial disc on the body"
+  },
+  "Arcane": {
+   "pack": "pierce",
+   "accent": "#B45CFF",
+   "structure": "an obsidian obelisk of three stacked segments",
+   "feature": "ONE floating diamond crystal above the tip",
+   "accent_block": "the crystal only"
+  },
+  "Longbow": {
+   "pack": "pierce",
+   "accent": "#3EA8FF",
+   "structure": "a tall slim frame on a low base",
+   "feature": "ONE tall vertical bow limb with an asymmetric curve, and a taut cable",
+   "accent_block": "the cable line"
+  },
+  "Needle": {
+   "pack": "pierce",
+   "accent": "#3EA8FF",
+   "structure": "a slim column on a small base",
+   "feature": "ONE pair of parallel vertical lance guides at the top",
+   "accent_block": "the guide tips"
+  },
+  "Hemorrhage": {
+   "pack": "pierce",
+   "accent": "#FF2E4E",
+   "structure": "a squat head block on a narrow shaft",
+   "feature": "ONE row of downward barbed spikes under the head",
+   "accent_block": "the spike row"
+  },
+  "Impaler": {
+   "pack": "pierce",
+   "accent": "#3EA8FF",
+   "structure": "a heavy iron yoke on a wide base",
+   "feature": "ONE strictly horizontal bar carrying three upward spear tips",
+   "accent_block": "the three tips"
+  },
+  "Thunder": {
+   "pack": "arc",
+   "accent": "#FFC94A",
+   "structure": "a stepped ziggurat body of three tiers",
+   "feature": "ONE tall vertical lightning rod on the top tier",
+   "accent_block": "the rod tip"
+  },
+  "Tesla": {
+   "pack": "arc",
+   "accent": "#FFC94A",
+   "structure": "a slim column on a low base",
+   "feature": "ONE stack of three horizontal torus rings with a sphere resting above",
+   "accent_block": "the sphere only"
+  },
+  "Bolt": {
+   "pack": "arc",
+   "accent": "#FFC94A",
+   "structure": "a compact housing on a low base",
+   "feature": "ONE pair of vertical electrodes with a horizontal gap between them",
+   "accent_block": "the gap zone"
+  },
+  "Storm": {
+   "pack": "arc",
+   "accent": "#FFC94A",
+   "structure": "a wide coil drum on a low base",
+   "feature": "ONE fan of four conductor prongs spreading upward",
+   "accent_block": "the four prong tips"
+  },
+  "Arc": {
+   "pack": "arc",
+   "accent": "#FFC94A",
+   "structure": "a slim pylon on a stepped base",
+   "feature": "ONE large open ring emitter at the top",
+   "accent_block": "the ring inner edge"
+  },
+  "Spark": {
+   "pack": "arc",
+   "accent": "#FFC94A",
+   "structure": "a compact box body on a small base",
+   "feature": "ONE short vertical electrode tip at the top",
+   "accent_block": "the tip only"
+  },
+  "Coil": {
+   "pack": "arc",
+   "accent": "#FFC94A",
+   "structure": "a tall column on a low base",
+   "feature": "ONE vertical helix winding around the upper column",
+   "accent_block": "the winding only"
+  },
+  "Overcharge": {
+   "pack": "arc",
+   "accent": "#FFC94A",
+   "structure": "a wide base block with a bulging body",
+   "feature": "ONE large spherical capacitor bulb at the top",
+   "accent_block": "the bulb interior"
+  },
+  "Thunderhead": {
+   "pack": "arc",
+   "accent": "#FFC94A",
+   "structure": "a squat column under a wide cloud-like dome of three stacked plates",
+   "feature": "ONE row of downward electrode teeth under the dome",
+   "accent_block": "the tooth tips"
+  },
+  "Circuit": {
+   "pack": "arc",
+   "accent": "#FFC94A",
+   "structure": "a flat vertical slab body on a low base",
+   "feature": "ONE strictly horizontal relay bar across the slab face",
+   "accent_block": "the bar only"
+  },
+  "Drummer": {
+   "pack": "sunder",
+   "accent": "#FFC94A",
+   "structure": "a steel frame on a wide base",
+   "feature": "ONE large horizontal drum mounted inside the frame",
+   "accent_block": "the drum face"
+  },
+  "Sunder": {
+   "pack": "sunder",
+   "accent": "#9AA5B1",
+   "structure": "a heavy block body on a wide shockwave plate",
+   "feature": "ONE split anvil head at the top, in two halves",
+   "accent_block": "the split seam"
+  },
+  "Breaker": {
+   "pack": "sunder",
+   "accent": "#9AA5B1",
+   "structure": "a thick column on a low base",
+   "feature": "ONE thick drill mandrel pointing straight down at the front of the body",
+   "accent_block": "the mandrel tip"
+  },
+  "Shatter": {
+   "pack": "sunder",
+   "accent": "#9AA5B1",
+   "structure": "a narrow body on a small base",
+   "feature": "ONE crown of upward fracture spikes at the top",
+   "accent_block": "the spike tips"
+  },
+  "Ruin": {
+   "pack": "sunder",
+   "accent": "#9AA5B1",
+   "structure": "a massive block body between two vertical guide rails",
+   "feature": "ONE single ram block suspended between the rails",
+   "accent_block": "the ram face"
+  },
+  "Quake": {
+   "pack": "sunder",
+   "accent": "#FFC94A",
+   "structure": "a wide hexagonal base plate with a short column",
+   "feature": "ONE row of three downward hammer cones under the column",
+   "accent_block": "the three cone tips"
+  },
+  "Rend": {
+   "pack": "sunder",
+   "accent": "#FF2E4E",
+   "structure": "a slim body on a low base",
+   "feature": "ONE fan of hooked claw blades pointing downward from the upper body",
+   "accent_block": "the claw tips"
+  },
+  "Crusher": {
+   "pack": "sunder",
+   "accent": "#9AA5B1",
+   "structure": "a squat block body on a wide base",
+   "feature": "ONE pair of opposing jaw plates with a horizontal ram between them",
+   "accent_block": "the jaw inner faces"
+  },
+  "Bastion": {
+   "pack": "sunder",
+   "accent": "#9AA5B1",
+   "structure": "a squat fortress cap with merlon teeth on a wide base",
+   "feature": "ONE strictly horizontal shield band across the mid body",
+   "accent_block": "the shield band"
+  },
+  "Siege": {
+   "pack": "sunder",
+   "accent": "#FF6B3D",
+   "structure": "a wide chassis block on a low base",
+   "feature": "ONE long sling arm angled upward at 40 degrees",
+   "accent_block": "the sling cup"
+  },
+  "Omen": {
+   "pack": "hex",
+   "accent": "#B45CFF",
+   "structure": "a bone-like arch frame on a low pedestal",
+   "feature": "ONE floating eye-shaped sigil inside the arch",
+   "accent_block": "the sigil pupil only"
+  },
+  "Hex": {
+   "pack": "hex",
+   "accent": "#B45CFF",
+   "structure": "an obsidian pedestal of three stacked segments",
+   "feature": "ONE floating hexagram sigil above the pedestal",
+   "accent_block": "the sigil only"
+  },
+  "Rune": {
+   "pack": "hex",
+   "accent": "#B45CFF",
+   "structure": "three stacked offset slabs",
+   "feature": "ONE strict vertical carved glyph slot on the front slab",
+   "accent_block": "the glyph slot"
+  },
+  "Curse": {
+   "pack": "hex",
+   "accent": "#B45CFF",
+   "structure": "a slim column on a low base with one horizontal arm",
+   "feature": "ONE needle hanging downward from the arm tip",
+   "accent_block": "the needle tip"
+  },
+  "Plague": {
+   "pack": "hex",
+   "accent": "#4FD98A",
+   "structure": "a bulbous flask body on a low base",
+   "feature": "ONE strictly horizontal row of three vent nozzles at the base",
+   "accent_block": "the three nozzle mouths"
+  },
+  "Wither": {
+   "pack": "hex",
+   "accent": "#4FD98A",
+   "structure": "a hollow cage column on a wide basin",
+   "feature": "ONE strict vertical ichor column standing inside the cage",
+   "accent_block": "the ichor column"
+  },
+  "Executioner": {
+   "pack": "hex",
+   "accent": "#FF2E4E",
+   "structure": "a tall guillotine frame on a wide base",
+   "feature": "ONE heavy cleaver blade raised at the top, angled 20 degrees",
+   "accent_block": "the blade edge"
+  },
+  "Blight": {
+   "pack": "hex",
+   "accent": "#4FD98A",
+   "structure": "a corroded lattice dome on a low column",
+   "feature": "ONE row of vertical hanging chains under the dome rim",
+   "accent_block": "the chain ends"
+  },
+  "Malison": {
+   "pack": "hex",
+   "accent": "#B45CFF",
+   "structure": "a slim column carrying a spiked collar ring",
+   "feature": "ONE small bell hanging from the collar centre",
+   "accent_block": "the bell only"
+  },
+  "Hexer": {
+   "pack": "hex",
+   "accent": "#B45CFF",
+   "structure": "a stone cradle on a low base",
+   "feature": "ONE horizontal row of three floating rune cubes",
+   "accent_block": "the cube faces"
+  },
+  "Null": {
+   "pack": "true",
+   "accent": "#7A5CFF",
+   "structure": "an empty square frame on a low plinth",
+   "feature": "ONE empty square opening in the frame centre, with nothing inside it",
+   "accent_block": "the frame inner edge only"
+  },
+  "Oblivion": {
+   "pack": "true",
+   "accent": "#B45CFF",
+   "structure": "a tall rectangular monolith of three stacked segments",
+   "feature": "ONE square hole cut through the upper third",
+   "accent_block": "the hole interior"
+  },
+  "Void": {
+   "pack": "true",
+   "accent": "#7A5CFF",
+   "structure": "a slim mast on a low base",
+   "feature": "ONE inverted pyramid hanging under the mast crown, apex pointing downward",
+   "accent_block": "the pyramid face"
+  },
+  "Exile": {
+   "pack": "true",
+   "accent": "#7A5CFF",
+   "structure": "a barred gate frame on a low base",
+   "feature": "ONE pair of vertical bars with a single horizontal crossbar",
+   "accent_block": "the crossbar only"
+  },
+  "Rift": {
+   "pack": "true",
+   "accent": "#7A5CFF",
+   "structure": "a tall block body split into two offset halves",
+   "feature": "ONE strict vertical slit aperture between the halves",
+   "accent_block": "the slit interior"
+  },
+  "Necro": {
+   "pack": "true",
+   "accent": "#7A5CFF",
+   "structure": "a bone totem column on a wide base",
+   "feature": "ONE horizontal ring of three spirit lanterns around the column",
+   "accent_block": "the lantern faces"
+  },
+  "Eraser": {
+   "pack": "true",
+   "accent": "#7A5CFF",
+   "structure": "a tall body with a wide flat head",
+   "feature": "ONE strictly horizontal beam edge at the head front, with a stepped dissolving edge",
+   "accent_block": "the beam edge only"
+  },
+  "Obliterator": {
+   "pack": "true",
+   "accent": "#B45CFF",
+   "structure": "a heavy torso block on a wide base",
+   "feature": "ONE pair of blunt fist rams side by side at the front",
+   "accent_block": "the two fist faces"
+  },
+  "Soulpiercer": {
+   "pack": "true",
+   "accent": "#7A5CFF",
+   "structure": "an extremely thin tall lance column on a small base",
+   "feature": "ONE strict vertical hollow bore running up the lance",
+   "accent_block": "the bore mouth"
+  },
+  "Wraith": {
+   "pack": "true",
+   "accent": "#7A5CFF",
+   "structure": "a thin mast with a draped shroud plate",
+   "feature": "ONE hooded mask plate on the mast, facing forward",
+   "accent_block": "the mask slit"
+  }
+ }
+}
