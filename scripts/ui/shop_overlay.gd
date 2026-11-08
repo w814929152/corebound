@@ -45,7 +45,9 @@ const C_WARN := Color(0.86, 0.20, 0.20, 1.0)   # E5：刷新买不起 → 价格
 #      高度**固定**（三个位完全一致 → X3），不在运行时随文字长短伸缩。
 #   🔴 X3：仍由**这一个常量**决定，三位共用；`tests/run_slice4_scene_smoke.gd` 的
 #      SLOT_W/SLOT_H 必须同步（该冒烟按像素反查三个位）。
-const SLOT_SIZE := Vector2(168.0, 352.0)       # 🔴 三个位完全一致（X3）
+#   🆕 352 → 424（2026-11-08）：卡面新增**插画带**（art/2d/cards 批次②③，恒 72px 高）——
+#      keyout 透明底插画经 `_Style.card_art()` 接入，缺失时整带隐藏（降级为无图版式）。
+const SLOT_SIZE := Vector2(168.0, 424.0)       # 🔴 三个位完全一致（X3）
 ## 描述块行数（恒 3 行 → 三个位等高同构）；
 ## 16px 字号实测行高 25px（Godot 默认字体 ascent+descent），3 行 = 75px。
 const DESC_LINES := 3
@@ -63,6 +65,7 @@ var _mode_tag: Label
 var _slots: Array = []        # Array[PanelContainer]
 var _slot_chrome: Array = []  # 🆕 蓝图角标刻线（§5.5）：Array[Control]，accent 随可购性重绘
 var _slot_name: Array = []    # Array[Label]
+var _slot_art: Array = []     # 🆕 插画带（art/2d/cards）：Array[TextureRect]，刷新时按卡名填充
 var _slot_tag: Array = []     # 🆕 Tag 电路符号芯片（§5.5）：Array[Label]
 var _slot_rarity: Array = []  # 🆕 稀有度角标 ▲（art-bible §2.3 · P1-6）：Array[Label]
 var _slot_kind: Array = []
@@ -351,6 +354,19 @@ func _make_slot(_i: int) -> PanelContainer:
 	name_row.add_child(tag_chip)
 	_slot_tag.append(tag_chip)
 
+	# 🆕 插画带（2026-11-08 批次②③）：460 安全区透明底插画缩放进恒 72px 高的横带。
+	#    资产缺失 / headless 未导入 → card_art() 返回 null → 整带隐藏（版式回落无图）。
+	#    🔴 构建时只建空带：卡名在 `_refresh_shop` 刷新时才落到槽位（此处 `nm` 是占位
+	#    Label，不是卡名字符串），纹理由刷新链路按卡名填充（`_slot_art`）。
+	var art := TextureRect.new()
+	art.custom_minimum_size = Vector2(0.0, 72.0)
+	art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	art.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	art.visible = false
+	vb.add_child(art)
+	_slot_art.append(art)
+
 	# 卡种（L2 常规）
 	var kind := _Style.label("—", _Style.FONT_MIN, _Style.C_TEXT_DIM)
 	kind.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -495,6 +511,7 @@ func _refresh_shop() -> void:
 			_stat_vals[i].text = "--"
 		for i in SLOT_COUNT:
 			_slot_name[i].text = "—"
+			_slot_art[i].visible = false
 			_slot_tag[i].text = ""
 			_slot_rarity[i].text = ""
 			_slot_kind[i].text = "—"
@@ -532,6 +549,7 @@ func _refresh_shop() -> void:
 		var hl: Dictionary = s.get("highlights", {}).get(str(i), {})
 		if nm == "":
 			_slot_name[i].text = "—"
+			_slot_art[i].visible = false
 			_slot_tag[i].text = ""
 			_slot_rarity[i].text = ""
 			_slot_kind[i].text = "此位无卡"
@@ -548,6 +566,10 @@ func _refresh_shop() -> void:
 			_set_chrome_accent(i, "dim")
 		else:
 			_slot_name[i].text = nm
+			# 🆕 插画带按卡名取图：缺失（未出图 / headless）→ 隐藏整带，版式回落
+			var art_tex := _Style.card_art(nm)
+			_slot_art[i].texture = art_tex
+			_slot_art[i].visible = art_tex != null
 			# 🆕 稀有度（§2.3 · P1-6）：边框色/粗细 + ▲ 角标数 —— 双通道，不只靠颜色。
 			#    稀有度由 card_text 只读派生自抽取权重（SSOT），改权重卡面自动跟随。
 			var rar := _CardText.rarity(nm)

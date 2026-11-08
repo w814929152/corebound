@@ -34,6 +34,12 @@ const _RunMeta := preload("res://scripts/gameplay/run_meta.gd")
 
 const LAYER := 200
 
+## 🆕 keyart v1 主菜单背景：**menu 低强度档**（30-40% 曝光，为左侧标题/按钮留可读性）。
+##    2026-11-08 用户拍板：从 hero 派生底（keyart_menu_hero_v1）换回 menu 档
+##    （hero 系派生件保留：keyart_menu_hero_v1 备用 / keyart_stage_bg_v1 用于选关航图）。
+##    资产缺失 → 降级回程序化遗迹绘制
+const KEYART_BG_PATH := "res://art/2d/ui/keyart_menu_bg_v1.png"
+
 const PAGE_MENU := 0
 const PAGE_LIBRARY := 1
 
@@ -45,6 +51,7 @@ const LIB_TOP := 148.0
 
 var _built: bool = false
 var _page: int = PAGE_MENU
+var _keyart: bool = false        # keyart 贴图是否生效（决定 Backdrop 是否让位）
 
 var _menu_page: Control = null
 var _library_page: Control = null
@@ -96,6 +103,17 @@ func _build() -> void:
 	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	bg.mouse_filter = Control.MOUSE_FILTER_STOP     # 吃掉点击，防止穿透到战场
 	add_child(bg)
+
+	# 🆕 keyart v1 背景层（keyart-style-v1.md §4）：贴图置底、覆盖裁切；
+	#    生效时 Backdrop 让位（贴图已含遗迹构图，叠加会双重绘制）。
+	if ResourceLoader.exists(KEYART_BG_PATH):
+		var kt := TextureRect.new()
+		kt.texture = load(KEYART_BG_PATH)
+		kt.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+		kt.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		kt.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		add_child(kt)
+		_keyart = true
 
 	var bd := Backdrop.new()
 	bd.host = self
@@ -351,10 +369,28 @@ func _make_card(pack_id: String, nm: String) -> Control:
 	pc.add_theme_stylebox_override("panel", _Style.card_blueprint("normal", rar))
 	pc.mouse_filter = Control.MOUSE_FILTER_IGNORE
 
+	# 🆕 插画（2026-11-08 批次②③）：左侧 96×96 方形安全区缩放。
+	#    资产缺失 / headless 未导入 → card_art() 返回 null → 降级为纯文字条（占满整行）。
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	pc.add_child(row)
+	var art_tex := _Style.card_art(nm)
+	if art_tex != null:
+		var art := TextureRect.new()
+		art.texture = art_tex
+		art.custom_minimum_size = Vector2(96.0, 96.0)
+		art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		art.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		row.add_child(art)
+
 	var v := VBoxContainer.new()
 	v.add_theme_constant_override("separation", 2)
+	v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	v.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	v.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	pc.add_child(v)
+	row.add_child(v)
 
 	var top := HBoxContainer.new()
 	top.add_theme_constant_override("separation", 6)
@@ -526,6 +562,8 @@ func _unhandled_input(event: InputEvent) -> void:
 #  背景绘制（核心遗迹：断裂防线 + 能量导线 + 来袭剪影，零 RNG）
 # ---------------------------------------------------------------------------
 func _paint_backdrop(ci: Control) -> void:
+	if _keyart:
+		return    # keyart 贴图已含完整构图，程序化遗迹仅在贴图缺失时兜底
 	var sz := ci.size
 	if sz.x < 2.0 or sz.y < 2.0:
 		sz = Vector2(1920.0, 1080.0)

@@ -251,6 +251,28 @@ static func pack_emblem(pack_id: String) -> Texture2D:
 	return icon("ic_pack_" + pack_id + "_v1")
 
 
+# ---------------------------------------------------------------------------
+#  卡面插画注册表（art/2d/cards · 2026-11-08 批次②③）：卡名 → card_<name>_v1_460
+# ---------------------------------------------------------------------------
+## 🔴 与 icon() 同一管法：lazy load + 判空兜底（资产缺失 / 未导入时返回 null，
+##    调用方降级为无图版式 —— 宁可无图也不能让 preload 炸掉 UI，含 headless 测试）。
+##    插画是 460×460 安全区透明底（keyout 产物），由调用方用 KEEP_ASPECT_CENTERED 缩放。
+const CARD_ART_DIR := "res://art/2d/cards/"
+
+static var _card_art_cache: Dictionary = {}
+
+static func card_art(card_name: String) -> Texture2D:
+	var key := card_name.to_lower()
+	if _card_art_cache.has(key):
+		return _card_art_cache[key]
+	var path := CARD_ART_DIR + "card_%s_v1_460.png" % key
+	var tex: Texture2D = null
+	if ResourceLoader.exists(path):
+		tex = load(path)
+	_card_art_cache[key] = tex
+	return tex
+
+
 ## 内嵌槽（预算条轨道 / 血条底槽）
 static func inset() -> StyleBoxFlat:
 	var sb := _base(Color(0.055, 0.063, 0.106, 1.0), Color(C_STEEL.r, C_STEEL.g, C_STEEL.b, 0.30),
@@ -429,11 +451,16 @@ static func _scale_to(b: Button, k: float) -> void:
 # ---------------------------------------------------------------------------
 #  字体注册表（art-bible §5.4 · 单一来源，与调色板同一管法）
 # ---------------------------------------------------------------------------
+## 🆕 可读性调整（2026-11-08，用户反馈「文本有点看不清」）：全游戏字重整体抬档
+##   · 正文 body：wght 400 → **500**（Medium）
+##   · 按钮/小标题 medium：wght 500 → **700**（Bold）
+##   · 等宽数字 num：JetBrains Mono 默认 400 → **700**（读数更实，等宽不变）
+##   · 展示 display：wght 900 不动（已是最重档）
 ## 🔴 v0.2 缺口修复（2026-11-07）：字体**正式接入**，全工程不再依赖引擎 fallback 字体。
 ##   选型逐字对齐 art-bible §5.4，全部 SIL OFL 授权（商用安全）：
-##   · 展示字体 = 思源黑体同源 Noto Sans SC **Black (wght 900)** —— 波次横幅 / 界面标题
-##   · 正文字体 = Noto Sans SC Regular (wght 400) / Medium (wght 500) —— 描述 / 按钮
-##   · 数字字体 = JetBrains Mono Bold —— **等宽数字**（§5.2「数字必须等宽」；
+##   · 展示字体 = 思源黑体同源 Noto Sans SC 可变字体（`FontVariation` 按 wght 取字重）
+##   · 正文字体 = 同上（wght 见上方「可读性调整」）
+##   · 数字字体 = JetBrains Mono 可变字体 —— **等宽数字**（§5.2「数字必须等宽」；
 ##     积分滚动 / 血量读数 / 卡面价格不再抖动），等宽字形同时服务 §5.5 蓝图风
 ##   🔴 lazy load + 判空兜底：字体文件缺失时返回 null，调用方退回引擎默认 ——
 ##      宁可降级也不能让 preload 把整个 UI（含 headless 测试）炸掉。
@@ -443,6 +470,12 @@ const FONT_PATH_NUM := "res://assets/fonts/JetBrainsMono.ttf"
 static var _font_cjk: Font = null
 static var _font_num: Font = null
 static var _cjk_variants: Dictionary = {}      # wght -> FontVariation（缓存，避免每帧 new）
+static var _num_variation: FontVariation = null
+
+## 🔴 OpenType tag 整数：`variation_opentype` 的键**必须是 tag 整数**（String 键如
+##    "wght" 会被 Godot 静默忽略、字重永远落在默认 400 —— 2026-11-08 实机墨量探针实测）。
+##    "wght" = 0x77676874 = 2003265652（与 TextServer.name_to_tag("wght") 一致）。
+const OT_TAG_WGHT := 2003265652
 
 static func _cjk_font() -> Font:
 	if _font_cjk == null:
@@ -456,14 +489,14 @@ static func _num_font() -> Font:
 	return _font_num
 
 
-## 正文字体（wght 400）。
+## 正文字体（wght 500 —— 2026-11-08 可读性调整，原 400）。
 static func font_body() -> Font:
-	return _cjk_variant(400)
-
-
-## 强调正文字体（wght 500，按钮 / 小标题）。
-static func font_medium() -> Font:
 	return _cjk_variant(500)
+
+
+## 强调正文字体（wght 700 —— 2026-11-08 可读性调整，原 500；按钮 / 小标题）。
+static func font_medium() -> Font:
+	return _cjk_variant(700)
 
 
 ## 展示字体（wght 900，Black）—— 波次横幅 / 大标题 / L0 波次号。
@@ -471,10 +504,16 @@ static func font_display() -> Font:
 	return _cjk_variant(900)
 
 
-## 等宽数字字体（JetBrains Mono Bold）—— 只用于**纯数字**读数。
+## 等宽数字字体（JetBrains Mono wght 700）—— 只用于**纯数字**读数。
 ##   🔴 中文不得走本字体（JBM 无 CJK 字形，会退到系统 fallback 造成混排不齐）。
 static func font_num() -> Font:
-	return _num_font()
+	if _num_font() == null:
+		return null
+	if _num_variation == null:
+		_num_variation = FontVariation.new()
+		_num_variation.base_font = _font_num
+		_num_variation.variation_opentype = {OT_TAG_WGHT: 700}   # 🔴 同上：整数 tag 键
+	return _num_variation
 
 
 static func _cjk_variant(wght: int) -> Font:
@@ -483,7 +522,7 @@ static func _cjk_variant(wght: int) -> Font:
 	if not _cjk_variants.has(wght):
 		var fv := FontVariation.new()
 		fv.base_font = _font_cjk
-		fv.variation_opentype = {"wght": wght}
+		fv.variation_opentype = {OT_TAG_WGHT: wght}   # 🔴 整数 tag 键（String 键会被忽略）
 		_cjk_variants[wght] = fv
 	return _cjk_variants[wght]
 

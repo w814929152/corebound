@@ -52,9 +52,10 @@ renderer/rendering_method.mobile="gl_compatibility"
 [gui]
 
 ; 🔴 字体正式接入（art-bible §5.4 · 2026-11-07）：工程级默认字体 = Noto Sans SC（思源黑体同源 · SIL OFL）。
-;    覆盖所有未走 `ui_style.gd` 注册表的控件（F3 调试 / 引导浮层等）；展示 / 等宽数字
+;    覆盖所有未走 `ui_style.gd` 注册表的控件（F3 调试 / HUD 快捷键提示等）；展示 / 等宽数字
 ;    字重仍由 `ui_style.gd` 的字体注册表按层级显式套用。
-theme/custom_font="res://assets/fonts/NotoSansSC.ttf"
+;    🆕 可读性调整（2026-11-08）：默认字重 400 → 500（FontVariation .tres；400 太细看不清）。
+theme/custom_font="res://assets/fonts/notosans_sc_body.tres"
 
 [physics]
 

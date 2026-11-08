@@ -138,6 +138,21 @@ func _process(delta: float) -> void:
 				_shatter[i] = v
 
 
+## HUD 仪表层贴图缓存（判空降级：缺失时退回 StyleBoxFlat / draw_rect 旧路径）。
+var _tex_cache := {}
+
+
+func _ht(name: String) -> Texture2D:
+	if _tex_cache.has(name):
+		return _tex_cache[name]
+	var path := "res://art/2d/ui/" + name
+	var t: Texture2D = null
+	if ResourceLoader.exists(path):
+		t = load(path) as Texture2D
+	_tex_cache[name] = t
+	return t
+
+
 func _draw() -> void:
 	var vp := get_viewport()
 	if vp == null:
@@ -148,21 +163,30 @@ func _draw() -> void:
 	var y0 := float(vs.y) - BOTTOM_MARGIN - SEG_H
 
 	# 底槽（深色 + 亮色描边 + 圆角，§5.1）
+	#   🆕 段贴图生效时**让位**：每个段自带槽/填充的轮廓，再套一层整块底座会读成
+	#      "双层盒子"（实机截图确认）。贴图缺失时仍走旧底座，画面与改前一致。
+	var t_seg_any := _ht("ui_core_seg_slot_v1.png")
 	var slot := Rect2(x0 - PAD, y0 - PAD, total_w + 2.0 * PAD, SEG_H + 2.0 * PAD)
-	if _box_slot != null:
+	if _box_slot != null and t_seg_any == null:
 		draw_style_box(_box_slot, slot)
 
 	# 分段
 	var frac := clampf(_hp / maxf(1.0, _hp_max), 0.0, 1.0)
 	var filled := int(ceil(frac * float(SEG_COUNT)))
 	var seg_box := _box_seg_low if frac <= 0.25 else _box_seg
+	# 🆕 仪表段贴图（28x22 与 SEG_W/SEG_H 逐像素对齐，缺失时各段自动走旧路径）
+	var t_seg := _ht("ui_core_seg_fill_low_v1.png" if frac <= 0.25 else "ui_core_seg_fill_v1.png")
 	for i in SEG_COUNT:
 		var r := Rect2(x0 + float(i) * (SEG_W + SEG_GAP), y0, SEG_W, SEG_H)
 		if i < filled:
-			if seg_box != null:
+			if t_seg != null:
+				draw_texture(t_seg, r.position)
+			elif seg_box != null:
 				draw_style_box(seg_box, r)
 			else:
 				draw_rect(r, C_FILL_LOW if frac <= 0.25 else C_FILL)
+		elif t_seg_any != null:
+			draw_texture(t_seg_any, r.position)
 		elif _box_seg_empty != null:
 			draw_style_box(_box_seg_empty, r)
 		else:

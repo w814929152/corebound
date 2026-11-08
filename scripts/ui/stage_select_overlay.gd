@@ -22,8 +22,11 @@ extends CanvasLayer
 ## 🔴 art-bible 合规：
 ##   · 全部文字控件走 `ui_style.gd`（字号 ≥16、调色板只用登记色）；
 ##   · 画布图形（环 / 连线 / 节点 / 星点）全部 `draw_*`，不引入任何系统默认控件；
+##   · 资产包 v3（design/art/asset-pack-v3-map.md）：节点 / 核心底座 / 光环 /
+##     章节徽记已贴图化 —— `_ht` 判空降级，缺贴图（headless / 文件丢失）逐项
+##     回落到 `draw_*` 旧路径，画面与贴图前逐位一致；
 ##   · 锁定 / 已通关 / 当前 三态**同时**用形状（锁 / 勾 / 三角）+ 颜色 + 文字表达
-##     （§9.2 红线 1：颜色不得是唯一信息通道）。
+##     （§9.2 红线 1：颜色不得是唯一信息通道）—— 状态符号始终由代码画在节点中心。
 ##
 ## ⚠️ G6：headless 无 `global_script_class_cache` → 不写 `class_name`，调用方 preload。
 ##
@@ -74,6 +77,21 @@ var _detail_meta: Label = null
 var _detail_state: Label = null
 var _panel: PanelContainer = null
 
+## 资产包 v3 纹理缓存（_draw 每帧跑，禁止每帧 load + exists；与 hud.gd 同款）。
+var _tex_cache: Dictionary = {}
+
+
+## 贴图判空加载：缺失（headless 无 .import / 文件丢失）→ null，调用方降级。
+func _ht(fname: String) -> Texture2D:
+	if _tex_cache.has(fname):
+		return _tex_cache[fname]
+	var path := "res://art/2d/ui/" + fname
+	var t: Texture2D = null
+	if ResourceLoader.exists(path):
+		t = load(path) as Texture2D
+	_tex_cache[fname] = t
+	return t
+
 
 ## 画布：只做绘制与输入转发（CanvasLayer 本身不是 CanvasItem，画不了东西）。
 class MapCanvas extends Control:
@@ -114,6 +132,19 @@ func _build() -> void:
 	bg.mouse_filter = Control.MOUSE_FILTER_STOP
 	add_child(bg)
 
+	# 🆕 keyart 背景层（keyart-style-v1.md §4 航图档）：hero 派生底（模糊+降饱和+
+	#    径向渐晕，中心金核呼应 4-1 核心节点）。资产缺失 → 保持上面的纯色底（headless 安全）。
+	#    🔴 铺在最底（bg 之上、_canvas 之下）；STOP 不透传 —— 防止点到空白处落到战场。
+	var keyart: Texture2D = _ht("keyart_stage_bg_v1.png")
+	if keyart != null:
+		var kb := TextureRect.new()
+		kb.texture = keyart
+		kb.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		kb.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+		kb.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		kb.mouse_filter = Control.MOUSE_FILTER_STOP
+		add_child(kb)
+
 	_canvas = MapCanvas.new()
 	_canvas.host = self
 	_canvas.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -144,14 +175,33 @@ func _build_header() -> void:
 	sub.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	head.add_child(sub)
 
-	# 章节目录（颜色 + 章节名双通道；放左上角，不占螺旋节点的位置）
+	# 章节目录（徽记 + 章节名双通道；放左上角，不占螺旋节点的位置）。
+	#   资产包 v3：◆ 字形 → 章节徽记贴图（ui_map_badge_ch1..4）；缺贴图回落文字行。
 	var legend_gap := Control.new()
 	legend_gap.custom_minimum_size = Vector2(0.0, 14.0)
 	legend_gap.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	head.add_child(legend_gap)
 	for ch in range(1, 5):
-		var row := _Style.label("◆  %s" % String(CHAPTER_TITLES.get(ch, "")), CHAPTER_FONT, _chapter_color(ch))
-		row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var tex: Texture2D = _ht("ui_map_badge_ch%d_v1.png" % ch)
+		var row: Control = null
+		if tex != null:
+			var hb := HBoxContainer.new()
+			hb.add_theme_constant_override("separation", 8)
+			hb.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			var ic := TextureRect.new()
+			ic.texture = tex
+			ic.custom_minimum_size = Vector2(20.0, 20.0)
+			ic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+			ic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+			ic.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			hb.add_child(ic)
+			var lab := _Style.label(String(CHAPTER_TITLES.get(ch, "")), CHAPTER_FONT, _chapter_color(ch))
+			lab.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			hb.add_child(lab)
+			row = hb
+		else:
+			row = _Style.label("◆  %s" % String(CHAPTER_TITLES.get(ch, "")), CHAPTER_FONT, _chapter_color(ch))
+			row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		head.add_child(row)
 
 
@@ -519,6 +569,10 @@ func _draw_paths(ci: Control) -> void:
 
 func _draw_nodes(ci: Control, sz: Vector2) -> void:
 	var c := Vector2(sz.x * 0.5, sz.y * 0.47)
+	var node_tex: Texture2D = _ht("ui_map_node_v1.png")
+	var node_lk_tex: Texture2D = _ht("ui_map_node_locked_v1.png")
+	var halo_tex: Texture2D = _ht("ui_map_node_halo_v1.png")
+	var core_tex: Texture2D = _ht("ui_map_node_core_v1.png")
 	for i in range(_CampaignData.STAGE_ORDER.size()):
 		var sid := String(_CampaignData.STAGE_ORDER[i])
 		if not _points.has(sid):
@@ -543,13 +597,37 @@ func _draw_nodes(ci: Control, sz: Vector2) -> void:
 			ring = Color(_Style.C_STEEL.r, _Style.C_STEEL.g, _Style.C_STEEL.b, 0.45)
 			ring_w = 1.6
 
-		# 悬停 / 当前：外侧光环
-		if hov:
-			ci.draw_arc(p, r + 9.0, 0.0, TAU, 48, Color(1, 1, 1, 0.26), 1.5, true)
-		elif cur:
-			ci.draw_arc(p, r + 7.0, 0.0, TAU, 48, Color(col.r, col.g, col.b, 0.40), 1.5, true)
+		# 终局核心底座（资产包 v3）：画在本节点所有层之下，只给 chapter≥4 的节点。
+		#   生成器锚点：底座外接圆 r=50（< 脉冲环 62，不抢脉冲）。
+		if ch >= 4 and core_tex != null:
+			var seat := 2.0 * 50.0
+			ci.draw_texture_rect(core_tex, Rect2(p - Vector2(seat, seat) * 0.5, Vector2(seat, seat)), false)
 
-		_hex(ci, p, r, fill, ring, ring_w)
+		# 悬停 / 当前：外侧光环。贴图环 r=36 == 旧路径 NODE_R+9；悬停 tint 白 α0.65
+		#   （0.40×0.65≈0.26）、当前 tint 章节色（0.40），与旧 draw_arc 同观感。
+		if hov or cur:
+			if halo_tex != null:
+				var hs := (NODE_R + 9.0) * 2.0
+				var tint := Color(1, 1, 1, 0.65) if hov else Color(col.r, col.g, col.b, 1.0)
+				ci.draw_texture_rect(halo_tex, Rect2(p - Vector2(hs, hs) * 0.5, Vector2(hs, hs)), false, tint)
+			elif hov:
+				ci.draw_arc(p, r + 9.0, 0.0, TAU, 48, Color(1, 1, 1, 0.26), 1.5, true)
+			elif cur:
+				ci.draw_arc(p, r + 7.0, 0.0, TAU, 48, Color(col.r, col.g, col.b, 0.40), 1.5, true)
+
+		# 节点本体：贴图生效时按状态走主件（modulate 染章节色 / 辉金）或锁定专件
+		#   （🔴 锁定不能给主件减 alpha —— 整图半透明会让填充透出星点；锁定专件
+		#   缺失时直接落旧 _hex，不用主件凑数）；缺失 → 旧 _hex。
+		var used_tex := false
+		if not unlocked:
+			if node_lk_tex != null:
+				ci.draw_texture_rect(node_lk_tex, Rect2(p - Vector2(r, r), Vector2(r * 2.0, r * 2.0)), false)
+				used_tex = true
+		elif node_tex != null:
+			ci.draw_texture_rect(node_tex, Rect2(p - Vector2(r, r), Vector2(r * 2.0, r * 2.0)), false, ring)
+			used_tex = true
+		if not used_tex:
+			_hex(ci, p, r, fill, ring, ring_w)
 
 		# 状态符号（形状通道）
 		if cleared:

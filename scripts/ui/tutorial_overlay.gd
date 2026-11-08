@@ -29,6 +29,8 @@ const _TSM := preload("res://scripts/engine/time_state_machine.gd")
 ## 🔴 只读卡价表（纯数据脚本，无副作用）：用于「买不起」时的兜底判定，
 ##    避免把 12.0 这类价格魔数写死在 UI 层。
 const _TD := preload("res://scripts/data/tower_data.gd")
+## 🆕 字体注册表（art-bible §5.4）：文案与跳过按钮不再走引擎默认字体（400 太细）。
+const _Style := preload("res://scripts/ui/ui_style.gd")
 
 ## 🔴 层号常量写在本文件（不落 `mvp_config.gd`，保持零 cfg-shape 变更）。
 const LAYER_TUTORIAL := 135
@@ -310,6 +312,9 @@ func _build() -> void:
 	_label = Label.new()
 	_label.add_theme_font_size_override("font_size", FONT_SIZE)
 	_label.add_theme_color_override("font_color", C_TEXT)
+	var lf: Font = _Style.font_body()          # 🆕 §5.4 注册表字体（可读性：400 → 500）
+	if lf != null:
+		_label.add_theme_font_override("font", lf)
 	_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_panel.add_child(_label)
@@ -321,6 +326,9 @@ func _build() -> void:
 	_skip_btn.add_theme_font_size_override("font_size", SKIP_FONT_SIZE)
 	_skip_btn.add_theme_color_override("font_color", C_TEXT_DIM)
 	_skip_btn.add_theme_color_override("font_hover_color", C_TEXT)
+	var sf: Font = _Style.font_medium()        # 🆕 同上（medium 500 → 700）
+	if sf != null:
+		_skip_btn.add_theme_font_override("font", sf)
 	# 🔴 唯一可交互子控件：只有它 STOP，面板与文案一律 IGNORE ⇒ 绝不遮挡塔位点击。
 	_skip_btn.mouse_filter = Control.MOUSE_FILTER_STOP
 	_skip_btn.pressed.connect(_on_skip_pressed)

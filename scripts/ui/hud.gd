@@ -556,14 +556,59 @@ func _fmt_int(n: int) -> String:
 # ---------------------------------------------------------------------------
 #  绘制（HUD chrome：硬币图标 + 波次进度条；文本走 Label 子节点）
 # ---------------------------------------------------------------------------
+## HUD 仪表层贴图缓存（`art/2d/ui/ui_hud_*` / `ui_core_*` / `ui_wave_*`）。
+##   🔴 全部**判空降级**：资产缺失（headless 无 .import）时返回 null，
+##      调用方退回原来的 StyleBoxFlat / draw_rect 路径，画面与改前一致。
+##   🔴 只做"垫底 + 描边"绘制，**不移动任何控件**——布局常量仍是 SSOT。
+var _tex_cache := {}
+
+
+func _ht(name: String) -> Texture2D:
+	if _tex_cache.has(name):
+		return _tex_cache[name]
+	var path := "res://art/2d/ui/" + name
+	var t: Texture2D = null
+	if ResourceLoader.exists(path):
+		t = load(path) as Texture2D
+	_tex_cache[name] = t
+	return t
+
+
+## 在 rect 处镜像绘制贴图（四角角标只用一张资产，靠 transform 翻四个方向）。
+##   🔴 画完必须把 transform 复位，否则同帧后续绘制全被镜像。
+func _tex_flip(t: Texture2D, r: Rect2, fx: bool, fy: bool) -> void:
+	if not fx and not fy:
+		draw_texture_rect(t, r, false)
+		return
+	var origin := Vector2(
+		r.position.x + (r.size.x if fx else 0.0),
+		r.position.y + (r.size.y if fy else 0.0))
+	draw_set_transform(origin, 0.0, Vector2(-1.0 if fx else 1.0, -1.0 if fy else 1.0))
+	draw_texture_rect(t, Rect2(Vector2.ZERO, r.size), false)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+
 func _draw() -> void:
 	var vp := get_viewport()
 	if vp == null:
 		return
 	var vs: Vector2 = vp.get_visible_rect().size
 	var cx := float(vs.x) * 0.5
-	# 🆕 积分卡：深色底 + 细描边（§5.1），让左上 L0 区从战场里"立"起来
-	if _box_score != null:
+	# 🆕 HUD 仪表层（v2 贴图包）：四角角标先画（当骨架，被上面的承托板压住 = "板是装上去的"）
+	var t_corner := _ht("ui_hud_corner_v1.png")
+	if t_corner != null:
+		var cw := t_corner.get_width()
+		var ch := t_corner.get_height()
+		# 左上原图；其余三角靠 draw_set_transform 镜像（省三张资产，方向不出错）
+		_tex_flip(t_corner, Rect2(0.0, 0.0, cw, ch), false, false)
+		_tex_flip(t_corner, Rect2(vs.x - cw, 0.0, cw, ch), true, false)
+		_tex_flip(t_corner, Rect2(0.0, vs.y - ch, cw, ch), false, true)
+		_tex_flip(t_corner, Rect2(vs.x - cw, vs.y - ch, cw, ch), true, true)
+	# 🆕 积分卡：仪表承托板（232x104，按 SCORE_BOX 四周各让 8px 摆放）
+	var t_score := _ht("ui_hud_plate_score_v1.png")
+	if t_score != null:
+		draw_texture(t_score, SCORE_BOX.position - Vector2(8.0, 8.0))
+	elif _box_score != null:
 		draw_style_box(_box_score, SCORE_BOX)
 	# 硬币图标（左上 L0）—— P1 增强：随积分脉冲轻微放大
 	var coin_k := 1.0 + 0.10 * _score_pulse
@@ -585,15 +630,34 @@ func _draw() -> void:
 	# 🆕 加轨道底 + 圆角 + 右端读数；与 WAVE 文字之间留出 20px 呼吸（原仅 8px，视觉贴死）
 	var bx := cx - WAVE_BAR_W * 0.5
 	var by := 90.0
-	if _box_bar_track != null:
+	# 🆕 波次仪表导轨（348x36，槽位在纹理内 (28,23,300,12) → 画在 bx-28, by-23）
+	#    🔴 高度只到 by+13：`已出/总数` 读数的字顶在 by+14，导轨不得盖到读数上。
+	#    🔴 右端只外扩 20px：`_start_wave_btn` 起点在 bx+326，首版 392 宽会压到按钮。
+	var t_rail := _ht("ui_hud_plate_wave_v1.png")
+	if t_rail != null:
+		draw_texture(t_rail, Vector2(bx - 28.0, by - 23.0))
+	var t_track := _ht("ui_wave_track_v1.png")
+	if t_track != null:
+		draw_texture(t_track, Vector2(bx, by))
+	elif _box_bar_track != null:
 		draw_style_box(_box_bar_track, Rect2(bx, by, WAVE_BAR_W, WAVE_BAR_H))
 	if _wave_elite:
 		draw_rect(Rect2(bx - 6.0, by - 6.0, WAVE_BAR_W + 12.0, WAVE_BAR_H + 12.0),
 			Color(C_ALERT.r, C_ALERT.g, C_ALERT.b, 0.2))
 	var fill_w := WAVE_BAR_W * clampf(_wave_progress, 0.0, 1.0)
 	if fill_w > 0.5:
-		var fill_box := _box_bar_fill_elite if _wave_elite else _box_bar_fill
-		draw_style_box(fill_box, Rect2(bx, by, fill_w, WAVE_BAR_H))
+		var t_fill := _ht("ui_wave_fill_elite_v1.png" if _wave_elite else "ui_wave_fill_v1.png")
+		if t_fill != null:
+			# 只取贴图左侧 fill_w 宽的一段（量程随进度增长，贴图不拉伸变形）
+			draw_texture_rect_region(t_fill, Rect2(bx, by, fill_w, WAVE_BAR_H),
+				Rect2(0.0, 0.0, fill_w, float(t_fill.get_height())))
+			# 游标：填充右端的指针（8x18，上下各探出条外 4px）
+			var t_cap := _ht("ui_wave_cap_v1.png")
+			if t_cap != null:
+				draw_texture(t_cap, Vector2(bx + fill_w - 4.0, by - 4.0))
+		else:
+			var fill_box := _box_bar_fill_elite if _wave_elite else _box_bar_fill
+			draw_style_box(fill_box, Rect2(bx, by, fill_w, WAVE_BAR_H))
 	# 🆕 进度读数（数字优先 §5.2）：`已出 / 总数`，居中于条下
 	#   🔴 §5.4：读数 = 等宽数字字体；「精英波」提示 = Medium 正文字体（CJK）
 	var font := _Style.font_num()

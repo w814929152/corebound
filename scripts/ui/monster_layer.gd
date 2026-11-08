@@ -109,6 +109,16 @@ const CONCENTRIC_U: Array = [15.0, 30.0, 45.0]     # 同心环半径 u（spec §
 # 🆕 地图环带边界（u）：焦土 4–16 / 石板 16–30 / 荒原 30–44（`design/gdd/scene-map.md` §5.1）。
 #   环带**只是材质**，不是规则；规则由阵地（`BuildGrid.SITES`）承担。
 const MAP_BAND_R: Array = [16.0, 30.0, 44.0]
+# 🆕 批次⑦：关卡地图地形贴图（`tools/gen_map_terrain_v1.py` 生成，10 张变体各一张）
+#   · MAP_TEX_R   贴图覆盖半径（u）—— 与生成器 `R_TEX` 同值，改一处必须改两处；
+#   · MAP_TEX_GAIN 灰度→档色的倍率 = 255/G_BAND_MID，与生成器 `G_BAND_MID` 同源：
+#     贴图「基准档」烤的是灰度 161（= 生成器 `gr(1.00)`），乘 255/161 后正好还原成 `env.field`。
+#   🔴 这两个数与生成器是**跨语言契约**，写死在两边并在
+#      `design/art/asset-pack-v4-map-terrain.md` §3 登记；任一侧漂移 → 地形整体偏亮/偏暗。
+const MAP_TEX_R := 60.0
+const MAP_TEX_GAIN := 255.0 / 161.0
+const MAP_TEX_DIR := "res://art/2d/maps/"
+var _map_tex_cache: Dictionary = {}
 # 确定性 12 边形扰动表（全员共享 → 帧间稳定，杜绝逐帧抖动；spec §A.2.2）
 const BLOB_R12: Array = [1.00, 0.88, 1.06, 0.92, 1.02, 0.86, 1.04, 0.95, 1.00, 0.90, 1.05, 0.93]
 
@@ -140,6 +150,21 @@ func _sprite(n: String) -> Texture2D:
 	if ResourceLoader.exists(p):
 		t = load(p)
 	_sprite_cache[n] = t
+	return t
+
+
+## 🆕 批次⑦：关卡地图地形贴图（按 map_id 懒加载 + 缓存）。
+##   🔴 `_draw` 每帧跑 → 禁止每帧 `exists + load`（与 `_sprite` / `hud._ht` 同一纪律）。
+##   文件名把变体 id 的 `-` 换成 `_`（tri-fissure → map_terrain_tri_fissure_v1.png）。
+##   判空返回 null → 调用方回落程序化路径（headless / 新变体未出图都安全）。
+func _map_tex(map_id: String) -> Texture2D:
+	if _map_tex_cache.has(map_id):
+		return _map_tex_cache[map_id]
+	var p := MAP_TEX_DIR + "map_terrain_" + map_id.replace("-", "_") + "_v1.png"
+	var t: Texture2D = null
+	if ResourceLoader.exists(p):
+		t = load(p)
+	_map_tex_cache[map_id] = t
 	return t
 # ---- 受击闪（spec §A.2.3 受创 / §8.1）：帧间差分触发，本地计时器衰减 ----
 const CORE_FLASH_SEC := 0.12      # 核心外环闪 #FF2E4E @α0.8 持续 0.12s
@@ -1099,6 +1124,16 @@ func _drawer_open() -> bool:
 ##
 ## 🔴 三档材质的颜色由**当前环境档基色**派生（不是写死 hex）：否则换装到 T2/T3 时
 ##   地形会与场地圆脱色，看起来像贴图没加载。
+##
+## 🆕 批次⑦（关卡地图地形贴图 · asset-pack v4）：三档材质 + 岩脊体块改为**位图**
+##   （`art/2d/maps/map_terrain_<map_id>_v1.png`，见 `design/art/asset-pack-v4-map-terrain.md`）。
+##   贴图是**灰度值图**，运行时乘 `field × MAP_TEX_GAIN`（= 255/161）还原：
+##     · 灰度 134（外环 荒原）= field ×0.84 · 灰度 161（中环 石板）= field ×1.00
+##       · 灰度 190（内环 焦土）= field ×1.18   ← 三档阶梯与改前逐位同源
+##     · 岩脊 = 断崖裂缝：谷底灰度 90（×0.56）+ 崖唇高光灰度 255（×1.58，全场最亮地形元素）
+##   ⇒ 4 档环境换装**自动跟随**（乘法与档位无关）；只有崖唇高光（灰度 255 = ×1.58）比底色亮。
+##   🔴 判空降级：贴图缺失（headless / 资产被删 / 新加变体未出图）→ 逐字回落
+##     原来的「三个 draw_circle + 岩脊多边形」路径，画面与改前逐位一致。
 func _draw_map_layer(sc: float, c: Vector2, g: Dictionary) -> void:
 	if not _SpaceModel.layout_enabled:
 		return
@@ -1106,9 +1141,17 @@ func _draw_map_layer(sc: float, c: Vector2, g: Dictionary) -> void:
 	var inner := Color(minf(base.r * 1.18, 1.0), minf(base.g * 1.18, 1.0),
 		minf(base.b * 1.16, 1.0), 1.0)
 	var outer := Color(base.r * 0.84, base.g * 0.84, base.b * 0.86, 1.0)
-	draw_circle(c, float(MAP_BAND_R[2]) * sc, outer)
-	draw_circle(c, float(MAP_BAND_R[1]) * sc, base)
-	draw_circle(c, float(MAP_BAND_R[0]) * sc, inner)
+	var tex := _map_tex(_SpaceModel.active_map_id)
+	if tex != null:
+		# 贴图已烘焙「基准档 = 灰度 216」，故调制色 = field × (255/216)，内/外环由灰度自带
+		var tint := Color(minf(base.r * MAP_TEX_GAIN, 1.0), minf(base.g * MAP_TEX_GAIN, 1.0),
+			minf(base.b * MAP_TEX_GAIN, 1.0), 1.0)
+		var rt := MAP_TEX_R * sc
+		draw_texture_rect(tex, Rect2(c - Vector2(rt, rt), Vector2(rt * 2.0, rt * 2.0)), false, tint)
+	else:
+		draw_circle(c, float(MAP_BAND_R[2]) * sc, outer)
+		draw_circle(c, float(MAP_BAND_R[1]) * sc, base)
+		draw_circle(c, float(MAP_BAND_R[0]) * sc, inner)
 
 	# ② 出怪口：磨损土带 + 端头石柱（熔橙低α = "地面被踩秃"，不是"发光路径"）
 	var dirt := Color(P_ENEMY.r, P_ENEMY.g, P_ENEMY.b, 0.085)
@@ -1123,11 +1166,15 @@ func _draw_map_layer(sc: float, c: Vector2, g: Dictionary) -> void:
 			draw_line(c + _dir(a) * (rs - 6.0) * sc, c + _dir(a) * (rs - 1.0) * sc,
 				post, maxf(2.0, 0.55 * sc), true)
 
-	# ③ 岩脊：填深 + 冷描边 ⇒ 读作"体块"而不是"区域"
-	for poly in g.get("ridges", []):
-		draw_colored_polygon(poly, Color(0.055, 0.063, 0.098, 0.94))
-		draw_polyline(_closed(poly), Color(P_SPAWN_EDGE.r, P_SPAWN_EDGE.g, P_SPAWN_EDGE.b, 0.75),
-			maxf(1.5, 0.12 * sc), true)
+	# ③ 岩脊：贴图生效时**已烘焙**（谷底 / 贴壁暗边 / 受光唇线 / 崖口碎石 / 落影）
+	#   → 这里一行不画。🔴 也不要再描逻辑扇区边：烘焙轮廓是锯齿的（±0.45u），
+	#   描在扇区上的亮线会有一段露在岩体外，读成"石头里埋了根亮线"（首版实测）。
+	#   贴图缺失 → 回落原来的「深色多边形 + α0.75 冷描边」，与改前逐位一致。
+	if tex == null:
+		for poly in g.get("ridges", []):
+			draw_colored_polygon(poly, Color(0.055, 0.063, 0.098, 0.94))
+			draw_polyline(_closed(poly), Color(P_SPAWN_EDGE.r, P_SPAWN_EDGE.g, P_SPAWN_EDGE.b, 0.75),
+				maxf(1.5, 0.12 * sc), true)
 
 	# ④ 阵地：17 个可建台（薄α填充 + 细描边）。网格线在放置态才画，台子**始终**可见。
 	for poly in g.get("pads", []):

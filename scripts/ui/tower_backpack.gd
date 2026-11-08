@@ -2,6 +2,8 @@ extends Control
 ## Bottom inventory for purchased tower cards; releases use the existing placement intent.
 
 const _BuildGrid := preload("res://scripts/geo/build_grid.gd")
+## 🆕 字体注册表（art-bible §5.4）：面板文字不再走引擎默认字体（400 太细）。
+const _Style := preload("res://scripts/ui/ui_style.gd")
 const BAR_H := 104.0
 const BAR_BOTTOM_GAP := 98.0
 const CARD_W := 86.0
@@ -129,7 +131,10 @@ func _drop_at(screen_pos: Vector2) -> void:
 
 func _draw() -> void:
 	draw_style_box(_panel_box, Rect2(Vector2.ZERO, size))
-	var font := ThemeDB.fallback_font
+	# 🆕 §5.4 注册表字体（可读性：引擎 fallback 400 → medium 700）；缺失时退回 fallback。
+	var font: Font = _Style.font_medium()
+	if font == null:
+		font = ThemeDB.fallback_font
 	draw_string(font, Vector2(18.0, 39.0), "背包", HORIZONTAL_ALIGNMENT_LEFT, -1, 18, C_TEXT)
 	draw_string(font, Vector2(18.0, 65.0), "拖放 · 滚轮翻页", HORIZONTAL_ALIGNMENT_LEFT, 104.0, 16, C_DIM)
 	var visible := _visible_count()
