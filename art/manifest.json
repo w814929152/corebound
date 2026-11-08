@@ -20,6 +20,13 @@
       ]
     },
     {
+      "file": "icons/ic_coin_v1.png",
+      "size": [
+        64,
+        64
+      ]
+    },
+    {
       "file": "icons/ic_core_small_v1.png",
       "size": [
         64,
@@ -434,6 +441,181 @@
     },
     {
       "file": "icons/ic_wave_v1.png",
+      "size": [
+        128,
+        128
+      ]
+    },
+    {
+      "file": "sprites/sp_core_v1.png",
+      "size": [
+        256,
+        256
+      ]
+    },
+    {
+      "file": "sprites/sp_minion_v1.png",
+      "size": [
+        64,
+        64
+      ]
+    },
+    {
+      "file": "sprites/sp_mon_rush_elite_v1.png",
+      "size": [
+        128,
+        128
+      ]
+    },
+    {
+      "file": "sprites/sp_mon_rush_v1.png",
+      "size": [
+        128,
+        128
+      ]
+    },
+    {
+      "file": "sprites/sp_mon_swarm_elite_v1.png",
+      "size": [
+        128,
+        128
+      ]
+    },
+    {
+      "file": "sprites/sp_mon_swarm_v1.png",
+      "size": [
+        128,
+        128
+      ]
+    },
+    {
+      "file": "sprites/sp_mon_tank_elite_v1.png",
+      "size": [
+        128,
+        128
+      ]
+    },
+    {
+      "file": "sprites/sp_mon_tank_v1.png",
+      "size": [
+        128,
+        128
+      ]
+    },
+    {
+      "file": "sprites/sp_proj_bolt_v1.png",
+      "size": [
+        64,
+        64
+      ]
+    },
+    {
+      "file": "sprites/sp_proj_dot_v1.png",
+      "size": [
+        64,
+        64
+      ]
+    },
+    {
+      "file": "sprites/sp_tower_arrow_v1.png",
+      "size": [
+        128,
+        128
+      ]
+    },
+    {
+      "file": "sprites/sp_tower_bolt_v1.png",
+      "size": [
+        128,
+        128
+      ]
+    },
+    {
+      "file": "sprites/sp_tower_cannon_v1.png",
+      "size": [
+        128,
+        128
+      ]
+    },
+    {
+      "file": "sprites/sp_tower_ember_v1.png",
+      "size": [
+        128,
+        128
+      ]
+    },
+    {
+      "file": "sprites/sp_tower_frost_v1.png",
+      "size": [
+        128,
+        128
+      ]
+    },
+    {
+      "file": "sprites/sp_tower_hex_v1.png",
+      "size": [
+        128,
+        128
+      ]
+    },
+    {
+      "file": "sprites/sp_tower_icicle_v1.png",
+      "size": [
+        128,
+        128
+      ]
+    },
+    {
+      "file": "sprites/sp_tower_javelin_v1.png",
+      "size": [
+        128,
+        128
+      ]
+    },
+    {
+      "file": "sprites/sp_tower_lance_v1.png",
+      "size": [
+        128,
+        128
+      ]
+    },
+    {
+      "file": "sprites/sp_tower_maul_v1.png",
+      "size": [
+        128,
+        128
+      ]
+    },
+    {
+      "file": "sprites/sp_tower_oblivion_v1.png",
+      "size": [
+        128,
+        128
+      ]
+    },
+    {
+      "file": "sprites/sp_tower_rune_v1.png",
+      "size": [
+        128,
+        128
+      ]
+    },
+    {
+      "file": "sprites/sp_tower_sunder_v1.png",
+      "size": [
+        128,
+        128
+      ]
+    },
+    {
+      "file": "sprites/sp_tower_tesla_v1.png",
+      "size": [
+        128,
+        128
+      ]
+    },
+    {
+      "file": "sprites/sp_tower_void_v1.png",
       "size": [
         128,
         128

@@ -571,6 +571,197 @@ def pack_true():
 # ===========================================================================
 # 主流程
 # ===========================================================================
+
+
+# ---------------------------------------------------------------------------
+# 批次⑥：战场实体贴图（monster_layer 程序化绘制的静态部分逐像素复刻）
+#   色源 = scripts/ui/monster_layer.gd 顶部常量（逐字换算 hex）
+#   坐标系：1u = sc px（运行时）；贴图半边 HALF_U u → 最终边长 = 2*HALF_U*sc
+# ---------------------------------------------------------------------------
+C_ALLY      = "#3ED0E8"   # P_ALLY      耀青（我方主体）
+C_ALLY_DARK = "#1A6B7D"   # P_ALLY_DARK 深青（阴影层）
+C_ALLY_2    = "#7A5CFF"   # P_ALLY_2    星紫
+C_CORE_HI   = "#EAFBFF"   # P_CORE_HI   核心内芯
+C_ENEMY     = "#FF6B3D"   # P_ENEMY     熔橙（敌方主体）
+C_ENEMY_D   = "#8A2F1C"   # P_ENEMY_DARK 焦褐（尖刺/内环）
+C_MON_EDGE  = "#2E1008"   # P_MON_EDGE  怪描边
+C_TW_EDGE   = "#0E2430"   # P_TOWER_EDGE 塔描边
+C_SLOT      = "#9AA5B1"   # P_SLOT      钢灰
+C_GOLD      = "#FFC94A"   # P_GOLD      辉金
+C_CCORE     = "#59D9F2"   # C_CORE (0.35,0.85,0.95)
+C_ICY       = "#3EA8FF"   # 冰族徽记 (0.243,0.659,1.0)
+C_ARCANE    = "#B45CFF"   # 咒术族徽记 (0.706,0.361,1.0)
+C_NEARWHITE = "#F7FCFF"   # 近白 (0.97,0.99,1.0)
+C_VOIDCORE  = "#0D0817"   # Oblivion 深芯 (0.05,0.03,0.09)
+BLOB_R12 = (1.00, 0.88, 1.06, 0.92, 1.02, 0.86, 1.04, 0.95, 1.00, 0.90, 1.05, 0.93)
+SPIKE_SPREAD = math.radians(0.40 * 57.29578)  # 0.40 rad
+
+
+def _up_dir(a):
+    """从「上」方向偏转 a rad 的单位向量（图像坐标，y 向下）。"""
+    return (math.sin(a), -math.cos(a))
+
+
+def _draw_mark(d, cx, cy, r, ctype, U):
+    """塔内芯符号——逐字复刻 monster_layer._draw_glyph_mark（r=0.31R 局部系）。"""
+    w = max(2, int(0.10 * U))   # 线宽 0.10u（_draw_glyph_mark 的 maxf(1.2, 0.10*sc)）
+    col = hx(C_TW_EDGE)
+    P = lambda dx, dy: ((cx + dx * r * U), (cy + dy * r * U))
+    lw = lambda k: max(2, int(w * k))
+    if ctype == "Arrow":
+        d.line([P(-0.5, 0.3), P(0, -0.45), P(0.5, 0.3)], fill=col, width=lw(1.0), joint="curve")
+    elif ctype == "Cannon":
+        d.ellipse([cx - 0.28 * r * U, cy - 0.28 * r * U, cx + 0.28 * r * U, cy + 0.28 * r * U], fill=col)
+    elif ctype == "Frost":
+        d.line([P(0, -0.5), P(0, 0.5)], fill=col, width=lw(1.0))
+        d.line([P(-0.42, -0.26), P(0.42, 0.26)], fill=col, width=lw(0.8))
+        d.line([P(-0.42, 0.26), P(0.42, -0.26)], fill=col, width=lw(0.8))
+    elif ctype == "Lance":
+        d.line([P(0, -0.62), P(0, 0.62)], fill=col, width=lw(0.9))
+    elif ctype == "Tesla":
+        d.line([P(0.1, -0.55), P(-0.3, 0.05), P(0.05, 0.05), P(-0.1, 0.55)], fill=col, width=lw(1.0), joint="curve")
+    elif ctype == "Sunder":
+        d.line([P(-0.45, -0.45), P(0.45, 0.45)], fill=col, width=lw(1.0))
+        d.line([P(-0.45, 0.45), P(0.45, -0.45)], fill=col, width=lw(1.0))
+    elif ctype == "Hex":
+        rr = 0.42 * r * U
+        d.ellipse([cx - rr, cy - rr, cx + rr, cy + rr], outline=col, width=lw(1.0))
+    elif ctype == "Ember":
+        d.line([P(-0.4, 0.35), P(0, -0.45), P(0.4, 0.35)], fill=col, width=lw(1.0), joint="curve")
+        d.ellipse([cx - 0.14 * r * U, cy + (0.28 - 0.14) * r * U, cx + 0.14 * r * U, cy + (0.28 + 0.14) * r * U], fill=col)
+    elif ctype == "Icicle":
+        d.line([P(-0.42, -0.35), P(0.42, -0.35), P(0, 0.5), P(-0.42, -0.35)], fill=col, width=lw(1.0), joint="curve")
+    elif ctype == "Javelin":
+        d.line([P(-0.45, 0.45), P(0.45, -0.45)], fill=col, width=lw(1.0))
+        d.line([P(0.05, -0.45), P(0.45, -0.45)], fill=col, width=lw(0.9))
+        d.line([P(0.45, -0.05), P(0.45, -0.45)], fill=col, width=lw(0.9))
+    elif ctype == "Bolt":
+        d.line([P(-0.4, -0.5), P(-0.1, 0), P(-0.4, 0.1)], fill=col, width=lw(0.9), joint="curve")
+        d.line([P(0.4, -0.1), P(0.1, 0.4), P(0.4, 0.55)], fill=col, width=lw(0.9), joint="curve")
+    elif ctype == "Maul":
+        d.rectangle([cx - 0.35 * r * U, cy - 0.35 * r * U, cx + 0.35 * r * U, cy + 0.35 * r * U], outline=col, width=lw(1.0))
+    elif ctype == "Rune":
+        rr = 0.48 * r * U
+        d.ellipse([cx - rr, cy - rr, cx + rr, cy + rr], outline=col, width=lw(0.9))
+        d.ellipse([cx - 0.16 * r * U, cy - 0.16 * r * U, cx + 0.16 * r * U, cy + 0.16 * r * U], fill=col)
+    elif ctype == "Oblivion":
+        d.ellipse([cx - 0.34 * r * U, cy - 0.34 * r * U, cx + 0.34 * r * U, cy + 0.34 * r * U], fill=hx(C_VOIDCORE))
+    elif ctype == "Void":
+        for k in (0.48, 0.22):
+            rr = k * r * U
+            d.ellipse([cx - rr, cy - rr, cx + rr, cy + rr], outline=col, width=lw(0.8))
+
+
+TOWERS = [  # (name, n边形, rot_deg, 徽记填充色)
+    ("arrow", 3, -90, C_ALLY), ("cannon", 4, 45, C_SLOT), ("frost", 6, 0, C_ICY),
+    ("lance", 5, -90, C_NEARWHITE), ("tesla", 7, -90, C_GOLD), ("sunder", 8, 22.5, C_ALLY),
+    ("hex", 9, -90, C_ARCANE), ("ember", 10, 18, C_ENEMY), ("icicle", 11, -90, C_ICY),
+    ("javelin", 12, -90, C_NEARWHITE), ("bolt", 13, -90, C_GOLD), ("maul", 14, 22.5, C_SLOT),
+    ("rune", 15, -90, C_ARCANE), ("oblivion", 16, -90, C_ALLY_2), ("void", 17, -90, C_NEARWHITE),
+]
+MONS = {  # proto: (body_u, rs, ts, n_spike, spike_len, spike_half)
+    "rush":  (0.65, 1.5, 0.75, 4, 0.90, 0.14),
+    "swarm": (0.85, 1.0, 1.0, 5, 0.55, 0.26),
+    "tank":  (1.30, 0.85, 1.25, 6, 0.40, 0.30),
+}
+
+
+def gen_battle_sprites():
+    print("[3.5/4] 战场实体贴图…")
+    # ---- 核心（half=2.2u, 256px）----
+    U = 256 * S / 4.4
+    cx = cy = 128 * S
+    img, d = canvas(256, 256)
+    rc = 1.9 * U
+    d.ellipse([cx - rc, cy - rc, cx + rc, cy + rc], outline=hx(C_ALLY_DARK), width=int(0.55 * U))   # 外环
+    rd = rc * 0.72
+    d.ellipse([cx - rd, cy - rd, cx + rd, cy + rd], fill=hx(C_ALLY))                                # 中盘
+    for k in range(8):                                                                              # 刻齿
+        a = math.radians(45.0 * k)
+        ux, uy = math.cos(a), math.sin(a)
+        d.line([(cx + ux * rc * 0.86, cy + uy * rc * 0.86), (cx + ux * rc * 1.06, cy + uy * rc * 1.06)],
+               fill=hx(C_ALLY_DARK), width=int(0.18 * U))
+    re = rc + 0.11 * U
+    d.ellipse([cx - re, cy - re, cx + re, cy + re], outline=hx(C_TW_EDGE), width=int(0.22 * U))     # 外描边
+    save(img, 256, 256, "sprites/sp_core_v1.png")
+
+    # ---- 塔 x15（half=2.0u, 128px）----
+    U = 128 * S / 4.0
+    for name, n, rot, gcol in TOWERS:
+        img, d = canvas(128, 128)
+        cx = cy = 64 * S
+        R = 1.7 * U
+        poly(d, reg_points(cx, cy, R, 8, 0), fill=hx(C_ALLY_DARK))                       # 底座
+        poly(d, reg_points(cx, cy, R * 0.66, 8, 22.5), fill=hx(C_ALLY))                  # 塔身
+        dc = 0.30 * R
+        d.ellipse([cx - dc, cy - dc, cx + dc, cy + dc], fill=hx(C_ALLY_DARK))            # 中心圆
+        hcx, hcy, hr = cx - 0.28 * R, cy - 0.28 * R, 0.30 * R
+        d.ellipse([hcx - hr, hcy - hr, hcx + hr, hcy + hr], fill=hx("#FFFFFF", 230))     # 左上高光
+        gr = 0.31 * R                                                                    # 徽记（色+描边）
+        gp = reg_points(cx, cy, gr, n, rot)
+        poly(d, gp, fill=hx(gcol), outline=hx(C_TW_EDGE), width=max(2, int(0.06 * U)))
+        _draw_mark(d, cx, cy, 0.31 * 1.7, name.capitalize() if name != "arrow" else "Arrow", U)
+        oe = R + 0.11 * U                                                                # 外扩描边
+        poly(d, reg_points(cx, cy, oe, 8, 0), outline=hx(C_TW_EDGE), width=max(2, int(0.22 * U)))
+        save(img, 128, 128, f"sprites/sp_tower_{name}_v1.png")
+
+    # ---- 怪 x3 x (普通/精英)（half=2.4u, 128px）----
+    U = 128 * S / 4.8
+    for proto, (body, rs, ts, n_sp, slen, shalf) in MONS.items():
+        for elite in (False, True):
+            bu = body * (1.35 if elite else 1.0)
+            ns, sl = n_sp + (1 if elite else 0), slen * (1.3 if elite else 1.0)
+            img, d = canvas(128, 128)
+            cx = cy = 64 * S
+            # blob12：径向(=上)分量 cos(a)，切向分量 sin(a)；烘焙基础 rs/ts 形变
+            pts = []
+            for k in range(12):
+                a = math.radians(30.0 * k)
+                rr = bu * BLOB_R12[k]
+                px = rr * math.sin(a) * ts * U
+                py = -rr * math.cos(a) * rs * U
+                pts.append((cx + px, cy + py))
+            for i in range(ns):                                                           # 尖刺扇（朝上）
+                a = SPIKE_SPREAD * (i - (ns - 1) * 0.5)
+                ux, uy = _up_dir(a)
+                tip = (cx + ux * (bu + sl) * U, cy + uy * (bu + sl) * U)
+                bl = (cx + _up_dir(a - shalf)[0] * bu * 0.9 * U, cy + _up_dir(a - shalf)[1] * bu * 0.9 * U)
+                br = (cx + _up_dir(a + shalf)[0] * bu * 0.9 * U, cy + _up_dir(a + shalf)[1] * bu * 0.9 * U)
+                d.polygon([bl, tip, br], fill=hx(C_ENEMY_D))
+            d.polygon(pts, fill=hx(C_ENEMY))                                              # 主体
+            if proto == "tank":                                                           # 焦褐内环
+                rr = 0.55 * bu * U
+                d.ellipse([cx - rr, cy - rr, cx + rr, cy + rr], outline=hx(C_ENEMY_D), width=max(2, int(0.16 * U)))
+            d.line(pts + [pts[0]], fill=hx(C_MON_EDGE), width=max(2, int(0.22 * U)), joint="curve")
+            rel = "_elite" if elite else ""
+            save(img, 128, 128, f"sprites/sp_mon_{proto}{rel}_v1.png")
+
+    # ---- 投射物 x2（half=1.0u, 64px）----
+    U = 64 * S / 2.0
+    img, d = canvas(64, 64)
+    cx = cy = 32 * S
+    d.polygon([(cx, cy - 0.8 * U), (cx + 0.25 * U, cy), (cx - 0.25 * U, cy)], fill=hx(C_ALLY))
+    save(img, 64, 64, "sprites/sp_proj_bolt_v1.png")
+    img, d = canvas(64, 64)
+    d.ellipse([cx - 0.6 * U, cy - 0.6 * U, cx + 0.6 * U, cy + 0.6 * U], fill=hx(C_ENEMY))
+    save(img, 64, 64, "sprites/sp_proj_dot_v1.png")
+
+    # ---- 仆从（half=0.75u, 64px）----
+    U = 64 * S / 1.5
+    img, d = canvas(64, 64)
+    cx = cy = 32 * S
+    d.ellipse([cx - 0.45 * U, cy - 0.45 * U, cx + 0.45 * U, cy + 0.45 * U], fill=hx(C_CCORE))
+    rr = 0.57 * U
+    d.ellipse([cx - rr, cy - rr, cx + rr, cy + rr], outline=hx(C_CCORE), width=max(2, int(0.04 * U)))
+    save(img, 64, 64, "sprites/sp_minion_v1.png")
+
+    # ---- HUD 金币图标（icons/, 64px; 半径比例 28/22/10 @R28）----
+    img, d = canvas(64, 64)
+    cx = cy = 32 * S
+    for r, col in ((32, C_GOLD), (25.6, "#F7A829"), (11.4, C_GOLD)):  # R28:22:10 等比放大到半边32
+        d.ellipse([cx - r * S, cy - r * S, cx + r * S, cy + r * S], fill=hx(col))
+    save(img, 64, 64, "icons/ic_coin_v1.png")
+
 def main():
     here = os.path.dirname(os.path.abspath(__file__))
     os.chdir(os.path.join(here, ".."))
@@ -591,6 +782,7 @@ def main():
         _finish(img, f"ic_proto_{name}_v1.png")
     pack_core(); pack_cinder(); pack_rime(); pack_pierce()
     pack_arc(); pack_sunder(); pack_hex(); pack_true()
+    gen_battle_sprites()
     print("[4/4] manifest…")
     write_manifest()
     print("done.")

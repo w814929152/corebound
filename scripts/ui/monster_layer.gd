@@ -123,6 +123,24 @@ const BLOB_R12: Array = [1.00, 0.88, 1.06, 0.92, 1.02, 0.86, 1.04, 0.95, 1.00, 0
 const RIM_W := 0.8                                    # 内发光细弧宽（屏幕 px）
 const RIM_ALLY := Color(0.243, 0.816, 0.910, 0.6)     # 塔：耀青 #3ED0E8 @α0.6
 const RIM_ENEMY := Color(1.000, 0.420, 0.239, 0.6)    # 怪：熔橙 #FF6B3D @α0.6
+
+# ---- 🔴 批次⑥（战场实体贴图化）：sp_* 贴图懒加载 ---------------------------------
+##   art/2d/sprites/sp_<name>_v1.png；判空降级回程序化路径（headless / 资产缺失安全）。
+##   贴图 = 各实体 draw 代码的**静态部分**逐像素复刻；动效（呼吸/摆动/闪白/状态环）
+##   全部保留运行时——「贴图 + 变换」模式，与批次②按钮 modulate 同一渐进纪律。
+const SPRITE_DIR := "res://art/2d/sprites/"
+var _sprite_cache: Dictionary = {}
+
+
+func _sprite(n: String) -> Texture2D:
+	if _sprite_cache.has(n):
+		return _sprite_cache[n]
+	var p := SPRITE_DIR + n + "_v1.png"
+	var t: Texture2D = null
+	if ResourceLoader.exists(p):
+		t = load(p)
+	_sprite_cache[n] = t
+	return t
 # ---- 受击闪（spec §A.2.3 受创 / §8.1）：帧间差分触发，本地计时器衰减 ----
 const CORE_FLASH_SEC := 0.12      # 核心外环闪 #FF2E4E @α0.8 持续 0.12s
 const TOWER_FLASH_SEC := 0.15     # 塔受击一瞬白闪时长（本地演出）
@@ -185,6 +203,7 @@ var _geo: Dictionary = {}
 var _grid_edges := PackedVector2Array()
 ## 🆕 上一份网格是在「阵地化」还是「整盘」口径下算的 —— 切模式（含测试切换）必须重算。
 var _grid_sites_mode := false
+var _grid_map_id: String = ""
 ## 网格的屏幕坐标缓存（同一 `(ox, oy, sc, 口径)` 下不重复换算 3660 个点）。签名口径同 `_geo_sig`。
 var _grid_scr_sig := Vector4(-1.0, -1.0, -1.0, -1.0)
 var _grid_scr := PackedVector2Array()
@@ -406,10 +425,10 @@ func _to_world(screen_p: Vector2) -> Vector2:
 	var sc := float(t["sc"])
 	return Vector2((screen_p.x - float(t["ox"])) / sc, (screen_p.y - float(t["oy"])) / sc)
 
+
 ## Public screen-to-world transform for HUD drag placement.
 func screen_to_world_position(screen_p: Vector2) -> Vector2:
 	return _to_world(screen_p)
-
 
 
 ## 战场点击 → 只发**意图**信号，由 ShopController 接线（SR-5）。
@@ -1269,9 +1288,12 @@ func _draw_placement_marks(sc: float, phase: String = "bg") -> void:
 	# 🔴 一次 `draw_multiline` 画完 ~3660 段边（逐段 draw_line 是不可接受的调用量）；
 	#    屏幕坐标按 (ox, oy, sc) 缓存 —— 抽屉开合会改 `_field_width()` → 战场重新居中，
 	#    签名一变必须重算，否则网格会和塔身错位（本项目踩过手抄坐标的坑）。
-	if _grid_edges.is_empty() or _grid_sites_mode != _BuildGrid.sites_active():
+	if (_grid_edges.is_empty() or _grid_sites_mode != _BuildGrid.sites_active()
+			or _grid_map_id != _SpaceModel.active_map_id):
 		_grid_sites_mode = _BuildGrid.sites_active()
+		_grid_map_id = _SpaceModel.active_map_id
 		_grid_edges = _BuildGrid.grid_edges()
+		_grid_scr_sig = Vector4(-1.0, -1.0, -1.0, -1.0)
 	var xf := _xform()
 	var ox := float(xf["ox"])
 	var oy := float(xf["oy"])
@@ -1404,16 +1426,23 @@ func _draw_radial_core(sc: float) -> void:
 	var c := _to_screen(_SpaceModel.core_pos())
 	# 🔴 P0（spec §B.2.2）：**盘级**呼吸 ±2.5% @2.4s —— 外环/中盘/刻齿/描边/受击闪整体随缩。
 	var rc := U_CORE * sc * _core_breath()
-	draw_arc(c, rc, 0.0, TAU, 48, P_ALLY_DARK, maxf(2.0, 0.55 * sc), true)   # 外环
-	draw_circle(c, rc * 0.72, P_ALLY)                                        # 中盘
-	for k in 8:                                                              # 刻齿
-		var a := TAU * float(k) / 8.0
-		draw_line(c + _dir(a) * (rc * 0.86), c + _dir(a) * (rc * 1.06),
-			P_ALLY_DARK, maxf(1.0, 0.18 * sc), true)
+	# 🔴 批次⑥：核心盘贴图（外环+中盘+刻齿+外描边烘焙，半边 2.2u），盘级呼吸走缩放；
+	#    缺失降级回程序化。内芯**第二频率**心跳保留运行时（贴图烘焙不了两层不同频）。
+	var core_tex := _sprite("sp_core")
+	if core_tex != null:
+		var cs := U_CORE * sc * _core_breath() * (4.4 / U_CORE)
+		draw_texture_rect(core_tex, Rect2(c - Vector2(cs, cs) * 0.5, Vector2(cs, cs)), false)
+	else:
+		draw_arc(c, rc, 0.0, TAU, 48, P_ALLY_DARK, maxf(2.0, 0.55 * sc), true)   # 外环
+		draw_circle(c, rc * 0.72, P_ALLY)                                        # 中盘
+		for k in 8:                                                              # 刻齿
+			var a := TAU * float(k) / 8.0
+			draw_line(c + _dir(a) * (rc * 0.86), c + _dir(a) * (rc * 1.06),
+				P_ALLY_DARK, maxf(1.0, 0.18 * sc), true)
+		draw_arc(c, rc + 0.11 * sc, 0.0, TAU, 48, P_TOWER_EDGE, maxf(1.5, 0.22 * sc), true)
 	# 🔴 内芯保留其**原有更快一层**（±6% @1.6s，spec §B.2.2）→ 两层不同频叠出"心跳/有机感"。
 	var breath := 1.0 + 0.06 * sin(_vfx_t * TAU / 1.6)                        # 呼吸内芯
 	draw_circle(c, rc * 0.32 * breath, P_CORE_HI)
-	draw_arc(c, rc + 0.11 * sc, 0.0, TAU, 48, P_TOWER_EDGE, maxf(1.5, 0.22 * sc), true)
 	# 🔴 P0 增强 · 受创闪（spec §A.2.3）：核心受击瞬间外环闪 #FF2E4E @α0.8，0.12s。
 	#   本地演出计时器驱动衰减，只读 `core_hp` 帧间下降（不回写玩法）。
 	if _core_flash > 0.0:
@@ -1444,15 +1473,22 @@ func _draw_radial_towers(sc: float) -> void:
 		if hosts.has(slot):   # 合法宿主高亮（底圈）
 			draw_arc(c, R + 0.5 * sc, 0.0, TAU, 32,
 				Color(P_GOLD.r, P_GOLD.g, P_GOLD.b, 0.9), maxf(2.0, 0.22 * sc), true)
-		draw_colored_polygon(_oct8(c, R, 0.0), P_ALLY_DARK)          # 底座（暗）
-		draw_colored_polygon(_oct8(c, R * 0.66, PI / 8.0), P_ALLY)   # 塔身（亮，旋转 22.5°）
-		draw_circle(c, R * 0.30, P_ALLY_DARK)                        # 中心圆
-		draw_circle(c + Vector2(-0.28 * R, -0.28 * R), R * 0.30, Color(1.0, 1.0, 1.0, 0.9))
-		# 🔴 T-P6-06 S5：原型区分**内形**（只读 `ctype`，零新增字段/信号；不破 8 重对称剪影）。
-		_draw_radial_tower_glyph(c, R, String(tw.get("ctype", "Arrow")), sc)
+		# 🔴 批次⑥：塔身贴图（底座+塔身+中心圆+高光+徽记+外描边烘焙，半边 2.0u）；
+		#    宿主环/主塔/选中/停机/复活/形态/闪白/rim 全部保留运行时。缺失降级回程序化。
+		var tower_tex := _sprite("sp_tower_" + String(tw.get("ctype", "Arrow")).to_lower())
+		if tower_tex != null:
+			var tsize := 4.0 * sc
+			draw_texture_rect(tower_tex, Rect2(c - Vector2(tsize, tsize) * 0.5, Vector2(tsize, tsize)), false)
+		else:
+			draw_colored_polygon(_oct8(c, R, 0.0), P_ALLY_DARK)          # 底座（暗）
+			draw_colored_polygon(_oct8(c, R * 0.66, PI / 8.0), P_ALLY)   # 塔身（亮，旋转 22.5°）
+			draw_circle(c, R * 0.30, P_ALLY_DARK)                        # 中心圆
+			draw_circle(c + Vector2(-0.28 * R, -0.28 * R), R * 0.30, Color(1.0, 1.0, 1.0, 0.9))
+			# 🔴 T-P6-06 S5：原型区分**内形**（只读 `ctype`，零新增字段/信号；不破 8 重对称剪影）。
+			_draw_radial_tower_glyph(c, R, String(tw.get("ctype", "Arrow")), sc)
+			draw_polyline(_closed(_oct8(c, R + 0.5 * U_OUTLINE * sc, 0.0)),
+				P_TOWER_EDGE, maxf(1.5, U_OUTLINE * sc), true)          # 外扩描边
 		_draw_rim(c, R, maxf(1.5, U_OUTLINE * sc), RIM_ALLY)         # P0 增强：内发光
-		draw_polyline(_closed(_oct8(c, R + 0.5 * U_OUTLINE * sc, 0.0)),
-			P_TOWER_EDGE, maxf(1.5, U_OUTLINE * sc), true)          # 外扩描边
 		if slot == core_slot:   # 主塔标记（星紫）
 			draw_arc(c, R + 0.5 * sc, 0.0, TAU, 28, P_ALLY_2, maxf(1.5, 0.16 * sc), true)
 		if slot == selected:    # 选中高亮（耀青）
@@ -1529,11 +1565,93 @@ func _draw_radial_tower_glyph(c: Vector2, R: float, ctype: String, sc: float) ->
 		"Rune":
 			n = 15
 			rot = -PI * 0.5       # 十五边形（咒术族，近 Hex 九边形）
+		# 🔴 批次⑤修复：Oblivion / Void 原先**不在 match 里** → 落默认 3 边，与 Arrow 撞脸。
+		"Oblivion":
+			n = 16
+			rot = -PI * 0.5       # 十六边形（湮灭族，边数顶格）
+		"Void":
+			n = 17
+			rot = -PI * 0.5       # 十七边形（虚空族）
 	# 亮内形 + 极深描边（自带边界，抗左上高光干扰）。纯几何、无随机、帧间稳定。
 	# 🟠 0.31R（≈+19% vs 改前 0.26R）——见上「选项 A」说明。
 	var pts := _ngon(c, R * 0.31, n, rot)
-	draw_colored_polygon(pts, Color(0.97, 0.99, 1.0, 0.95))
+	draw_colored_polygon(pts, _tower_glyph_color(ctype))
 	draw_polyline(_closed(pts), P_TOWER_EDGE, maxf(1.0, 0.06 * sc), true)
+	# 🔴 批次⑤：内芯**符号**通道（1-2 笔粗几何，第二形状通道）——
+	#    边数 ≥10 的塔在实机尺寸下视觉即圆，单靠边数不可辨；符号 + 色相双冗余（§9.2①）。
+	_draw_glyph_mark(c, R * 0.31, ctype, sc)
+
+
+## 🔴 批次⑤（塔辨识度强化）：徽记**填充色** = 原型 accent。
+##   色源全部取自 §2.2 / RARITY 已登记色（不发明新色）；塔身仍统一 P_ALLY 青
+##   （敌我识别由外框承担 —— S4 教训：塔身色相不可越冷极），内芯小面积点缀不破坏该通道。
+##   同 tag 族共享色相（火=熔橙 / 冰=湖蓝 / 电=辉金 / 穿甲=耀青 / 破甲=钢灰 / 咒术=幽紫），
+##   族内再靠边数 + 符号区分。
+func _tower_glyph_color(ctype: String) -> Color:
+	match ctype:
+		"Cannon", "Maul":
+			return P_SLOT                       # 钢灰（破甲/攻城族）
+		"Frost", "Icicle":
+			return Color(0.243, 0.659, 1.000)   # 湖蓝 #3EA8FF（冰族，RARITY rare 同源）
+		"Tesla", "Bolt":
+			return P_GOLD                       # 辉金（电族）
+		"Hex", "Rune":
+			return Color(0.706, 0.361, 1.000)   # 幽紫 #B45CFF（咒术族，RARITY epic 同源）
+		"Ember":
+			return P_ENEMY                      # 熔橙（火族 · 内芯小面积点缀）
+		"Oblivion":
+			return P_ALLY_2                     # 星紫（湮灭）
+		"Lance", "Javelin", "Void":
+			return Color(0.97, 0.99, 1.0)       # 近白（穿甲/虚空：形不同色同，靠符号区分）
+		_:
+			return P_ALLY                       # Arrow（耀青，本命色）
+
+
+## 🔴 批次⑤：内芯**符号**（第二形状通道）。全部 ≤2 笔粗几何（线宽 ≥0.10R），
+##   实机 5-9px 内芯下仍可辨；色用 P_TOWER_EDGE（冷暗，在亮填充上足够对比）。
+func _draw_glyph_mark(c: Vector2, r: float, ctype: String, sc: float) -> void:
+	var w := maxf(1.2, 0.10 * sc)
+	var col := P_TOWER_EDGE
+	match ctype:
+		"Arrow":      # 上箭头 ∧
+			draw_polyline(PackedVector2Array([c + Vector2(-r * 0.5, r * 0.3), c + Vector2(0, -r * 0.45), c + Vector2(r * 0.5, r * 0.3)]), col, w, true)
+		"Cannon":     # 中心圆点
+			draw_circle(c, r * 0.28, col)
+		"Frost":      # 竖线 + 交叉（雪花三向）
+			draw_line(c + Vector2(0, -r * 0.5), c + Vector2(0, r * 0.5), col, w, true)
+			draw_line(c + Vector2(-r * 0.42, -r * 0.26), c + Vector2(r * 0.42, r * 0.26), col, w * 0.8, true)
+			draw_line(c + Vector2(-r * 0.42, r * 0.26), c + Vector2(r * 0.42, -r * 0.26), col, w * 0.8, true)
+		"Lance":      # 贯穿竖线（细长）
+			draw_line(c + Vector2(0, -r * 0.62), c + Vector2(0, r * 0.62), col, w * 0.9, true)
+		"Tesla":      # 闪电折线
+			draw_polyline(PackedVector2Array([c + Vector2(r * 0.1, -r * 0.55), c + Vector2(-r * 0.3, r * 0.05), c + Vector2(r * 0.05, r * 0.05), c + Vector2(-r * 0.1, r * 0.55)]), col, w, true)
+		"Sunder":     # 裂纹 ✕
+			draw_line(c + Vector2(-r * 0.45, -r * 0.45), c + Vector2(r * 0.45, r * 0.45), col, w, true)
+			draw_line(c + Vector2(-r * 0.45, r * 0.45), c + Vector2(r * 0.45, -r * 0.45), col, w, true)
+		"Hex":        # 中空环
+			draw_arc(c, r * 0.42, 0.0, TAU, 20, col, w, true)
+		"Ember":      # 火苗（小三角叠点）
+			draw_polyline(PackedVector2Array([c + Vector2(-r * 0.4, r * 0.35), c + Vector2(0, -r * 0.45), c + Vector2(r * 0.4, r * 0.35)]), col, w, true)
+			draw_circle(c + Vector2(0, r * 0.28), r * 0.14, col)
+		"Icicle":     # 倒三角
+			draw_polyline(_closed(PackedVector2Array([c + Vector2(-r * 0.42, -r * 0.35), c + Vector2(r * 0.42, -r * 0.35), c + Vector2(0, r * 0.5)])), col, w, true)
+		"Javelin":    # 斜箭 ↗
+			draw_line(c + Vector2(-r * 0.45, r * 0.45), c + Vector2(r * 0.45, -r * 0.45), col, w, true)
+			draw_line(c + Vector2(r * 0.05, -r * 0.45), c + Vector2(r * 0.45, -r * 0.45), col, w * 0.9, true)
+			draw_line(c + Vector2(r * 0.45, -r * 0.05), c + Vector2(r * 0.45, -r * 0.45), col, w * 0.9, true)
+		"Bolt":       # 双折线（电弧二重）
+			draw_polyline(PackedVector2Array([c + Vector2(-r * 0.4, -r * 0.5), c + Vector2(-r * 0.1, 0), c + Vector2(-r * 0.4, r * 0.1)]), col, w * 0.9, true)
+			draw_polyline(PackedVector2Array([c + Vector2(r * 0.4, -r * 0.1), c + Vector2(r * 0.1, r * 0.4), c + Vector2(r * 0.4, r * 0.55)]), col, w * 0.9, true)
+		"Maul":       # 方块（锤头）
+			draw_rect(Rect2(c.x - r * 0.35, c.y - r * 0.35, r * 0.7, r * 0.7), col, false, w)
+		"Rune":       # 同心环
+			draw_arc(c, r * 0.48, 0.0, TAU, 18, col, w * 0.9, true)
+			draw_circle(c, r * 0.16, col)
+		"Oblivion":   # 实心深芯（吞光）
+			draw_circle(c, r * 0.34, Color(0.05, 0.03, 0.09, 1.0))
+		"Void":       # 同心双环（虫洞）
+			draw_arc(c, r * 0.48, 0.0, TAU, 18, col, w * 0.8, true)
+			draw_arc(c, r * 0.22, 0.0, TAU, 14, col, w * 0.8, true)
 
 
 # ---- 层7：怪（12 边不规则 + 朝核心尖刺扇 + 外扩描边）----
@@ -1546,9 +1664,14 @@ func _draw_minions(sc: float) -> void:
 	for mn in _snap.get("minions", []):
 		var p: Vector2 = mn["pos"]
 		var sp := _to_screen(p)
-		var r := maxf(3.0, sc * 0.45)
-		draw_circle(sp, r, C_CORE)
-		draw_arc(sp, r + maxf(2.0, sc * 0.12), 0.0, TAU, 12, C_CORE, 1.0, true)
+		var mtex := _sprite("sp_minion")
+		if mtex != null:
+			var msz := 1.5 * sc   # 贴图半边 0.75u（含细环余量）
+			draw_texture_rect(mtex, Rect2(sp - Vector2(msz, msz) * 0.5, Vector2(msz, msz)), false)
+		else:
+			var r := maxf(3.0, sc * 0.45)
+			draw_circle(sp, r, C_CORE)
+			draw_arc(sp, r + maxf(2.0, sc * 0.12), 0.0, TAU, 12, C_CORE, 1.0, true)
 func _draw_radial_monsters(sc: float) -> void:
 	var ms: Array = _snap.get("monsters", [])
 	if ms.is_empty():
@@ -1587,20 +1710,33 @@ func _draw_radial_monsters(sc: float) -> void:
 		var rs2 := rs * (1.0 + amp * sw)     # 径向拉伸（朝核心轴）
 		var ts2 := ts * (1.0 - amp * sw)     # 切向压扁（体积近似守恒）
 		var rot2 := _sway_rot(proto) * cos(ph)   # 体摆动（绕中心小角度）
-		draw_colored_polygon(_blob12(c, R, out_dir + rot2, rs2, ts2), P_ENEMY)   # 主体（随摆）
-		if proto == "Tank":   # 内层焦褐环
-			draw_arc(c, R * 0.55, 0.0, TAU, 20, P_ENEMY_DARK, maxf(1.5, 0.16 * sc), true)
-		_draw_rim(c, R, w, RIM_ENEMY)   # P0 增强：内发光（混乱时分离相邻单位）
-		# 🔴 尖刺扇仍沿 `out_dir`（**朝核心，不随摆**）—— 尖刺语义 = "扑向核心"（spec §B.3.4）。
-		for i in n_spike:    # 外张尖刺扇（沿"朝核心"方向）
-			var a := out_dir + SPIKE_SPREAD * (float(i) - float(n_spike - 1) * 0.5)
-			var tip := c + _dir(a) * (R + spike_len * sc)
-			var bl := c + _dir(a - spike_half) * (R * 0.9)
-			var br := c + _dir(a + spike_half) * (R * 0.9)
-			draw_colored_polygon(PackedVector2Array([bl, tip, br]), P_ENEMY_DARK)
-		# 🔴 外扩描边**必须与主体同参数**（`out_dir+rot2, rs2, ts2`），否则"描边错位"（spec §B.3.4）。
-		draw_polyline(_closed(_blob12(c, R + w * 0.5, out_dir + rot2, rs2, ts2)),
-			P_MON_EDGE, w, true)   # 外扩描边
+		# 🔴 批次⑥：怪体贴图（主体+tank内环+尖刺扇+外描边烘焙，半边 2.4u；精英独立变体）。
+		#    基础 rs/ts 形变已烘焙，运行时 transform 只乘**摆动幅度**（squash&stretch 保留）；
+		#    rim / 精英环保留运行时。缺失降级回程序化。
+		var mon_tex := _sprite("sp_mon_" + proto.to_lower() + ("_elite" if elite else ""))
+		if mon_tex != null:
+			# 贴图尖刺朝上（-Y）→ 旋到 out_dir 轴（+rot2 体摆动）；Y=径向 / X=切向
+			draw_set_transform(c, out_dir + rot2 + PI * 0.5,
+				Vector2(1.0 - amp * sw, 1.0 + amp * sw))
+			var msize := 4.8 * sc
+			draw_texture_rect(mon_tex, Rect2(Vector2(-msize, -msize) * 0.5, Vector2(msize, msize)), false)
+			draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+			_draw_rim(c, R, w, RIM_ENEMY)   # P0 增强：内发光（混乱时分离相邻单位）
+		else:
+			draw_colored_polygon(_blob12(c, R, out_dir + rot2, rs2, ts2), P_ENEMY)   # 主体（随摆）
+			if proto == "Tank":   # 内层焦褐环
+				draw_arc(c, R * 0.55, 0.0, TAU, 20, P_ENEMY_DARK, maxf(1.5, 0.16 * sc), true)
+			# 🔴 尖刺扇仍沿 `out_dir`（**朝核心，不随摆**）—— 尖刺语义 = "扑向核心"（spec §B.3.4）。
+			for i in n_spike:    # 外张尖刺扇（沿"朝核心"方向）
+				var a := out_dir + SPIKE_SPREAD * (float(i) - float(n_spike - 1) * 0.5)
+				var tip := c + _dir(a) * (R + spike_len * sc)
+				var bl := c + _dir(a - spike_half) * (R * 0.9)
+				var br := c + _dir(a + spike_half) * (R * 0.9)
+				draw_colored_polygon(PackedVector2Array([bl, tip, br]), P_ENEMY_DARK)
+			# 🔴 外扩描边**必须与主体同参数**（`out_dir+rot2, rs2, ts2`），否则"描边错位"（spec §B.3.4）。
+			draw_polyline(_closed(_blob12(c, R + w * 0.5, out_dir + rot2, rs2, ts2)),
+				P_MON_EDGE, w, true)   # 外扩描边
+			_draw_rim(c, R, w, RIM_ENEMY)   # P0 增强：内发光（混乱时分离相邻单位）
 		if elite:   # 精英环（噬品红）
 			draw_arc(c, R + 0.28 * sc, 0.0, TAU, 24, P_ELITE, maxf(2.0, 0.18 * sc), true)
 
@@ -1616,13 +1752,25 @@ func _draw_projectiles(sc: float) -> void:
 			continue
 		var sp := _to_screen(d["pos"])
 		if String(d.get("faction", "ally")) == "enemy":
-			draw_circle(sp, maxf(2.0, 0.60 * sc), P_ENEMY)
+			var dtex := _sprite("sp_proj_dot")
+			if dtex != null:
+				var dsz := 1.2 * sc   # 贴图半径 0.6u
+				draw_texture_rect(dtex, Rect2(sp - Vector2(dsz, dsz) * 0.5, Vector2(dsz, dsz)), false)
+			else:
+				draw_circle(sp, maxf(2.0, 0.60 * sc), P_ENEMY)
 		else:
 			var ang := 0.0
 			if d.has("vel"):
 				var vv: Vector2 = d["vel"]
 				ang = atan2(vv.y, vv.x)
-			draw_colored_polygon(PackedVector2Array([
-				sp + _dir(ang) * (0.8 * sc),
-				sp + _dir(ang + PI * 0.5) * (0.25 * sc),
-				sp + _dir(ang - PI * 0.5) * (0.25 * sc)]), P_ALLY)
+			var btex := _sprite("sp_proj_bolt")
+			if btex != null:
+				draw_set_transform(sp, ang + PI * 0.5, Vector2.ONE)   # 贴图尖端朝上 → 旋到 vel 方向
+				var bsz := 2.0 * sc   # 贴图半边 1.0u
+				draw_texture_rect(btex, Rect2(Vector2(-bsz, -bsz) * 0.5, Vector2(bsz, bsz)), false)
+				draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+			else:
+				draw_colored_polygon(PackedVector2Array([
+					sp + _dir(ang) * (0.8 * sc),
+					sp + _dir(ang + PI * 0.5) * (0.25 * sc),
+					sp + _dir(ang - PI * 0.5) * (0.25 * sc)]), P_ALLY)
