@@ -406,6 +406,11 @@ func _to_world(screen_p: Vector2) -> Vector2:
 	var sc := float(t["sc"])
 	return Vector2((screen_p.x - float(t["ox"])) / sc, (screen_p.y - float(t["oy"])) / sc)
 
+## Public screen-to-world transform for HUD drag placement.
+func screen_to_world_position(screen_p: Vector2) -> Vector2:
+	return _to_world(screen_p)
+
+
 
 ## 战场点击 → 只发**意图**信号，由 ShopController 接线（SR-5）。
 ##   · ⑤ 放置模式：抽屉按 GDD §2.1 **收起**（`drawer = CLOSED`）→ 判**状态机**而不是抽屉。

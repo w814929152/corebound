@@ -30,6 +30,7 @@ const _WaveDirector := preload("res://scripts/gameplay/wave_director.gd")
 var director: Node = null
 var controller: Node = null
 var wave_director: Node = null
+var tower_backpack: Control = null
 ## 🆕 卡包：`false` = 本场景**不自动开波**，由 `boot.gd` 在玩家选完卡包后
 ##   `ShopRuntime.set_active_packs()` + `controller.start_new_run()` 手动开局。
 ##   🔴 默认 `true`：所有既有冒烟 / 探针 / 单独跑本场景的路径行为不变（一行回滚点）。
@@ -92,6 +93,14 @@ func _ready() -> void:
 		if vfx.has_method("bind_controller"):
 			vfx.bind_controller(controller)
 	var hud := get_node_or_null("HudLayer/Hud")
+	tower_backpack = get_node_or_null("InventoryLayer/TowerBackpack")
+	if tower_backpack != null:
+		if tower_backpack.has_method("bind_director"):
+			tower_backpack.bind_director(director)
+		if tower_backpack.has_method("bind_controller"):
+			tower_backpack.bind_controller(controller)
+		if tower_backpack.has_method("bind_world_layer"):
+			tower_backpack.bind_world_layer(ml)
 	if hud != null and hud.has_method("bind_director"):
 		hud.bind_director(director)
 	var shop := get_node_or_null("ShopLayer/ShopOverlay")

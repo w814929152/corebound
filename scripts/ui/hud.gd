@@ -131,7 +131,7 @@ func _layout() -> void:
 	if _hint_label != null:
 		# 🆕 上移到核心血条之上：原 `vh - 44` 正好落在血条底槽带（1002–1044）里，
 		#    引导结束后露出键位行时会压住血条左端。
-		_hint_label.position = Vector2(24.0, vh - 112.0)
+		_hint_label.position = Vector2(24.0, vh - 232.0)
 		_hint_label.size = Vector2(1300.0, 26.0)
 	if _debug_panel != null:
 		_debug_panel.position = Vector2(16.0, 108.0)
@@ -567,9 +567,15 @@ func _draw() -> void:
 		draw_style_box(_box_score, SCORE_BOX)
 	# 硬币图标（左上 L0）—— P1 增强：随积分脉冲轻微放大
 	var coin_k := 1.0 + 0.10 * _score_pulse
-	draw_circle(SCORE_ICON, SCORE_ICON_R * coin_k, C_GOLD)
-	draw_circle(SCORE_ICON, (SCORE_ICON_R - 6.0) * coin_k, Color(0.97, 0.66, 0.16, 1.0))
-	draw_circle(SCORE_ICON, (SCORE_ICON_R - 18.0) * coin_k, C_GOLD)
+	# 🔴 批次⑥：金币贴图（ic_coin，烘焙三层同心圆 @R28 比例），脉冲缩放保留运行时；缺失降级。
+	var coin_tex := _Style.icon("ic_coin")
+	if coin_tex != null:
+		var cr := SCORE_ICON_R * coin_k
+		draw_texture_rect(coin_tex, Rect2(SCORE_ICON - Vector2(cr, cr), Vector2(cr * 2.0, cr * 2.0)), false)
+	else:
+		draw_circle(SCORE_ICON, SCORE_ICON_R * coin_k, C_GOLD)
+		draw_circle(SCORE_ICON, (SCORE_ICON_R - 6.0) * coin_k, Color(0.97, 0.66, 0.16, 1.0))
+		draw_circle(SCORE_ICON, (SCORE_ICON_R - 18.0) * coin_k, C_GOLD)
 	# P1 增强：一次性金色小粒子（积分增长喷出）
 	for pt in _gold_parts:
 		var p := clampf(float(pt["life"]) / float(pt["max"]), 0.0, 1.0)

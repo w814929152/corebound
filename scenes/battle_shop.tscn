@@ -1,4 +1,4 @@
-[gd_scene load_steps=11 format=3]
+[gd_scene load_steps=12 format=3]
 
 ; 《守核 Corebound》切片3 骨架场景 —— 实时商店覆盖层
 ;
@@ -24,6 +24,7 @@
 [ext_resource type="Script" path="res://scripts/ui/threat_pulse.gd" id="6_pulse"]
 [ext_resource type="Script" path="res://scripts/ui/core_hp_bar.gd" id="7_hp"]
 [ext_resource type="Script" path="res://scripts/ui/tutorial_overlay.gd" id="10_tut"]
+[ext_resource type="Script" path="res://scripts/ui/tower_backpack.gd" id="12_backpack"]
 
 [node name="BattleShop" type="Node"]
 script = ExtResource("1_root")
@@ -50,6 +51,13 @@ process_mode = 3
 
 [node name="Hud" type="Control" parent="HudLayer"]
 script = ExtResource("4_hud")
+
+[node name="InventoryLayer" type="CanvasLayer" parent="."]
+layer = 110
+process_mode = 3
+
+[node name="TowerBackpack" type="Control" parent="InventoryLayer"]
+script = ExtResource("12_backpack")
 
 [node name="ShopLayer" type="CanvasLayer" parent="."]
 layer = 100
