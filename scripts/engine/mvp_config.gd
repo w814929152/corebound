@@ -60,8 +60,8 @@ const PRICE_TOWER_EFFECT := 9         # 单塔效果卡（A1）
 const PRICE_GLOBAL_EFFECT := 10       # 全局效果卡（A1）
 
 # ---- 时钟 / 减速预算（🔴 单位 = 实时秒 / 倍）----
-const DILATION_SCALE := 0.35            # ② ShopDilated（概念 §8.4）
-const DILATION_SCALE_NOVICE := 0.25     # ② 新手保护 W1–5（概念 §2.1 ③）
+const DILATION_SCALE := 1.0             # ② 商店打开时保持全速
+const DILATION_SCALE_NOVICE := 1.0      # ② 新手波商店同样保持全速
 const PLACEMENT_SCALE := 0.25           # ⑤ PlacementMode（card-system §4.2）
 const NOVICE_WAVE_MAX := 5              # W1–W5 为新手保护波（概念 §2.1 ③）
 const DILATION_BUDGET := 20.0           # 减速预算 20s 实时秒 / 波（M16）

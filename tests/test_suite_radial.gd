@@ -222,20 +222,20 @@ func _angular_span(angles: Array) -> float:
 ##     ② 收敛没有偷偷改路（`G` 只做角向映射 · 出生角永不落在脊里 · 关掉开关逐位回退）。
 func _test_map_layout() -> void:
 	_log("")
-	_log("--- [E-M] 地图三裂环：阵地 17 格 · 开口 320° · G 保序保测度 · 跨台断链 ---")
+	_log("--- [E-M] 地图三裂环：障碍区禁建 · 开口 320° · G 保序保测度 · 跨台断链 ---")
 	_check_bool("前置：layout_enabled == true", _SpaceModel.layout_enabled, true)
 
-	# ---- E-M1 可建格收敛到 17 ----
+	# ---- E-M1 全盘自由建造，岩脊障碍除外 ----
 	var cells: Array = _BuildGrid.all_cells()
-	_check_int("E-M1 可建格数 = 17", cells.size(), 17)
-	var all_in := true
+	_check("E-M1 可建格覆盖全盘", cells.size() > 500)
+	var all_in := false
 	for c in cells:
 		if _BuildGrid.site_id_of(c).is_empty():
-			all_in = false
+			all_in = true
 			break
-	_tally("E-M1 每一格都属于某个阵地（没有游离格）", all_in)
-	var outside: Vector2 = _BuildGrid.snap(_SpaceModel.polar_pos(deg_to_rad(100.0), 35.0))
-	_check_bool("E-M1 圆内非阵地格不可建（r=35,θ=100）", _BuildGrid.buildable(outside), false)
+	_tally("E-M1 阵地外非障碍格可建", all_in)
+	var outside: Vector2 = _BuildGrid.snap(_SpaceModel.polar_pos(deg_to_rad(27.0), 40.0))
+	_check_bool("E-M1 岩脊障碍格不可建", _BuildGrid.buildable(outside), false)
 	_check_bool("E-M1 离盘面很远的点不可建", _BuildGrid.buildable(Vector2(-500.0, -500.0)), false)
 	_check_bool("E-M1 核心禁建区仍不可建", _BuildGrid.buildable(_SpaceModel.RADIAL_CORE), false)
 

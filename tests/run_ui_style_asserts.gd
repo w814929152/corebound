@@ -701,7 +701,7 @@ func _test_k_free_placement() -> void:
 # ---------------------------------------------------------------------------
 ## 🔴 三条口径（缺一条主界面就会退化成"装饰页"）：
 ##   ① 三个入口都存在，且按钮四态走 `ui_style`（§5.1 禁止系统默认控件）；
-##   ② 图鉴必须**一遍看到全部**：8 包 × 6 张 = 48 个卡位、覆盖 `all_cards()` 的每一张，
+##   ② 图鉴必须**一遍看到全部**：8 包 × 10 张 = 80 个卡位、覆盖 `all_cards()` 的每一张，
 ##      未解锁包压暗但仍可见（解锁是节奏阀，不是内容保密）；
 ##   ③ 每张卡的说明非空 —— 图鉴若只有卡名，等于把商店卡面的「这张卡干什么」又丢一次。
 func _test_l_main_menu() -> void:
@@ -736,9 +736,9 @@ func _test_l_main_menu() -> void:
 	_check_int("【图鉴】卡包块数 = PACKS 数", menu._pack_blocks.size(), _Packs.PACKS.size())
 
 	var want_slots := _Packs.PACKS.size() * _Packs.CARDS_PER_PACK
-	_check_int("【图鉴】卡位数 = 8 包 × 每包 6 张", menu._card_entries.size(), want_slots)
+	_check_int("【图鉴】卡位数 = 8 包 × 每包 10 张", menu._card_entries.size(), want_slots)
 
-	# 每个卡包块 = 6 张卡（结构对齐，不靠总数碰巧相等）
+	# Every package block must expose all ten cards without truncation.
 	var bad_block: Array = []
 	for blk in menu._pack_blocks:
 		var n := ((blk as Dictionary)["cards"] as Array).size()

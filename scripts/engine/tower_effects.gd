@@ -27,6 +27,7 @@ extends RefCounted
 ##
 
 const _TD := preload("res://scripts/data/tower_data.gd")
+const _CombatTypes := preload("res://scripts/data/combat_types.gd")
 
 ## 触发加等级的封顶（塔等级上限）。
 ##   🔴 8 = 形态满级（`monster_layer` h≥8 外环）/ `Focus` 预热满额（h/8）同档；
@@ -115,6 +116,24 @@ static func dot_dps(player) -> float:
 			continue
 		s += _TD.tower_dot(String(t.ctype))
 	return s
+
+
+## Debuff vulnerability multiplier. Debuffs currently resolve as global combat effects,
+## so any active slow, resistance shred, or DoT source marks the wave's targets.
+static func debuff_damage_mult(player) -> float:
+	if player == null:
+		return 1.0
+	var has_debuff := false
+	var bonus := 0.0
+	for t in player.towers:
+		if bool(t.disabled):
+			continue
+		var ctype := String(t.ctype)
+		if _TD.tower_slow(ctype) > 0.0 or _TD.tower_dot(ctype) > 0.0 \
+				or _CombatTypes.armor_reduct_type(ctype) != "":
+			has_debuff = true
+		bonus = maxf(bonus, _TD.tower_buff_debuff_dmg(ctype))
+	return 1.0 + bonus if has_debuff else 1.0
 
 
 ## 回复：每秒为未 Disabled 的塔恢复生命（封顶 hp_max）。

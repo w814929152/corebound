@@ -4,14 +4,13 @@ extends CanvasLayer
 ## ---------------------------------------------------------------------------
 ## 职责：游戏启动后的**第一屏**。三个入口：
 ##   · 开始游戏 → 交给 `boot.gd` 走现有「选关 → 选包 → 开局」流程；
-##   · 卡组图鉴 → 在本层内切到「卡组图鉴」页，浏览**全部 8 个卡包的 48 个卡位**
-##     （15 座塔；同一座塔可跨包共享，见 `card_packs.gd` 的「建筑调色板」口径）；
+##   · 卡组图鉴 → 在本层内切到「卡组图鉴」页，浏览**全部 8 个卡包的 80 个卡位**；
 ##   · 退出游戏 → 发 `quit_requested`（真正退出由调用方决定，本层不直接 quit）。
 ##
 ## 🔴 为什么图鉴要「一遍看到全部」而不是按解锁进度藏：
 ##   卡包解锁只是**节奏阀**，不是内容保密。玩家在选包界面只有 3 个格子，
 ##   如果连「有哪些流派、每包长什么样」都看不到，选包就退化成盲选。
-##   图鉴把 8 包 × 6 张摊开（未解锁的包压暗但仍可见），玩家的选择才成立 ——
+##   图鉴把 8 包 × 10 张摊开（未解锁的包压暗但仍可见），玩家的选择才成立 ——
 ##   这与 `card_packs.gd` 文件头「选包 = 选一条 build」同一前提。
 ##
 ## 🔴 art-bible 合规（与 `pack_select_overlay.gd` 同一管法）：
@@ -38,8 +37,7 @@ const LAYER := 200
 const PAGE_MENU := 0
 const PAGE_LIBRARY := 1
 
-## 图鉴单卡尺寸。🔴 6 张一行：6 × 278 + 5 × 12 = 1728 ≤ 1776（1920 − 2×72），
-##   与「每包 6 张」的卡包结构一一对应，玩家一眼看到「这一包就是这 6 张」。
+## 图鉴单卡尺寸。5 张一行：5 × 278 + 4 × 12 = 1430 ≤ 1776（1920 − 2×72）。
 const CARD_SIZE := Vector2(278.0, 126.0)
 const MENU_X := 140.0
 const LIB_MARGIN_X := 72.0
@@ -329,8 +327,10 @@ func _make_pack_block(pack: Dictionary, seq: int) -> Control:
 
 	block.add_child(_Style.hline())
 
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 12)
+	var row := GridContainer.new()
+	row.columns = 5
+	row.add_theme_constant_override("h_separation", 12)
+	row.add_theme_constant_override("v_separation", 8)
 	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	block.add_child(row)
 
@@ -523,44 +523,66 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 # ---------------------------------------------------------------------------
-#  背景绘制（径向蓝图：同心环 + 方位刻度 + 确定性星点，零 RNG）
+#  背景绘制（核心遗迹：断裂防线 + 能量导线 + 来袭剪影，零 RNG）
 # ---------------------------------------------------------------------------
 func _paint_backdrop(ci: Control) -> void:
 	var sz := ci.size
 	if sz.x < 2.0 or sz.y < 2.0:
 		sz = Vector2(1920.0, 1080.0)
 
-	var c := Vector2(sz.x * 0.68, sz.y * 0.46)
-	var unit := minf(sz.y, sz.x * 0.62)
+	var c := Vector2(sz.x * 0.73, sz.y * 0.51)
+	var unit := minf(sz.y, sz.x * 0.58)
+	var ally := _Style.C_ALLY
+	var enemy := _Style.C_ENEMY
+	var steel := _Style.C_STEEL
 
-	# 同心环（与战场「出生环 → 核心」同一空间语言）
-	for k in range(7):
-		var r := unit * (0.16 + 0.085 * float(k))
-		var a := 0.06 - 0.005 * float(k)
-		ci.draw_arc(c, r, 0.0, TAU, 128,
-			Color(_Style.C_ALLY.r, _Style.C_ALLY.g, _Style.C_ALLY.b, maxf(a, 0.02)),
-			1.0, true)
+	ci.draw_circle(c, unit * 0.53, Color(0.035, 0.052, 0.069, 0.92))
+	ci.draw_arc(c, unit * 0.53, 0.0, TAU, 160, Color(ally.r, ally.g, ally.b, 0.10), 2.0, true)
 
-	# 方位刻度（72 根，每 3 根加长 —— 蓝图语言）
-	for k in range(72):
-		var ang := TAU * float(k) / 72.0
-		var d := Vector2(cos(ang), sin(ang))
-		var r0 := unit * 0.69
-		var long := (k % 3) == 0
-		ci.draw_line(c + d * r0, c + d * (r0 + (10.0 if long else 5.0)),
-			Color(_Style.C_STEEL.r, _Style.C_STEEL.g, _Style.C_STEEL.b, 0.20 if long else 0.10),
-			1.0, true)
+	# Three broken armor rings give the radial battlefield the silhouette of a ruined fortress.
+	for k in range(3):
+		var r := unit * (0.22 + 0.105 * float(k))
+		var segs := 8 + k * 3
+		for j in range(segs):
+			if (j + k * 2) % 7 == 0:
+				continue
+			var a0 := TAU * float(j) / float(segs) + 0.08 * float(k)
+			var a1 := TAU * (float(j) + 0.76) / float(segs) + 0.08 * float(k)
+			var alpha := 0.12 - 0.022 * float(k)
+			var col := Color(ally.r, ally.g, ally.b, alpha) if j % 3 == 0 else Color(steel.r, steel.g, steel.b, alpha * 0.65)
+			ci.draw_arc(c, r, a0, a1, 24, col, 2.0 if k == 0 else 1.0, true)
 
-	# 确定性星点（黄金角散布，零 RNG —— 与 `stage_select_overlay` 同手法）
-	for i in range(90):
-		var x := fmod(float(i) * 0.61803398875 + 0.13, 1.0) * sz.x
-		var y := fmod(float(i) * 0.41421356237 + 0.09, 1.0) * sz.y
-		var a := 0.04 + 0.06 * fmod(float(i) * 0.37, 1.0)
-		ci.draw_circle(Vector2(x, y), 1.2, Color(0.78, 0.85, 1.0, a))
+	# Powered lanes and armored plates lead the eye toward the core.
+	for i in range(3):
+		var ang := -PI * 0.77 + TAU * float(i) / 3.0
+		var dir := Vector2(cos(ang), sin(ang))
+		var side := dir.rotated(PI * 0.5)
+		ci.draw_line(c + dir * unit * 0.50, c + dir * unit * 0.13, Color(ally.r, ally.g, ally.b, 0.10), 1.0, true)
+		for n in range(3):
+			var p := c + dir * unit * (0.24 + float(n) * 0.105)
+			var w := unit * 0.018
+			var plate := PackedVector2Array([p - dir * w - side * w, p + dir * w - side * w, p + dir * w + side * w, p - dir * w + side * w])
+			ci.draw_colored_polygon(plate, Color(ally.r, ally.g, ally.b, 0.14 if n == 1 else 0.075))
 
-	# 环心的「核心」（与战场同一个视觉母题：径向围攻的靶心）
-	ci.draw_circle(c, 9.0, Color(_Style.C_ALLY.r, _Style.C_ALLY.g, _Style.C_ALLY.b, 0.85))
-	ci.draw_arc(c, 17.0, 0.0, TAU, 56,
-		Color(_Style.C_ALLY.r, _Style.C_ALLY.g, _Style.C_ALLY.b, 0.30), 1.5, true)
-	ci.draw_arc(c, 26.0, 0.0, TAU, 56,
-		Color(_Style.C_ALLY.r, _Style.C_ALLY.g, _Style.C_ALLY.b, 0.14), 1.0, true)
+	# Small hostile wedges sit beyond the breach line.
+	for i in range(5):
+		var ang := -2.95 + float(i) * 0.46
+		var dir := Vector2(cos(ang), sin(ang))
+		var p := c + dir * unit * (0.60 + 0.035 * float(i % 2))
+		var side := dir.rotated(PI * 0.5)
+		var s := unit * (0.014 + 0.002 * float(i % 3))
+		var shape := PackedVector2Array([p + dir * s * 1.8, p - dir * s - side * s, p - dir * s + side * s])
+		ci.draw_colored_polygon(shape, Color(enemy.r, enemy.g, enemy.b, 0.22))
+		ci.draw_polyline(PackedVector2Array([shape[0], shape[1], shape[2], shape[0]]), Color(enemy.r, enemy.g, enemy.b, 0.50), 1.0, true)
+		ci.draw_line(p + dir * s * 2.5, p + dir * s * 6.0, Color(enemy.r, enemy.g, enemy.b, 0.20), 1.0, true)
+
+	# Mechanical iris core with six shield contacts.
+	ci.draw_circle(c, unit * 0.072, Color(ally.r, ally.g, ally.b, 0.06))
+	ci.draw_arc(c, unit * 0.072, 0.0, TAU, 64, Color(ally.r, ally.g, ally.b, 0.48), 2.0, true)
+	ci.draw_arc(c, unit * 0.052, 0.18, TAU - 0.22, 64, Color(steel.r, steel.g, steel.b, 0.24), 1.0, true)
+	ci.draw_circle(c, unit * 0.026, Color(ally.r, ally.g, ally.b, 0.20))
+	ci.draw_circle(c, unit * 0.012, Color(0.86, 0.98, 1.0, 0.88))
+	for i in range(6):
+		var ang := TAU * float(i) / 6.0
+		var dir := Vector2(cos(ang), sin(ang))
+		ci.draw_line(c + dir * unit * 0.078, c + dir * unit * 0.095, Color(ally.r, ally.g, ally.b, 0.38), 2.0, true)

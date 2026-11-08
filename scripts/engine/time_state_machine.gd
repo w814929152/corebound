@@ -18,7 +18,7 @@ extends RefCounted
 ## | 态 | Engine.time_scale | 战斗推进 | 减速预算 | 抽屉 |
 ## |---|---|---|---|---|
 ## | ① Combat        | 1.0            | ✅      | 冻结     | 关闭 |
-## | ② ShopDilated   | 0.35（W1–5 0.25）| ✅    | ✅ 消耗（W1–5 不消耗）| 轻决策 |
+## | ② ShopDilated   | 1.0            | ✅      | ✅ 消耗（W1–5 不消耗）| 轻决策 |
 ## | ③ ShopRealTime  | 1.0            | ✅      | ❌ 已耗尽 | 轻决策（预算条标红）|
 ## | ④ SafeWindow    | 1.0（世界暂停靠 paused）| ⏸ | 冻结 | 重决策 |
 ## | ⑤ PlacementMode | 0.25           | ✅      | ✅ 消耗（W1–5 不消耗）| 🔴 收起 |

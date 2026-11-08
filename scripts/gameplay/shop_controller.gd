@@ -331,17 +331,7 @@ func _on_repair_requested() -> void:
 func _show_repair_dialog(rows: Array) -> void:
 	var dlg = _DisabledTowerDialog.new()
 	add_child(dlg)
-	# 组装行数据：加 can_repair 布尔（积分够不够修这一座）
-	var scrap_now := float(runtime.scrap)
-	var prepared: Array = []
-	for row in rows:
-		prepared.append({
-			"slot": int(row["slot"]),
-			"invested": float(row["invested"]),
-			"repair_cost": int(row["repair_cost"]),
-			"attach_layers": int(row["attach_layers"]),
-			"can_repair": scrap_now >= float(row["repair_cost"]),
-		})
+	var prepared := _prepare_disabled_rows(rows)
 	# 玩家点「修复」→ 结算 + 刷新剩余受损塔列表（可能修好后列表变短/空）
 	dlg.tower_repair_requested.connect(func(slot: int) -> void:
 		var res: Dictionary = runtime.repair_tower(slot)
@@ -378,7 +368,21 @@ func _show_repair_dialog(rows: Array) -> void:
 func _remaining_disabled_rows() -> Array:
 	if runtime == null:
 		return []
-	return runtime.list_disabled_towers()
+	return _prepare_disabled_rows(runtime.list_disabled_towers())
+
+
+func _prepare_disabled_rows(rows: Array) -> Array:
+	var scrap_now := float(runtime.scrap)
+	var prepared: Array = []
+	for row in rows:
+		prepared.append({
+			"slot": int(row["slot"]),
+			"invested": float(row["invested"]),
+			"repair_cost": int(row["repair_cost"]),
+			"attach_layers": int(row["attach_layers"]),
+			"can_repair": scrap_now >= float(row["repair_cost"]),
+		})
+	return prepared
 
 
 # ---- 待放置队列 → 进入放置模式（I-8 的前半段）----

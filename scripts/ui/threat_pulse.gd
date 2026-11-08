@@ -4,8 +4,8 @@ extends Control
 ##
 ## 🔴 两条硬约束（锚点 4 第 4 条 / 交接点 10）：
 ##   ① **必须用动效（运动 + 亮度），禁止文字/数字** —— 人眼余光对形状与文字不敏感；
-##   ② **必须用 unscaled 时钟** —— 若在 scaled 时钟下做脉冲，0.35× 减速时脉冲频率
-##      会跟着变慢 → 余光告警在最需要它的时刻失效。
+##   ② **必须用 unscaled 时钟** —— 若在 scaled 时钟下做脉冲，游戏缩放低于 1.0× 时脉冲频率
+##      会跟着降低 → 余光告警在最需要它的时刻失效。
 ##
 ## 骨架实现：用 `Time.get_ticks_msec()` 差值手算相位（实测不受 time_scale / paused 影响）。
 ## 正式实现可直接换 `Tween` + `set_ignore_time_scale(true)`（4.7.2 实测有此方法，见探针日志）。
@@ -15,7 +15,7 @@ extends Control
 
 const C_RED := Color(0.92, 0.16, 0.16, 1.0)
 const EDGE := 56.0               # 边缘光带厚度
-const PULSE_HZ := 1.6            # 脉冲频率（🔴 实时 Hz，不随减速变）
+const PULSE_HZ := 1.6            # 脉冲频率（🔴 实时 Hz，不随游戏缩放变）
 const BASE_ALPHA := 0.22         # 骨架阶段的固定威胁度（等 WS-4 供数）
 
 var _threat: float = 0.5         # [接口] 威胁度 0..1，后续由 WS-4 写入

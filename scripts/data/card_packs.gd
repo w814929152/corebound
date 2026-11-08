@@ -6,7 +6,7 @@
 ##   （选包 = 选这局能造哪几座塔，而不是选几张效果卡）。
 ##   · v0.1：5 包 × 2 张（塔 + 强化），选 3 包 = 6 张 —— 卡太少。
 ##   · v0.2：7 包 × 6 张（塔 + 强化 + 经济），选 3 包 = 18 张 —— build 完整，但效果卡占半壁。
-##   · v0.3（本版）：8 包 × 6 张，**全部是建筑卡** —— 没有强化 / 经济 / 全局卡。
+##   · v0.4（本版）：8 包 × 10 张，**全部是建筑卡** —— 每包可独立组成流派 build。
 ##
 ## 🔴 为什么本版只收建筑：
 ##   用户 2026-11-07 拍板「卡包内只有建筑卡，没有效果卡；先用建筑构建玩法，
@@ -17,12 +17,12 @@
 ## 🔴 建筑-only 带来的三个直接后果（都已在代码里落地，不是待办）：
 ##   ① `validate()` 把「非建筑卡混进卡包」判成**结构错误**，防止效果卡被顺手加回来；
 ##   ② 同一座塔**允许跨包共享**（塔是建筑类型，不是一次性卡牌），跨包重复不再报错；
-##   ③ 刷新保底的「骨架卡」= 每包**前 2 张**（流派身份塔）——整包都是塔时若全算骨架，
+##   ③ 刷新保底的「骨架卡」= 每包**第 1 张**（成长引擎）——整包都是塔时若全算骨架，
 ##      保底永远命中 = 等于没有保底。
 ##
 ## 🔴 卡池稀释（实测依据，见 keyword-adaptation §0/§7.4）：
 ##   池 7→10 张（+43% 零效果白板）实测 A −8.0pp / B −11.0pp，pity 只是止损阀不是扩容许可。
-##   本版单池 = 3 包**并集去重**后约 9~12 张（塔跨包共享 ⇒ 比 v0.2 的 18 张更窄）。
+##   本版每局池 = 所选 3 包共 30 张（各卡仅归属一包，不需要去重）。
 ##
 ## 🔴 数据边界（control-manifest §5）：数值只在 `tower_data.gd` / `shop_ai.gd` 定义一次。
 ##   本文件只回答「谁和谁一包」「几包可用」「几波解锁」，**不写任何数值**；
@@ -34,12 +34,12 @@
 const _TD := preload("res://scripts/data/tower_data.gd")
 const _ShopAI := preload("res://scripts/engine/shop_ai.gd")
 
-## 🔴 每局可携带的卡包数：3 包 × 6 张**建筑** = **18 座塔**（一卡一包，无需去重）。
+## 🔴 每局可携带的卡包数：3 包 × 10 张**建筑** = **30 张卡**（一卡一包，无需去重）。
 const PICKS_PER_RUN := 3
 
 ## 每包固定张数（自测断言钉死；UI 按它算「本局卡池 N 张」）。
-##   🔴 6 = 48 张卡 ÷ 8 包 的结果，见 `PACKS` 上方注释。
-const CARDS_PER_PACK := 6
+##   🔴 10 = 80 张卡 ÷ 8 包 的结果，见 `PACKS` 上方注释。
+const CARDS_PER_PACK := 10
 
 ## 🔴 2026-11-07 用户拍板（B 方案）：**全部卡包开局即开放** —— 选包 = 选流派，
 ##   不再用「历史最佳波次」逐包解锁（那是早期为了「失败也有产出」设计的节奏阀）。
@@ -56,57 +56,55 @@ static var all_packs_open: bool = true
 ##     🔴 用「最佳波次」而不是「通关次数」：打不过也应该有推进（campaign-progression §3
 ##        「失败即产出」）—— 否则首次通关前的内容永远看不见。
 ##
-## 每包 6 张 = 一条**建筑线**（2026-11-07：卡包只收建筑 + **一张卡只属于一个包**）：
+## 每包 10 张 = 一条完整**建筑线**（卡包只收建筑 + **一张卡只属于一个包**）：
 ##   · 全部是塔：没有强化卡、没有经济卡、没有全局卡。
 ##   · 🔴 **每张卡只出现在一个卡包里**（`is_shared_card` 恒 false，`validate()` 会拦重复）。
-##     48 张卡 / 每包 6 张 = 8 包，正好一卡一包、不重不漏。
-##   · 8 包 × 6 张 = 48 个卡位 = 全部塔。每局选 3 包 = **18 座塔**。
-##   · 🔴 48 张怎么来的：用户要求「不要减少总卡的数量，数量不够就增加卡的数量和机制」。
-##     原有 18 张（15 塔 + 3 触发建筑）+ **新增 30 张**（见 `tower_data.gd` 的扩充段，
-##     机制取自 `mechanic-source-index.md`：登场 / 整备 / 牺牲 / 觉醒 / 经济 / 减抗光环扩展）。
+##     80 张卡 / 每包 10 张 = 8 包，正好一卡一包、不重不漏。
+##   · 8 包 × 10 张 = 80 个卡位 = 全部塔。每局选 3 包 = **30 张卡**。
+##   · 在原有 48 张基础上新增 32 张（每包补 4 张），覆盖输出、控制、DoT 与流派成长。
 ##   · 🔴 包的身份 = **伤害构成 + 升级触发**：物理 / 魔法 / 真实，配合单体 / 群伤 / 减速 /
 ##     削抗 / 登场·整备·阵亡。tag 只影响 Sunder / Hex 的破抗光环。
 ##   · ⚠️ 强化卡 / 经济卡（FireUp… / ScrapUp）**暂时退出玩家池**，效果层后续再加：
 ##      代码与数据保留（金标本路径仍在用），只是不再进任何卡包。
 const PACKS: Array = [
 	{
-		"id": "core", "name": "泛用包", "tag_line": "经济滚雪球 · 赏金 · 类型转换",
-		"cards": ["Foundry", "Arrow", "Cannon", "Frost", "Scout", "Kinetic"],
+		"id": "core", "name": "泛用包", "tag_line": "泛用输出 · 赏金 · 类型转换",
+		"cards": ["Foundry", "Arrow", "Cannon", "Frost", "Scout", "Kinetic", "Ranger", "Sentry", "Catapult", "Harrier"],
 		"unlock_wave": 0,
 	},
 	{
-		"id": "cinder", "name": "熔炉包", "tag_line": "火：登场升级 · 自爆 · 觉醒",
-		"cards": ["Vanguard", "Ember", "Blaze", "Cinder", "Pyre", "Maul"],
+		"id": "cinder", "name": "熔炉包", "tag_line": "火：灼烧 DoT · 自爆 · 觉醒",
+		"cards": ["Vanguard", "Ember", "Blaze", "Cinder", "Pyre", "Maul", "Furnace", "Wildfire", "Ashen", "Hellfire"],
 		"unlock_wave": 0,
 	},
 	{
 		"id": "rime", "name": "霜序包", "tag_line": "冰：整备升级 · 减速控场",
-		"cards": ["Drillmaster", "Icicle", "Glacier", "Hail", "Permafrost", "Purity"],
+		"cards": ["Drillmaster", "Icicle", "Glacier", "Hail", "Permafrost", "Purity", "Snowfall", "Shard", "Whiteout", "Avalanche"],
 		"unlock_wave": 0,
 	},
 	{
-		"id": "pierce", "name": "穿甲包", "tag_line": "远程贯穿 · 阵亡升级 · 转魔法",
-		"cards": ["Martyr", "Lance", "Javelin", "Ballista", "Sniper", "Arcane"],
+		"id": "pierce", "name": "穿甲包", "tag_line": "远射贯穿 · 流血 · 阵亡升级",
+		"cards": ["Martyr", "Lance", "Javelin", "Ballista", "Sniper", "Arcane", "Longbow", "Needle", "Hemorrhage", "Impaler"],
 		"unlock_wave": 6,
 	},
 	{
-		"id": "arc", "name": "电弧包", "tag_line": "电：弹射链 · 击杀升级",
-		"cards": ["Thunder", "Tesla", "Bolt", "Storm", "Arc", "Spark"],
+		"id": "arc", "name": "电弧包", "tag_line": "电：弹射链 · 减速 · 击杀升级",
+		"cards": ["Thunder", "Tesla", "Bolt", "Storm", "Arc", "Spark", "Coil", "Overcharge", "Thunderhead", "Circuit"],
 		"unlock_wave": 12,
 	},
 	{
-		"id": "sunder", "name": "破甲包", "tag_line": "削物抗 · 攻速/防御光环",
-		"cards": ["Drummer", "Sunder", "Breaker", "Shatter", "Ruin", "Quake"],
+		"id": "sunder", "name": "破甲包", "tag_line": "削物抗 · 流血 · 攻防光环",
+		"cards": ["Drummer", "Sunder", "Breaker", "Shatter", "Ruin", "Quake", "Rend", "Crusher", "Bastion", "Siege"],
 		"unlock_wave": 18,
 	},
 	{
-		"id": "hex", "name": "咒术包", "tag_line": "削魔抗 · 攻击光环 · DoT/回复",
-		"cards": ["Omen", "Hex", "Rune", "Curse", "Plague", "Wither"],
+		"id": "hex", "name": "咒术包", "tag_line": "debuff 易伤 +20% · 削魔抗 · DoT",
+		"cards": ["Omen", "Hex", "Rune", "Curse", "Plague", "Wither", "Executioner", "Blight", "Malison", "Hexer"],
 		"unlock_wave": 24,
 	},
 	{
 		"id": "true", "name": "湮灭包", "tag_line": "真实 · 击杀升级 · 召唤 · 觉醒",
-		"cards": ["Null", "Oblivion", "Void", "Exile", "Rift", "Necro"],
+		"cards": ["Null", "Oblivion", "Void", "Exile", "Rift", "Necro", "Eraser", "Obliterator", "Soulpiercer", "Wraith"],
 		"unlock_wave": 30,
 	},
 ]
@@ -196,13 +194,15 @@ static func card_weight(card: String) -> float:
 		return float(_ShopAI.WEIGHTS[card])
 	if _TD.EXT_WEIGHTS.has(card):
 		return float(_TD.EXT_WEIGHTS[card])
+	if _TD.CARD_PACK_WEIGHTS.has(card):
+		return float(_TD.CARD_PACK_WEIGHTS[card])
 	return 0.0
 
 
 ## 🆕 本局「骨架卡」= 所选包里每包的**第 1 张**（流派核心塔）。
 ##   刷新保底（`shop_runtime._apply_reroll_pity`）用这个集合判定：手动刷新若 3 张里
 ##   一张骨架卡都没有，强制补一张，保证「本局主打的塔」不被稀释。
-##   🔴 每包只有 3 张，取第 1 张 = 包的身份卡（见 PACKS 注释）。
+##   🔴 取每包第 1 张 = 包的成长引擎（见 PACKS 注释）。
 static func skeleton_cards(sel: Array) -> Array:
 	var out: Array = []
 	for pid in sel:

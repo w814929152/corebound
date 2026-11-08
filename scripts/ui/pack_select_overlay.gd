@@ -2,14 +2,12 @@ extends CanvasLayer
 ##
 ## 开局卡包选择覆盖层 —— `pack_select_overlay.gd`
 ## ---------------------------------------------------------------------------
-## 职责：**开打之前**让玩家从已解锁的卡包里挑 `PICKS_PER_RUN` 个（默认 3 个 = 6 张卡）。
+## 职责：**开打之前**让玩家从已解锁的卡包里挑 `PICKS_PER_RUN` 个（默认 3 个 = 30 张卡）。
 ##   本组件纯 UI：只读 `run_meta.gd`（已解锁 / 上次选包），只发 `packs_confirmed`。
 ##   卡池的**实际生效**由调用方（`boot.gd`）在确认后调 `ShopRuntime.set_active_packs()`。
 ##
 ## 🔴 为什么要有这一屏（不是"多一层菜单"）：
-##   `keyword-adaptation.md` §7.4 实测：玩家池 7 → 10 张，A 路径起飞率 −8.0pp、
-##   B 路径 −11.0pp。卡池张数是**难度旋钮**，不是容量。所以每局只带 3 包（6 张），
-##   张数恒定、构成由玩家选 —— 选择本身就是构筑（P3「每局一个新解」）。
+##   当前每局选择 3 包（30 张），每包十张构成独立流派 build；商店仍以三件商品为一轮。
 ##
 ## 🔴 分层 160：高于结算 150 / 确认弹窗 140 / 教学 135。它出现在"开局前"，
 ##   必须压住所有战斗 UI；`process_mode = ALWAYS` 让安全窗（tree paused）下也能点。
@@ -32,8 +30,8 @@ const _RunMeta := preload("res://scripts/gameplay/run_meta.gd")
 ##   🔴 高度 292 与内容实测对齐（2026-11-07）：卡列表改**双列纯卡名网格**后
 ##     内容最小高度 ≈ 266px（含 24 边距），292 留余量 —— 每卡「卡名+定位」两行堆叠
 ##     的旧排法内容高达 539px（8 包 ×6 卡时代溢出瓦片边界），定位信息改由
-##     商店卡面 describe / 包 tag_line 承载，瓦片只回答「这包有哪 6 张卡」。
-const TILE_SIZE := Vector2(180.0, 292.0)
+##     商店卡面 describe / 包 tag_line 承载，瓦片只回答「这包有哪 10 张卡」。
+const TILE_SIZE := Vector2(180.0, 336.0)
 
 var _built: bool = false
 var _tiles: Array = []          # Array[Dictionary]：{id, btn, status, name, tag, cards, roles}

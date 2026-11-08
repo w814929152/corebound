@@ -128,7 +128,7 @@ func _test_clock_table() -> void:
 	_check_bool("① Combat 消耗预算", bool(c["consumes_budget"]), false)
 	_check_int("① Combat 抽屉", int(c["drawer"]), D.CLOSED)
 
-	# ② ShopDilated：ts=0.35 / 不暂停 / 消耗预算 / 抽屉轻决策
+	# ② ShopDilated：ts=1.0 / 不暂停 / 消耗预算 / 抽屉轻决策
 	sm.state = S.SHOP_DILATED
 	c = sm.clock()
 	_check("② ShopDilated time_scale", float(c["time_scale"]), _Cfg.DILATION_SCALE)
@@ -191,7 +191,7 @@ func _test_budget_unscaled() -> void:
 	_log("--- [3] 减速预算：unscaled 实时秒（GDD §5.2 / §10.1 断言 2）---")
 	var S = _TSM.State
 
-	# ---- 3.1 W6 打开商店 → 0.35×，10 实时秒后预算 20 → 10 ----
+	# ---- 3.1 W6 打开商店全速推进，10 实时秒后预算 20 → 10 ----
 	var sm = _TSM.new(6)
 	sm.open_shop()
 	_check_int("3.1 打开商店进入态②", sm.state, S.SHOP_DILATED)
@@ -269,7 +269,7 @@ func _test_budget_unscaled() -> void:
 # ===========================================================================
 func _test_novice_protection() -> void:
 	_log("")
-	_log("--- [4] 新手保护 W1–W5：0.25× 且**不消耗预算**（GDD §2.1 / §5.2）---")
+	_log("--- [4] 新手保护 W1–W5：商店保持全速且不消耗预算 ---")
 	var S = _TSM.State
 	for w in [1, 2, 3, 4, 5]:
 		var sm = _TSM.new(w)
@@ -279,10 +279,10 @@ func _test_novice_protection() -> void:
 		sm.tick(30.0)
 		_check("W%d tick 30s 后预算仍满" % w, sm.budget_left, 20.0)
 		_check_int("W%d 仍在态②（不会因耗尽转③）" % w, sm.state, S.SHOP_DILATED)
-	# W6 起恢复 0.35× 且开始消耗
+	# W6 商店同样全速，照旧开始消耗预算
 	var sm6 = _TSM.new(6)
 	sm6.open_shop()
-	_check("W6 恢复 0.35×", float(sm6.clock()["time_scale"]), _Cfg.DILATION_SCALE)
+	_check("W6 商店全速", float(sm6.clock()["time_scale"]), _Cfg.DILATION_SCALE)
 	_check_bool("W6 开始消耗预算", bool(sm6.clock()["consumes_budget"]), true)
 
 
@@ -291,13 +291,12 @@ func _test_novice_protection() -> void:
 # ===========================================================================
 func _test_thinking_gain() -> void:
 	_log("")
-	_log("--- [5] 思考时间增益：20s 预算 @0.35× → 战场只推进 7s（GDD §5.2）---")
+	_log("--- [5] 商店全速：20s 经过时战场推进 20s ---")
 	var ts := _Cfg.DILATION_SCALE
 	var budget := _Cfg.DILATION_BUDGET
 	var game_advanced := budget * ts
-	_check("战场推进量 = 20 × 0.35", game_advanced, 7.0)
-	_check("思考增益 = 20 / 7", budget / game_advanced, 20.0 / 7.0)
-	_log("   [info] 思考增益 = ×%.3f（GDD 口径 ×2.86 / 概念 §2.1 ③ 写 ×2.9）" % (budget / game_advanced))
+	_check("商店打开时战场推进量 = 20 × 1.0", game_advanced, 20.0)
+	_check("商店全速时无额外思考增益", budget / game_advanced, 1.0)
 
 
 # ===========================================================================

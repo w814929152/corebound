@@ -38,6 +38,7 @@ const _MvpConfig := preload("res://scripts/engine/mvp_config.gd")
 const _FpPow := preload("res://scripts/engine/fp_pow.gd")
 ## 🆕 战斗类型系统 —— 只在 combat_types_enabled 时按抗性分池结算（默认关 → 逐位不变）。
 const _CombatTypes := preload("res://scripts/data/combat_types.gd")
+const _TowerEffects := preload("res://scripts/engine/tower_effects.gd")
 
 const DT := 0.1
 
@@ -132,6 +133,15 @@ static func simulate_wave(player, w: int, cfg: Dictionary, geo = null) -> Dictio
 				else:
 					m[0] = float(m[0]) - dmg
 					dmg = 0.0
+
+		# Match the live combat path: global DoT is true damage and is amplified
+		# when the debuff-vulnerability tower is paired with any debuff source.
+		var dot := _TowerEffects.dot_dps(player)
+		if dot > 0.0:
+			dot *= _TowerEffects.debuff_damage_mult(player) * DT
+			var dot_res := _apply_pool(monsters, dot, _CombatTypes.TRUE, spk, 0.0)
+			kills += int(dot_res[0])
+			scrap += float(dot_res[1])
 
 		# ---- 前进：判死 / 漏怪（原地压缩，保持相对顺序）----
 		var wpos := 0

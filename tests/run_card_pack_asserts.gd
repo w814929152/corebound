@@ -9,13 +9,13 @@ extends RefCounted
 ##   玩家池 7 → 10 张 → A 起飞率 −8.0pp / B −11.0pp（且单张"能用但弱"的卡更狠，−10.3pp/张）。
 ##   ⇒ 分池后**每局卡池恒为 6 张**（3 包 × 2 张），张数不涨，构成由玩家选。
 ##
-## 断言口径（v0.2 · 每包 6 张 = 完整 build）：
-##   A 数据表结构：7 包 × 6 张，无 RerollD、每张都能查到权重、现有池无漏卡、
+## 断言口径（v0.4 · 每包 10 张 = 独立流派 build）：
+##   A 数据表结构：8 包 × 10 张，无 RerollD、每张都能查到权重、卡池无漏卡、
 ##     每包至少 1 塔、包内强化卡的 tag 有对应塔；泛用卡（Arrow/ScrapUp）允许跨包共享
 ##   B 解锁口径：最佳波次 → 已解锁包数 → 必须选几包（≤3 全带，>3 才需要选）
 ##   C 选择规整：未知 / 未解锁 / 重复 / 超量 一律被剔除，顺序按包序
 ##   D 卡池派生：所选包并集 = 卡池（顺序、权重、总和都对得上）；骨架卡 = 塔+强化
-##   E 老口径不破：`set_active_packs([])` 时仍是 6 张 / 0.905，扩展包开关仍是 10 张 / 1.245
+##   E 老口径不破：`set_active_packs([])` 时仍是 6 张 / 0.905，扩展包开关仍是 16 张 / 1.740
 ##   F 发牌：真 runtime 连开 8 波，offers **必须全部**落在所选池内；pity 卡不得越池
 ##   G 界面结构：7 个卡包位、同尺寸（X3）、按钮四态自定义、文本 ≥16px、锁定态禁用
 ##
@@ -39,7 +39,6 @@ const _PackUI := preload("res://scripts/ui/pack_select_overlay.gd")
 
 ## 老口径常量（与 `run_ext_pack_asserts.gd` 同值，改动前基线）
 const POOL_TOTAL_6 := 0.905
-const POOL_TOTAL_14 := 1.575
 const FONT_MIN := 16
 
 var _pass := 0
@@ -87,7 +86,7 @@ func run_all() -> bool:
 	_log("")
 	_log("=".repeat(78))
 	_log("卡包（Card Pack）· 分池 / 选包 / 解锁 / 发牌")
-	_log("基准：每包 6 张建筑卡 · 每局 3 包 · 解锁按最佳波次")
+	_log("基准：每包 10 张建筑卡 · 每局 3 包 · 解锁按最佳波次")
 	_log("=".repeat(78))
 
 	_test_a_table()
@@ -106,6 +105,7 @@ func run_all() -> bool:
 	_test_n_convert()
 	_test_o_death_blast()
 	_test_p_summon()
+	_test_q_debuff_bonus()
 
 	# 🔴 收尾：把静态状态还原成默认，避免污染同进程内的后续套件
 	_ShopRuntime.set_active_packs([])
@@ -128,12 +128,12 @@ func run_all() -> bool:
 # ---------------------------------------------------------------------------
 func _test_a_table() -> void:
 	_log("")
-	_log("--- [A] 数据表：8 包 × 6 张**建筑卡**，一卡一包 / 无漏塔 / 无效果卡 ---")
+	_log("--- [A] 数据表：8 包 × 10 张**建筑卡**，一卡一包 / 无漏塔 / 无效果卡 ---")
 	var errs := _Packs.validate()
 	_ok("A1 validate() 无错误", errs.is_empty(), str(errs))
 	_eq_int("A2 卡包数", _Packs.PACKS.size(), 8)
 	_eq_int("A3 每局携带包数", _Packs.PICKS_PER_RUN, 3)
-	_eq_int("A4 每包张数", _Packs.CARDS_PER_PACK, 6)
+	_eq_int("A4 每包张数", _Packs.CARDS_PER_PACK, 10)
 	# 并集 = 全部塔（建筑-only 口径：卡包里不再有强化 / 经济卡）
 	var all := _Packs.all_cards()
 	var towers_n := _TD.TOWERS.size() + _TD.TOWERS_EXT.size()
@@ -166,18 +166,28 @@ func _test_a_table() -> void:
 			else:
 				seen_pack[s] = String(p["id"])
 	_ok("A6c 一张卡只属于一个包%s" % ("" if dup.is_empty() else " → " + str(dup)), dup.is_empty())
-	_eq_int("A6d 卡位总数 = 8 包 × 6 张", seen_pack.size(), 48)
+	_eq_int("A6d 卡位总数 = 8 包 × 10 张", seen_pack.size(), 80)
 	_ok("A7 不含 RerollD", not all.has("RerollD"))
 	# 塔与强化成对（每个包内至少有一座塔）
 	var bad_pairs: Array = []
 	for p in _Packs.PACKS:
 		var has_tower := false
 		for nm in (p["cards"] as Array):
-			if _TD.TOWERS.has(String(nm)) or _TD.TOWERS_EXT.has(String(nm)):
+			var ctype := String(nm)
+			if _TD.TOWERS.has(ctype) or _TD.TOWERS_EXT.has(ctype):
 				has_tower = true
 		if not has_tower:
 			bad_pairs.append(String(p["id"]))
 	_ok("A8 每包至少含 1 座塔（否则整包都是「投不出去的强化」）", bad_pairs.is_empty(), str(bad_pairs))
+	var thin_builds: Array = []
+	for p in _Packs.PACKS:
+		var attack_count := 0
+		for nm in (p["cards"] as Array):
+			if _TD.tower_dps(String(nm)) > 0.0:
+				attack_count += 1
+		if attack_count < 8:
+			thin_builds.append("%s=%d" % [String(p["id"]), attack_count])
+	_ok("A8b 每个卡包至少有 8 座可输出建筑，能独立组成流派", thin_builds.is_empty(), str(thin_builds))
 	# 权重可查（现查，不在卡包表里二次定义）
 	var bad_w: Array = []
 	for nm in all:
@@ -259,15 +269,13 @@ func _test_d_pool() -> void:
 	_log("--- [D] 卡池 = 所选包并集（顺序 / 权重 / 总和 / 骨架卡）---")
 	_ShopRuntime.set_active_packs(["core", "cinder", "arc"])
 	var names: Array = _ShopRuntime.player_card_names()
-	# core   = [Foundry,Arrow,Cannon,Frost,Scout,Kinetic]
-	# cinder = [Vanguard,Ember,Blaze,Cinder,Pyre,Maul]
-	# arc    = [Thunder,Tesla,Bolt,Storm,Arc,Spark]
+	# Each selected package contributes its ten unique buildings in stable pack order.
 	_eq_arr("D1 卡池顺序 = 包序 → 包内序（一卡一包，无需去重）",
 		names,
-		["Foundry", "Arrow", "Cannon", "Frost", "Scout", "Kinetic",
-		 "Vanguard", "Ember", "Blaze", "Cinder", "Pyre", "Maul",
-		 "Thunder", "Tesla", "Bolt", "Storm", "Arc", "Spark"])
-	_eq_int("D2 卡池张数 = 3 包 × 6 张 = 18", names.size(), 18)
+		["Foundry", "Arrow", "Cannon", "Frost", "Scout", "Kinetic", "Ranger", "Sentry", "Catapult", "Harrier",
+		 "Vanguard", "Ember", "Blaze", "Cinder", "Pyre", "Maul", "Furnace", "Wildfire", "Ashen", "Hellfire",
+		 "Thunder", "Tesla", "Bolt", "Storm", "Arc", "Spark", "Coil", "Overcharge", "Thunderhead", "Circuit"])
+	_eq_int("D2 卡池张数 = 3 包 × 10 张 = 30", names.size(), 30)
 	# 权重和 = 各卡权重之和（现查，不硬编码）
 	var want := 0.0
 	for nm in names:
@@ -277,9 +285,9 @@ func _test_d_pool() -> void:
 	# 换包必须立即生效（静态缓存清理）；顺序只跟包序走，不跟"点选顺序"走
 	_ShopRuntime.set_active_packs(["pierce", "arc", "core"])
 	_eq_arr("D7 换包后卡池立即变化（按包序）", _ShopRuntime.player_card_names(),
-		["Foundry", "Arrow", "Cannon", "Frost", "Scout", "Kinetic",
-		 "Martyr", "Lance", "Javelin", "Ballista", "Sniper", "Arcane",
-		 "Thunder", "Tesla", "Bolt", "Storm", "Arc", "Spark"])
+		["Foundry", "Arrow", "Cannon", "Frost", "Scout", "Kinetic", "Ranger", "Sentry", "Catapult", "Harrier",
+		 "Martyr", "Lance", "Javelin", "Ballista", "Sniper", "Arcane", "Longbow", "Needle", "Hemorrhage", "Impaler",
+		 "Thunder", "Tesla", "Bolt", "Storm", "Arc", "Spark", "Coil", "Overcharge", "Thunderhead", "Circuit"])
 	# 与扩展包开关同时开：卡包模式优先，扩展包不叠加（卡包表已含全部卡）
 	_ShopRuntime.set_extended_pack(true)
 	var n_ext_on := _ShopRuntime.player_card_names().size()
@@ -300,7 +308,7 @@ func _test_d_pool() -> void:
 # ---------------------------------------------------------------------------
 func _test_e_legacy() -> void:
 	_log("")
-	_log("--- [E] 未选包（老口径）：6 张 / 0.905 · 扩展包 14 张 / 1.575 ---")
+	_log("--- [E] 未选包（老口径）：6 张 / 0.905 · 扩展包 16 张 / 1.740 ---")
 	_ShopRuntime.set_active_packs([])
 	_eq_int("E1 默认玩家池 6 张", _ShopRuntime.player_card_names().size(), 6)
 	_eq_float("E2 默认权重和 0.905", _ShopRuntime.player_pool_total(), POOL_TOTAL_6)
@@ -353,7 +361,7 @@ func _test_f_deal() -> void:
 	rt3._apply_pity(shop2, "Void")
 	_ok("F4 池内保底卡照常写入", shop2.has("Void"), str(shop2))
 
-	# 刷新保底：卡包模式下，若刷新 3 张里无骨架卡，强制补一张骨架卡（每包前 2 张）
+	# 刷新保底：卡包模式下，若刷新 3 张里无骨架卡，强制补入包首成长引擎
 	_ShopRuntime.set_active_packs(["cinder"])
 	var rt4 = _ShopRuntime.new()
 	rt4.setup("B", 20260930)
@@ -593,10 +601,30 @@ func _test_l_splash() -> void:
 # ---------------------------------------------------------------------------
 func _test_m_aspd() -> void:
 	_log("")
-	_log("--- [M] 攻速光环：附近塔攻击速度 +20% ---")
+	_log("--- [M] 攻速：塔速率影响输出与攻速光环 ---")
 	_ok("M1 Drummer 攻速光环 = 0.20", absf(_TD.tower_buff_aspd("Drummer") - 0.20) < 1e-9)
 	_ok("M2 普通塔无攻速光环（Arrow）", absf(_TD.tower_buff_aspd("Arrow")) < 1e-9)
 	_ok("M3 Drummer 卡面写明「攻速光环」", _CardText.describe("Drummer").find("攻速光环") >= 0)
+	_ok("M6 基础塔有各自攻速倍率",
+		absf(_TD.tower_attack_speed("Arrow") - 0.80) < 1e-9
+		and absf(_TD.tower_attack_speed("Cannon") - 0.70) < 1e-9
+		and absf(_TD.tower_attack_speed("Frost") - 0.65) < 1e-9)
+	_ok("M7 未配置攻速的扩展塔沿用 1.0",
+		absf(_TD.tower_attack_speed("Ranger") - 1.0) < 1e-9)
+	_ok("M9 基础塔卡面显示实际攻速倍率",
+		_CardText.stat_line("Arrow").find("攻速 80%") >= 0)
+	var cfg: Dictionary = _Cfg.cfg_of("B")
+	var geo = _Geo6.build()
+	var p = _PS.new()
+	p.path = "B"
+	p.towers = [_PS.make_tower(0, "Arrow", 1, {})]
+	p.n_hist_max = 1
+	var result: Dictionary = _DE.compute_dps(p, cfg, geo)
+	var tower: Dictionary = result["info"]["per_tower"][0]
+	var expected := float(tower["base"]) * float(tower["stack"]) * float(tower["syn"])
+	expected *= float(tower["res"]) * float(tower["focus"]) * float(tower["allin"])
+	expected *= float(tower["cov"]) * _TD.tower_attack_speed("Arrow")
+	_eq_float("M8 攻速倍率确实进入实际逐塔 DPS", float(tower["dps"]), expected)
 	var names: Array = []
 	for p in _Packs.PACKS:
 		for nm in (p["cards"] as Array):
@@ -668,3 +696,31 @@ func _test_p_summon() -> void:
 			names.append(String(nm))
 	_ok("P7 Necro 在湮灭包", names.has("Necro"))
 	_ok("P8 旧的 Abyss 已不在任何卡包", not names.has("Abyss"))
+
+
+# ---------------------------------------------------------------------------
+#  Q debuff 易伤：减速 / 削抗 / DoT 触发额外伤害
+# ---------------------------------------------------------------------------
+func _test_q_debuff_bonus() -> void:
+	_log("")
+	_log("--- [Q] 易伤：减速、削抗、灼烧与流血目标额外承伤 20% ---")
+	var p = _PS.new()
+	p.path = "B"
+	p.towers = []
+	p.n_hist_max = 1
+	p.towers.append(_PS.make_tower(0, "Executioner", 1, {}))
+	_eq_float("Q1 无 debuff 来源时处刑者不增伤", _TowerEffects.debuff_damage_mult(p), 1.0)
+	for ctype in ["Frost", "Sunder", "Plague", "Hemorrhage"]:
+		p.towers = [_PS.make_tower(0, "Executioner", 1, {}), _PS.make_tower(1, ctype, 1, {})]
+		_eq_float("Q2 %s debuff 触发 +20%%" % ctype, _TowerEffects.debuff_damage_mult(p), 1.20)
+	p.towers[1].disabled = true
+	_eq_float("Q3 debuff 来源 Disabled 后不触发", _TowerEffects.debuff_damage_mult(p), 1.0)
+	p.towers = [_PS.make_tower(0, "Executioner", 1, {}), _PS.make_tower(1, "Frost", 1, {})]
+	var out: Dictionary = _DE.compute_dps(p, _Cfg.cfg_of("B"), _Geo6.build_by_slots(6))
+	var info: Dictionary = out["info"]
+	var by_type: Dictionary = out["dps_by_type"]
+	_eq_float("Q4 总伤害管线记录 debuff ×1.20", float(info.get("debuff_mult", 1.0)), 1.20)
+	_eq_float("Q5 分类型伤害之和保持守恒",
+		float(by_type["physical"]) + float(by_type["magic"]) + float(by_type["true"]),
+		float(out["total"]), 1e-7)
+	_eq_float("Q6 卡面明确写明 +20%", _TD.tower_buff_debuff_dmg("Executioner"), 0.20)

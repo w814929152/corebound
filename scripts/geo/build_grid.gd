@@ -11,9 +11,8 @@ extends RefCounted
 ## 设计口径（玩家已拍板的三条）：
 ##   ① 保留径向竞技场（核心居中、怪从外沿直插）—— 不推翻 GDD 的空间设计；
 ##   ② 塔位置自由，但**吸附格点** —— 视觉对齐、判定无歧义、不会出现两塔半重叠；
-##   ③ 🆕 **可建格由「阵地表」给出**（`SITES` 17 格，见 `design/gdd/scene-map.md` §5.5）。
-##      PATH 模式 / `SpaceModel.layout_enabled = false` → 退回「圆盘内除核心禁建区皆可建」
-##      （改前口径，逐位不变）。
+##   ③ 可建范围由战场边界与活动地图岩脊共同决定；阵地表只描述视觉地形，不限制摆塔。
+##      圆盘内除核心禁建区与岩脊障碍外均可建。
 ##
 ## 🔴 为什么是六边形而不是方格（玩家明确要求改掉方格）：
 ##   · **等距**：方格到 4 个邻格的距离是 a、到 4 个斜角邻格是 1.414a —— 斜向埋塔会"更便宜"，
@@ -183,14 +182,31 @@ static func snap(p: Vector2) -> Vector2:
 
 ## 该格心能否建塔（只看几何；塔数上限 / 同格占用由 runtime 判）。
 ##   PATH 模式或布局关闭 → 圆盘规则（逐位回到改前口径）。
-##   RADIAL + 布局开启  → **必须落在某个阵地格上**（17 格）。
+##   RADIAL + 布局开启  → 圆盘内除核心与活动地图岩脊外均可建。
 static func buildable(p: Vector2) -> bool:
 	var d := p.distance_to(core())
 	if d < CORE_BAN_R or d > FIELD_R:
 		return false
-	if not sites_active():
-		return true
-	return not site_id_of(p).is_empty()
+	if sites_active() and _is_obstacle(p):
+		return false
+	return true
+
+
+static func _is_obstacle(p: Vector2) -> bool:
+	var offset := p - core()
+	var radius := offset.length()
+	var angle := fposmod(rad_to_deg(offset.angle()), 360.0)
+	for ridge in _SpaceModel.active_ridges():
+		if radius < float(ridge["r0"]) or radius > float(ridge["r1"]):
+			continue
+		var a0 := float(ridge["a0"])
+		var a1 := float(ridge["a1"])
+		var test_angle := angle
+		if a1 > 360.0 and test_angle < a0:
+			test_angle += 360.0
+		if test_angle >= a0 and test_angle <= a1:
+			return true
+	return false
 
 
 ## 阵地是否生效（RADIAL + 布局开关）。PATH 模式恒 false → 网格 / 可建区逐位不变。
@@ -283,8 +299,6 @@ static func neighbors() -> Array:
 ## 🔴 去重：一条边被两个相邻格各算一次 → 用「端点量化后排序」当 key 去重，避免叠画加深。
 ## 🔴 裁剪：每段裁到可建圆内 → 边缘是**被圆切断的半条边**，既不过界也不留空档。
 static func grid_edges() -> PackedVector2Array:
-	if sites_active():
-		return _site_edges()
 	var out := PackedVector2Array()
 	var seen := {}
 	var c := core()
@@ -293,8 +307,8 @@ static func grid_edges() -> PackedVector2Array:
 	for q in range(-qn, qn + 1):
 		for r in range(-rn, rn + 1):
 			var cc := cell(q, r)
-			if cc.distance_to(c) > FIELD_R:
-				continue                      # 格心已在可建圆外 → 这一格不参与
+			if not buildable(cc):
+				continue                      # 非可建格不参与网格线绘制
 			var cs := corners(cc)
 			for i in range(6):
 				var a: Vector2 = cs[i]
@@ -344,8 +358,6 @@ static func extent() -> float:
 ## 全部合法格心（世界坐标）。仅测试与探针用 —— 运行时不会遍历全盘：
 ## 落子是「点哪判哪」（O(1) 吸附 + O(塔数) 查重），不做全盘枚举。
 static func all_cells() -> Array:
-	if sites_active():
-		return site_points()
 	var out: Array = []
 	var qn := _q_bound()
 	var rn := _r_bound()

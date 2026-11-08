@@ -69,13 +69,13 @@ const PLAYER_EXCLUDED_CARDS: Array = ["RerollD"]
 const EXT_CARD_ORDER: Array = ["Lance", "Tesla", "PirUp", "ShkUp", "Sunder", "Hex", "SunUp", "HexUp", "Oblivion", "TrueUp"]
 
 ## 🆕 扩展包开关。🔴 默认 `false` = 产品未启用口径 ⇒ 玩家池仍是 6 张，
-##    与改动前逐位一致；`true` 时玩家池 = 6 + 4 = 10 张（AI 池恒不变）。
+##    与改动前逐位一致；`true` 时玩家池 = 6 + 10 = 16 张（AI 池恒不变）。
 static var extended_pack: bool = false
 
 ## 🆕 卡包模式（2026-11-07）· 本局所选卡包 id 列表。
-##   · **空 = 未启用卡包模式** ⇒ `_build_player_pool()` 走老口径（6 张 / 扩展包 10 张），
+##   · **空 = 未启用卡包模式** ⇒ `_build_player_pool()` 走老口径（6 张 / 扩展包 16 张），
 ##     与改动前**逐位一致**（headless 自测 / 金标本 / MC 都不经过这里）。
-##   · 非空 ⇒ 玩家池 = 所选卡包的并集（每包 2 张，选 3 包 = 6 张，见 `card_packs.gd`）。
+##   · 非空 ⇒ 玩家池 = 所选卡包的并集（每包 10 张，选 3 包 = 30 张，见 `card_packs.gd`）。
 ##   🔴 静态量：跨"再来一局"保持同一套包；换包必须重新 `set_active_packs()`。
 static var active_packs: Array = []
 
@@ -149,8 +149,8 @@ static func player_card_weights() -> Array:
 	return _pool_weights
 
 
-## 🆕 商店槽位数（card-packs v0.2）：卡包模式仍恒 3 位（614px 抽屉放不下第 4 位）。
-##   🔴 槽位扩容已否决（见 card-packs.md §对冲）：改用「刷新保底」对冲 18 张池稀释，
+## 🆕 商店槽位数：卡包模式仍恒 3 位（614px 抽屉放不下第 4 位）。
+##   商品位数保持不变，由每包 10 张建筑卡扩展本局构筑选择。
 ##      商品位恒 3，UI 零改动，`cfg["shop_offers"]`（=3）与改动前逐位一致。
 static func shop_slot_count() -> int:
 	return 3
@@ -158,7 +158,7 @@ static func shop_slot_count() -> int:
 
 ## 玩家池权重之和：`PyRandom.choices()` 用它归一（control-manifest P3）。
 ##   · 扩展包关：= 1 − 0.095 = **0.905**（6 张，与改动前一致）
-##   · 扩展包开：= 0.905 + Σ`EXT_WEIGHTS` = **1.245**（10 张）
+##   · 扩展包开：= 0.905 + Σ`EXT_WEIGHTS` = **1.740**（16 张）
 ## 🔴 N2：float 序列求和走 `FpSum.sum_py()`（control-manifest §2）。
 static func player_pool_total() -> float:
 	_build_player_pool()
@@ -169,7 +169,7 @@ static func _build_player_pool() -> void:
 	if not _pool_names.is_empty():
 		return
 	# 🆕 卡包模式（优先级最高）：卡池 = 所选卡包并集，顺序 = 包序 → 包内序。
-	#   🔴 走这条分支时**不再看** `extended_pack` —— 卡包表本身已经覆盖全部 10 张卡，
+	#   🔴 走这条分支时**不再看** `extended_pack` —— 卡包表本身已经覆盖全部建筑卡，
 	#      两个开关同时开会变成"同一张卡进池两次"（PyRandom 的累积区间被重复占用）。
 	if not active_packs.is_empty():
 		for pid in active_packs:
@@ -402,7 +402,7 @@ func reroll() -> bool:
 	rerolls += 1
 	offers = _merge_with_lock(lock_index, kept, fresh, offers.size())
 	# 🆕 刷新保底（card-packs v0.3）：卡包模式（建筑-only 池）下，若刷新结果里一张
-	#   「骨架卡」都没有，强制补一张（每包前 2 张 = 流派身份塔），对冲共享基础塔的稀释。
+	#   「骨架卡」都没有，强制补一张（每包第 1 张 = 成长引擎），对冲卡池稀释。
 	_apply_reroll_pity()
 	last_error = ""
 	return true
@@ -410,7 +410,7 @@ func reroll() -> bool:
 
 ## 🆕 刷新保底（card-packs v0.3 · 建筑-only 池）：
 ##   仅卡包模式生效（`active_packs` 非空）；若当前 3 位里没有任何「骨架卡」
-##   （每包前 2 张 = 流派身份塔），把 1 个未锁定位改写为骨架卡池的随机一张。
+##   （每包第 1 张 = 成长引擎），把 1 个未锁定位改写为骨架卡池的随机一张。
 ##   🔴 空选包（老口径 6 张池）不生效 → 与改动前逐位一致；AI 路线（金标本）不经过这里。
 ##   🔴 不覆盖锁定位（同 `_apply_pity` 的 SR-R4）；锁定位若已是骨架卡则不干预。
 func _apply_reroll_pity() -> void:
@@ -996,10 +996,7 @@ func confirm_placement_at(pos: Vector2) -> bool:
 	var gpos := _BuildGrid.snap(pos)
 	if not _BuildGrid.buildable(gpos):
 		# 🆕 阵地化后两种"不可建"的成因不同，文案要分开：一个是圈，一个是台。
-		if _BuildGrid.sites_active():
-			last_error = "这里不是阵地 —— 塔只能建在青色台子上"
-		else:
-			last_error = "这里不能建塔（核心 %.0fu 内 / 战场外圈）" % _BuildGrid.CORE_BAN_R
+		last_error = "这里是障碍区域或超出战场范围，不能建塔"
 		return false
 
 	var nm := String(pending[_placing_index])

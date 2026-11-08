@@ -14,7 +14,7 @@ extends SceneTree
 ##
 
 const FRAMES_PER_STATE := 6
-const REAL_WAIT_SEC := 10.0      # 验收标准 3：开商店 10 实时秒 → 预算 20 → 10
+const REAL_WAIT_SEC := 10.0      # 开商店 10 实时秒，验证战场按 1.0×推进
 
 const _Cfg := preload("res://scripts/engine/mvp_config.gd")
 const _TSM := preload("res://scripts/engine/time_state_machine.gd")
@@ -95,13 +95,13 @@ class Driver extends Node:
 
 		# ---- 新手保护 W3 ----
 		print("")
-		print("---- 新手保护 W1–W5：0.25× 且不消耗预算 ----")
+		print("---- 新手保护 W1–W5：商店全速且不消耗预算 ----")
 		director.wave_start(3)
 		await _frames(4)
 		director.open_shop()
 		await _frames(4)
 		var s3: Dictionary = director.snapshot()
-		_tally("W3 打开商店 ts=0.25", is_equal_approx(float(s3["time_scale"]), _Cfg.DILATION_SCALE_NOVICE))
+		_tally("W3 打开商店 ts=1.0", is_equal_approx(float(s3["time_scale"]), _Cfg.DILATION_SCALE_NOVICE))
 		_tally("W3 不消耗预算", bool(s3["consumes_budget"]) == false)
 		var b0 := float(s3["budget_left"])
 		for _i in 40:
@@ -137,10 +137,10 @@ class Driver extends Node:
 		print("  思考增益      = ×%.2f（实时 / 游戏）" % (real_elapsed / maxf(game_elapsed, 1e-9)))
 		_tally("预算按实时秒消耗（|消耗 − 实时| ≤ 0.25s）",
 			absf(budget_used - real_elapsed) <= 0.25)
-		_tally("战场推进 ≈ 实时 × 0.35（|差| ≤ 0.5s）",
-			absf(game_elapsed - real_elapsed * _Cfg.DILATION_SCALE) <= 0.5)
-		_tally("预算剩余 ≈ 20 − 实时（|差| ≤ 0.25s）",
-			absf(float(after["budget_left"]) - (_Cfg.DILATION_BUDGET - real_elapsed)) <= 0.25)
+		_tally("战场推进 ≈ 实时 × 1.0（|差| ≤ 0.5s）",
+			absf(game_elapsed - real_elapsed) <= 0.5)
+		_tally("预算剩余按采样起点余额计算（|差| ≤ 0.25s）",
+			absf(float(after["budget_left"]) - (float(before["budget_left"]) - real_elapsed)) <= 0.25)
 
 		# ---- 截帧（best effort）----
 		await _screenshot()
@@ -183,7 +183,7 @@ class Driver extends Node:
 			_TSM.State.COMBAT:
 				return [_Cfg.TIME_SCALE_COMBAT, false]
 			_TSM.State.SHOP_DILATED:
-				return [_Cfg.DILATION_SCALE, false]
+				return [_Cfg.TIME_SCALE_COMBAT, false]
 			_TSM.State.SHOP_REAL_TIME:
 				return [_Cfg.TIME_SCALE_COMBAT, false]
 			_TSM.State.SAFE_WINDOW:

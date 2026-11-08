@@ -71,7 +71,7 @@ func _on_state_changed(_from_state: int, _to_state: int) -> void:
 
 
 func _process(delta: float) -> void:
-	# 🔴 scaled delta：time_scale=0.35 时战场只推进 0.35 倍 → 这就是"慢动作不是暂停"
+	# scaled delta follows the active game time scale.
 	_t += float(delta)
 	# 🔴 P0（spec §A.5）：环境换装档位推进（纯演出；只读 director 快照的波号）。
 	_update_env(delta)

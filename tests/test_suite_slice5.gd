@@ -342,15 +342,15 @@ func _test_ac_w5_time_scale_isolation() -> void:
 		b.t_wave, 1.0, 1e-9)
 	_check("AC-W5 0.5× / 1.0× 增量比 = 0.5", b.t_wave / t_full, 0.5, 1e-9)
 
-	# ---- 0.35×（商店 ShopDilated）→ 增量 = 0.35 倍 ----
+	# ---- 合成 time_scale=0.35 的 delta → 增量 = 0.35 倍 ----
 	var b2 = _mk_director(3)
 	b2.start_wave(3)
 	b2.core_hp = 1e12
 	for _i in range(20):
 		b2.advance(0.035)
-	_check("AC-W5 0.35×：同样帧数、每帧 0.35 倍 delta → t_wave = 0.7s（0.35 倍）",
+	_check("AC-W5 time_scale=0.35：同样帧数、每帧 0.35 倍 delta → t_wave = 0.7s（0.35 倍）",
 		b2.t_wave, 0.7, 1e-9)
-	_check("AC-W5 0.35× / 1.0× 增量比 = 0.35", b2.t_wave / t_full, 0.35, 1e-9)
+	_check("AC-W5 time_scale=0.35 / 1.0× 增量比 = 0.35", b2.t_wave / t_full, 0.35, 1e-9)
 
 	# ---- 0.25×（放置模式）----
 	var b3 = _mk_director(3)
@@ -360,15 +360,15 @@ func _test_ac_w5_time_scale_isolation() -> void:
 		b3.advance(0.025)
 	_check("AC-W5 0.25× / 1.0× 增量比 = 0.25", b3.t_wave / t_full, 0.25, 1e-9)
 
-	# ---- 0.35× 长跑：t_wave 恒 = 子步数 × DT（子步数只由累计缩放时间决定）----
+	# ---- 缩放 delta 长跑：t_wave 恒 = 子步数 × DT（子步数只由累计缩放时间决定）----
 	var c = _mk_director(3)
 	c.start_wave(3)
 	c.core_hp = 1e12
 	var steps_c = 0
 	for _i in range(100):
 		steps_c += c.advance(0.035)
-	_check("AC-W5 0.35×：t_wave 恒 = 子步数 × DT", c.t_wave, float(steps_c) * 0.1, 1e-9)
-	_log("   0.35× 喂 100 帧（累计 3.5s 缩放时间）→ t_wave = %.1fs（子步 %d）"
+	_check("AC-W5 缩放 delta：t_wave 恒 = 子步数 × DT", c.t_wave, float(steps_c) * 0.1, 1e-9)
+	_log("   0.35× delta 喂 100 帧（累计 3.5s 游戏时间）→ t_wave = %.1fs（子步 %d）"
 		% [c.t_wave, steps_c])
 
 	# ---- 安全窗 delta = 0 → 完全静止 ----

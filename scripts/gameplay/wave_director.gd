@@ -487,7 +487,8 @@ func _substep() -> void:
 	#   🔴 金标本无 dot 塔 → 0 → 本段不进入（逐位不变）。
 	var _dot := _TowerEffects.dot_dps(player)
 	if _dot > 0.0:
-		_apply_pool_live(_dot * _WaveSim.DT, _CombatTypes.TRUE, 0.0)
+		_apply_pool_live(_dot * _TowerEffects.debuff_damage_mult(player) * _WaveSim.DT,
+			_CombatTypes.TRUE, 0.0)
 
 	# ---- ②c 🆕 回复：每秒为塔恢复生命（Wither 等）；塔满血则无变化。
 	_TowerEffects.regen(player, _WaveSim.DT)

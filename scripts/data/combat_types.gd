@@ -76,6 +76,15 @@ const TOWER_DMG_TYPE := {
 	"Scout": PHYSICAL,
 	# 🆕 相位塔（伤害类型转换）：自身不攻击，类型取默认物理；转换在 damage_engine 里结算。
 	"Kinetic": PHYSICAL, "Arcane": PHYSICAL, "Purity": PHYSICAL,
+	# Card pack expansion: classify new towers by their attack archetype.
+	"Ranger": PHYSICAL, "Sentry": PHYSICAL, "Catapult": PHYSICAL, "Harrier": PHYSICAL,
+	"Furnace": PHYSICAL, "Wildfire": PHYSICAL, "Ashen": PHYSICAL, "Hellfire": PHYSICAL,
+	"Snowfall": MAGIC, "Shard": MAGIC, "Whiteout": MAGIC, "Avalanche": MAGIC,
+	"Longbow": PHYSICAL, "Needle": PHYSICAL, "Hemorrhage": PHYSICAL, "Impaler": PHYSICAL,
+	"Coil": MAGIC, "Overcharge": MAGIC, "Thunderhead": MAGIC, "Circuit": MAGIC,
+	"Rend": PHYSICAL, "Crusher": PHYSICAL, "Bastion": PHYSICAL, "Siege": PHYSICAL,
+	"Executioner": MAGIC, "Blight": MAGIC, "Malison": MAGIC, "Hexer": MAGIC,
+	"Eraser": TRUE, "Obliterator": TRUE, "Soulpiercer": TRUE, "Wraith": TRUE,
 }
 
 ## 塔的攻击类型查表。未知塔兜底 = 物理（保守，且与「默认无类型影响」一致）。

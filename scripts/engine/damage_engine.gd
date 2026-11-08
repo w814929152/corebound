@@ -43,6 +43,7 @@ const _FpSum := preload("res://scripts/engine/fp_sum.gd")
 ## 🆕 战斗类型系统（物理/魔法 × 物抗/魔抗）—— 只读攻击类型标注，不参与默认结算。
 ##   🔴 只在 `combat_types_enabled` 开关打开时被消费；默认关闭 → 逐位不变（见文件尾）。
 const _CombatTypes := preload("res://scripts/data/combat_types.gd")
+const _TowerEffects := preload("res://scripts/engine/tower_effects.gd")
 
 
 # ---------------------------------------------------------------------------
@@ -321,6 +322,7 @@ static func compute_dps(player, cfg: Dictionary, geo = null) -> Dictionary:
 
 		# ★ 乘法次序与 v08 逐字一致（左结合）
 		var dps_i := base * stack * syn * res * foc * ali * cov
+		dps_i *= _TowerData.tower_attack_speed(ctype)
 		# 🔒 T1 占位（mechanics-tower-life-death §0 / §4.3 交接点③）：塔死亡唯一落点。
 		#    塔进入 Disabled 中间态 → 断输出不断链（E-T 口径）→ 本塔 dps 归零。
 		#    🔴 MVP `disabled` 恒 false → 该乘数恒 1.0 → 对定稿 DPS 逐位零影响。
@@ -430,7 +432,8 @@ static func compute_dps(player, cfg: Dictionary, geo = null) -> Dictionary:
 		dps_list.append(float(p["dps"]))
 	var subtotal := _FpSum.sum_py(dps_list)
 
-	var total := subtotal * aoe * cf * aux * empower
+	var debuff_mult := _TowerEffects.debuff_damage_mult(player)
+	var total := subtotal * aoe * cf * aux * empower * debuff_mult
 
 	# -----------------------------------------------------------------------
 	# 🆕 战斗类型：按攻击类型拆分 DPS（🔴 只在 combat_types_enabled 时计算）
@@ -442,7 +445,7 @@ static func compute_dps(player, cfg: Dictionary, geo = null) -> Dictionary:
 	#   这样 `total` 仍 = `dps_by_type[physical] + dps_by_type[magic]`（补偿求和一致）。
 	#   🔴 默认关闭：`dps_by_type` 键仍写入（值 = 各类型分量，未乘抗性），但不改变
 	#      `total` 的既有口径 —— 单测可用它断言「物+魔 = total」的恒等关系。
-	var global_mult := aoe * cf * aux * empower
+	var global_mult := aoe * cf * aux * empower * debuff_mult
 	var dps_by_type := {
 		"physical": 0.0,
 		"magic": 0.0,
@@ -469,7 +472,8 @@ static func compute_dps(player, cfg: Dictionary, geo = null) -> Dictionary:
 		"dps_by_type": dps_by_type,
 		"info": {
 			"per_tower": per_tower, "adj": adj, "E": E, "aoe": aoe,
-			"crossfire": cf, "aux": aux, "empower": empower, "subtotal": subtotal,
+			"crossfire": cf, "aux": aux, "empower": empower,
+			"debuff_mult": debuff_mult, "subtotal": subtotal,
 			"core": core, "L": L, "Ltot": Ltot, "kr": kr, "kappa": kappa,
 			"caps": caps, "tag_invest": tag_invest, "tag_tower_lv": tag_tower_lv,
 			"syn_hits": syn_hits, "n_for_kappa": n_for_kappa, "disc": disc,

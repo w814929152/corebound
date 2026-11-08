@@ -32,6 +32,7 @@ extends Node2D
 const _SpaceModel := preload("res://scripts/geo/space_model.gd")
 const _ShopLayout := preload("res://scripts/ui/shop_layout.gd")
 const _Style := preload("res://scripts/ui/ui_style.gd")
+const _TowerData := preload("res://scripts/data/tower_data.gd")
 
 const MARGIN := 48.0
 
@@ -497,6 +498,7 @@ func _update_bolts(dt: float) -> void:
 		if slot < 0 or slot >= slot_pos.size():
 			continue
 		var hz := clampf(2.0 + 0.5 * float(int(tw.get("h", 1))), 2.0, 12.0) * gscale
+		hz *= _TowerData.tower_attack_speed(String(tw.get("ctype", "Arrow")))
 		var interval := 1.0 / maxf(0.5, hz)
 		var acc := float(_bolt_t.get(slot, _bolt_phase(slot))) + dt
 		var guard := 0

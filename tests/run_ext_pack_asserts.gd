@@ -90,10 +90,8 @@ func _check_float(name: String, got: float, want: float) -> void:
 # ---------------------------------------------------------------------------
 func _test_a_tables() -> void:
 	_log("---- A 数据表结构 ----")
-	# 🔴 v0.3：TOWERS_EXT = 4 扩展塔（Lance/Tesla/Sunder/Hex）+ 6 流派第二塔
-	#   （Ember/Icicle/Javelin/Bolt/Maul/Rune）+ 2 真实伤害塔（Oblivion/Void）= 12；
-	#   EXT_WEIGHTS 额外含 6 第二强化 + 2 真实强化（TrueUp/TrueUp2）= 24。
-	_check_int("A1 TOWERS_EXT 塔数", _TD.TOWERS_EXT.size(), 45)
+	# Legacy EXT_CARD_ORDER remains isolated; card-pack-only weights live in CARD_PACK_WEIGHTS.
+	_check_int("A1 TOWERS_EXT 塔数（含卡包建筑）", _TD.TOWERS_EXT.size(), 77)
 	_check_int("A2 REINF_EXT 强化数", _TD.REINF_EXT.size(), 5)
 	_check_int("A2b REINF_EXT2 第二强化数", _TD.REINF_EXT2.size(), 7)
 	_check_int("A3 EXT_WEIGHTS 权重条数", _TD.EXT_WEIGHTS.size(), 57)

@@ -105,6 +105,39 @@ const ROLE := {
 	"Null": "击杀升级",
 	"Rift": "真实：升级增强",
 	"Necro": "召唤游魂作战",
+	# ---- 卡包扩容：每条流派线新增四张协同建筑 ----
+	"Ranger": "远程精准单体",
+	"Sentry": "防御光环",
+	"Catapult": "远程重型群伤",
+	"Harrier": "快速弹射",
+	"Furnace": "范围灼烧",
+	"Wildfire": "灼烧并减速",
+	"Ashen": "单体溅射",
+	"Hellfire": "远距持续灼烧",
+	"Snowfall": "范围减速",
+	"Shard": "冰晶贯穿",
+	"Whiteout": "强力范围减速",
+	"Avalanche": "远程冰霜溅射",
+	"Longbow": "远程贯穿",
+	"Needle": "双重贯穿",
+	"Hemorrhage": "持续流血",
+	"Impaler": "三重贯穿",
+	"Coil": "减速弹射",
+	"Overcharge": "近程单体爆发",
+	"Thunderhead": "范围电弧减速",
+	"Circuit": "击杀后升级",
+	"Rend": "持续流血",
+	"Crusher": "近程重击溅射",
+	"Bastion": "防御光环并减速",
+	"Siege": "远程攻城群伤",
+	"Executioner": "debuff目标 +20%",
+	"Blight": "全场持续腐蚀",
+	"Malison": "减速并持续诅咒",
+	"Hexer": "单体溅射",
+	"Eraser": "真实范围伤害",
+	"Obliterator": "近程真实溅射",
+	"Soulpiercer": "真实贯穿",
+	"Wraith": "击杀后升级",
 	# ---- 单塔效果卡：L1 强化谁 / L2 点名 / L3 叠层规则 ----
 	"FireUp": "强化「火」系塔",
 	"FrostUp": "强化「冰」系塔",
@@ -211,18 +244,20 @@ static func hosts_of_tag(tag: String) -> Array:
 ##  稀有度派生（art-bible §2.3 五级色阶 · P1-6 · 2026-11-07 落地）
 ## ---------------------------------------------------------------------------
 ## 🔴 **只读派生，不写任何数值**：稀有度由商店抽取权重（SSOT = `shop_ai.WEIGHTS`
-##    + `tower_data.EXT_WEIGHTS`）机械映射，改权重卡面自动跟随 —— 与 stat_line 同一管法。
+##    + `tower_data.EXT_WEIGHTS` / `CARD_PACK_WEIGHTS`）机械映射，改权重卡面自动跟随。
 ##    映射口径（展示层约定 · 2026-11-07，调档只动本函数）：
 ##      w ≥ 0.13         → common   石灰（基础 5 卡：三主塔 + 双强化）
 ##      0.095 ≤ w < 0.13 → uncommon 苔绿（ScrapUp / RerollD 0.095 + 第二塔 0.10）
 ##      w < 0.095        → rare     湖蓝（Lance/Sunder/Hex/Oblivion/Void 0.09 + 扩展强化 0.075）
 ##      epic / legendary → 暂无对应卡（色阶与角标系统已就位，新卡按 w 自动落档）
-##    金标本零改动：本函数只读 WEIGHTS / EXT_WEIGHTS，不参与抽取（`draw_offers` 不经此处）。
+##    金标本零改动：本函数只读权重表，不参与抽取（`draw_offers` 不经此处）。
 static func weight_of(nm: String) -> float:
 	if _ShopAI.WEIGHTS.has(nm):
 		return float(_ShopAI.WEIGHTS[nm])
 	if _TD.EXT_WEIGHTS.has(nm):
 		return float(_TD.EXT_WEIGHTS[nm])
+	if _TD.CARD_PACK_WEIGHTS.has(nm):
+		return float(_TD.CARD_PACK_WEIGHTS[nm])
 	return -1.0
 
 
@@ -240,7 +275,7 @@ static func rarity(nm: String) -> String:
 ## ---------------------------------------------------------------------------
 #  逐行派生
 # ---------------------------------------------------------------------------
-## 建筑卡第 2 行：`伤害 7 · 射程 18`
+## 建筑卡第 2 行：伤害与攻速倍率
 ##   🔴 全部现取自 `TOWERS` / `TOWERS_EXT`，不在此层二次定义任何数字。
 ##   🔴 **不追加**溅射 / 减速 / 标记 —— 加上去这一行就超过 9 汉字必然二次换行。
 ##      溅射与减速已写在第 1 行（`ROLE`），标记写在第 3 行（`mark_line`）。
@@ -248,7 +283,9 @@ static func stat_line(nm: String) -> String:
 	var d := _tower_def(nm)
 	if d.is_empty():
 		return ""
-	return "伤害 %s · 射程 %s" % [_num(float(d["dps"])), _num(float(d["rng"]))]
+	var attack_speed := _TD.tower_attack_speed(nm)
+	return "伤害 %s · 攻速 %d%%" % [
+		_num(float(d["dps"]) * attack_speed), int(round(attack_speed * 100.0))]
 
 
 ## 建筑卡第 3 行：`标记：火`（tag 是强化卡「可强化」与 H2「◈协同」的判定依据，
@@ -280,6 +317,8 @@ static func describe(nm: String) -> String:
 	# 🆕 击杀升级：任意击杀都给本塔加等级（优先于弹射显示 —— 它是成长身份）。
 	if _TD.tower_on_kill_lv(nm):
 		return "%s\n%s\n击杀 +1 级" % [r, stat_line(nm)]
+	if _TD.tower_buff_debuff_dmg(nm) > 0.0:
+		return "%s\n%s\n减速/削抗/DoT" % [r, stat_line(nm)]
 	# 🆕 溅射：命中后波及周围 N 个敌人（优先于弹射/贯穿显示 —— 它是最强的范围加成）。
 	if _TD.tower_splash(nm) > 0:
 		return "%s\n%s\n溅射 %d 个" % [r, stat_line(nm), _TD.tower_splash(nm)]
