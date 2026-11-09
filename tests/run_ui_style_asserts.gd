@@ -615,9 +615,9 @@ func _test_k_free_placement() -> void:
 			all_ok = false
 			break
 	_check("all_cells() 每一格都通过 buildable()", all_ok)
-	# 圆环面积 π(44² − 4²) ≈ 6032 u² ÷ 6.24 u²/格（= 改前方格 2.5²，容量刻意不变）≈ 966
-	_check("all_cells() 数量在合理量级（500 ~ 1300，实测 %d）" % cells.size(),
-		cells.size() > 500 and cells.size() < 1300)
+	# 圆环面积 π(55² − 4²) ≈ 9451 u² ÷ 6.24 u²/格 ≈ 1514；岩脊遮挡约 40° 再扣一部分。
+	_check("all_cells() 数量在合理量级（1000 ~ 1800，实测 %d）" % cells.size(),
+		cells.size() > 1000 and cells.size() < 1800)
 
 	var edges: PackedVector2Array = _BuildGrid.grid_edges()
 	_check("网格线段成对给出且非空（%d 段，供 draw_multiline 一次画完）" % (edges.size() / 2),

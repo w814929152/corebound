@@ -157,6 +157,7 @@ func _ready() -> void:
 			_stage_select = StageSelect.new()
 			add_child(_stage_select)
 			_stage_select.stage_selected.connect(_on_stage_selected)
+			_stage_select.back_requested.connect(_on_stage_back)
 		# 🔴 启动第一屏一律是主界面（选关 / 选包由「开始游戏」触发）。
 		call_deferred("_open_main_menu")
 
@@ -202,6 +203,13 @@ func _open_stage_select() -> void:
 	if _bs == null or _stage_select == null or _campaign == null:
 		return
 	_stage_select.open(_campaign)
+
+
+func _on_stage_back() -> void:
+	if _stage_select != null:
+		_stage_select.close()
+	if _main_menu != null:
+		_main_menu.open()
 
 
 func _on_stage_selected(sid: String) -> void:

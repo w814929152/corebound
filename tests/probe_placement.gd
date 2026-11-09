@@ -129,8 +129,8 @@ func _run() -> void:
 	# 网格必须真的铺出来（不然玩家不知道点哪算一格）
 	_ok(not layer._grid_edges.is_empty(), "⑤ 态网格已构建（%d 段六边形边）" % (layer._grid_edges.size() / 2))
 	var cell_n: int = _BuildGrid.all_cells().size()
-	# 阵地化（RADIAL）：可建格 = 17；布局关闭时才是整盘 ~960。
-	_ok(cell_n == 17 or cell_n > 500, "可建格点 %d 个（阵地化 17 / 整盘 >500）" % cell_n)
+	# 2026-11-09：可建区 = 出生环内除岩脊/核心外整盘 → 远大于 500（不再收敛到 17 阵地）。
+	_ok(cell_n > 500, "可建格点 %d 个（整盘量级）" % cell_n)
 
 	var core: Vector2 = _BuildGrid.core()
 	# 目标格 = P1 南台的首格（起手塔就在这一格 → 落 Cannon 会走"同格异原型"分支？）

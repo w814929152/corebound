@@ -6,17 +6,8 @@ extends CanvasLayer
 ##   本组件纯 UI：只读 `campaign.gd`（已通关 / 已解锁 / Ember），只发 `stage_selected`。
 ##   波数 / 地图 / 卡组解锁的**实际生效**由调用方（`boot.gd`）在选中后处理。
 ##
-## 🔴 为什么是「径向航图」而不是列表：
-##   本作战场本身就是径向核心围攻（出生环 → 核心）。关卡地图沿用同一空间语言：
-##   · 第一章在**最外环**（离核心最远 = 最安全、起点），逐章向内；
-##   · 终局 "4-1" 就在**核心**（地图正中）；
-##   · 节点角向按 62° 等差递增 → 10 个节点自然形成一条**向心螺旋**，
-##     玩家一眼能看出「从外圈一路打进核心」的推进方向。
-##   关卡之间的连线 = 推进链（`CampaignData.STAGE_ORDER`），已通关段染辉金。
-##
 ## 🔴 交互：
 ##   · 鼠标：悬停高亮 + 左下角详情；点击**已解锁**节点直接进入（无二次确认）；
-##   · 键盘：←/→ 沿推进链移动焦点，Enter/Space 进入；Esc 不关闭（必须选一关）；
 ##   · 🔴 锁定节点点击**无反应**（不弹错、不踢人），与放置模式的「点错不踢人」同纪律。
 ##
 ## 🔴 art-bible 合规：
@@ -32,6 +23,10 @@ extends CanvasLayer
 ##
 
 signal stage_selected(stage_id: String)
+signal back_requested()
+
+## Spiral display order is independent of campaign unlock rules.
+## Escape and the back button return to the main menu.
 
 const _Style := preload("res://scripts/ui/ui_style.gd")
 const _CampaignData := preload("res://scripts/data/campaign_data.gd")
@@ -39,17 +34,10 @@ const _CampaignData := preload("res://scripts/data/campaign_data.gd")
 ## 设计基准（与 `project.godot` 的逻辑视口一致；无树的 headless 断言也用它算点）。
 const DESIGN_SIZE := Vector2(1920.0, 1080.0)
 
-## 每章所在环半径（单位 = min(高, 宽×0.62) 的倍数）。索引 = 章节号-1。
-##   🔴 数值即「离核心的距离」：第一章最外、终局在核心（0）。
-## 环半径（× unit）：中枢在最外，主脑核心在正中 —— 与「向内推进」的叙事同向。
-##   🆕 v2 从 4 环扩到 5 环：内环拆成「主脑外围 8-1」与「主脑核心 9-1」两环。
-##   🔴 0.065 这档不能省：两关同环会让两个节点落在同一点（`r=0` 时角度失效），
-##      0.065 × unit(1080) = 70 > 2×NODE_R(27) = 54，刚好不重叠。
-const RING_FRAC: Array = [0.320, 0.225, 0.130, 0.065, 0.0]
-
-## 节点角向：起点 200° + 每关 +62° → 全 10 关连成向心螺旋（确定性，零 RNG）。
+const RING_FRAC: Array = [0.40, 0.31, 0.22, 0.14, 0.0]
 const ANGLE_START := 200.0
-const ANGLE_STEP := 62.0
+const ANGLE_STEP := 66.0
+const MAP_SPREAD := Vector2(1.25, 1.0)
 
 const NODE_R := 27.0        # 六边形节点外接圆半径
 const HIT_R := 38.0         # 点击 / 悬停命中半径（比视觉略大，手好点）
@@ -165,6 +153,36 @@ func _build() -> void:
 	_build_header()
 	_build_ember()
 	_build_detail_panel()
+	_build_back_button()
+
+
+func _build_back_button() -> void:
+	var button := Button.new()
+	button.text = "← 返回主菜单 / Esc"
+	button.anchor_left = 1.0
+	button.anchor_right = 1.0
+	button.anchor_top = 1.0
+	button.anchor_bottom = 1.0
+	button.offset_left = -320.0
+	button.offset_right = -56.0
+	button.offset_top = -104.0
+	button.offset_bottom = -48.0
+	_Style.button(button)
+	button.pressed.connect(return_to_menu)
+	add_child(button)
+
+
+func return_to_menu() -> void:
+	if not visible:
+		return
+	close()
+	back_requested.emit()
+
+
+func _input(event: InputEvent) -> void:
+	if visible and event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_ESCAPE:
+		get_viewport().set_input_as_handled()
+		return_to_menu()
 
 
 func _build_header() -> void:
@@ -179,7 +197,7 @@ func _build_header() -> void:
 	title.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	head.add_child(title)
 
-	var sub := _Style.label("点击已解锁关卡进入 · ←→ 选择 / Enter 进入 · 越靠核心，离终局越近", 16, _Style.C_TEXT_DIM)
+	var sub := _Style.label("点击已解锁关卡进入 · ←→ 选择 / Enter 进入 · 沿航线推进，突破主脑防线", 16, _Style.C_TEXT_DIM)
 	sub.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	head.add_child(sub)
 
@@ -291,15 +309,13 @@ func _build_detail_panel() -> void:
 ## 返回 {stage_id: Vector2}。`sz` = 画布尺寸。
 func layout_points(sz: Vector2) -> Dictionary:
 	var unit := minf(sz.y, sz.x * 0.62)
-	var c := Vector2(sz.x * 0.5, sz.y * 0.47)
+	var center := Vector2(sz.x * 0.59, sz.y * 0.48)
 	var out: Dictionary = {}
 	for i in range(_CampaignData.STAGE_ORDER.size()):
 		var sid := String(_CampaignData.STAGE_ORDER[i])
-		var st: Dictionary = _CampaignData.STAGES[sid]
-		var ch := int(st.get("chapter", 1))
-		var rf := float(RING_FRAC[clampi(ch - 1, 0, RING_FRAC.size() - 1)])
-		var a := deg_to_rad(ANGLE_START + ANGLE_STEP * float(i))
-		out[sid] = c + Vector2(cos(a), sin(a)) * (unit * rf)
+		var ch := int(_CampaignData.STAGES[sid].get("chapter", 1))
+		var angle := deg_to_rad(ANGLE_START + ANGLE_STEP * float(i))
+		out[sid] = center + Vector2.from_angle(angle) * MAP_SPREAD * unit * float(RING_FRAC[ch - 1])
 	return out
 
 
@@ -518,67 +534,53 @@ func _draw_backdrop(ci: Control, sz: Vector2) -> void:
 		var a := 0.05 + 0.07 * fmod(float(i) * 0.37, 1.0)
 		ci.draw_circle(Vector2(x, y), 1.1, Color(0.78, 0.85, 1.0, a))
 
-	# 2) 外圈方位刻度（36 根，蓝图语言）
-	var c := Vector2(sz.x * 0.5, sz.y * 0.47)
-	var r_out := minf(sz.y, sz.x * 0.62) * 0.40
-	for k in range(36):
-		var a := TAU * float(k) / 36.0
-		var d := Vector2(cos(a), sin(a))
-		var long := (k % 3) == 0
-		ci.draw_line(c + d * r_out, c + d * (r_out + (9.0 if long else 4.0)),
-			Color(_Style.C_STEEL.r, _Style.C_STEEL.g, _Style.C_STEEL.b, 0.22 if long else 0.12),
-			1.0, true)
-
-
 func _draw_tracks(ci: Control, sz: Vector2) -> void:
-	var c := Vector2(sz.x * 0.5, sz.y * 0.47)
+	var center := Vector2(sz.x * 0.59, sz.y * 0.48)
 	var unit := minf(sz.y, sz.x * 0.62)
-	# 每章一圈「轨道」：完整细环 + 该章跨度内的加粗弧
-	for ch in range(1, 6):
-		var rf := float(RING_FRAC[ch - 1])
-		var r := unit * rf
-		var col := _chapter_color(ch)
-		ci.draw_arc(c, r, 0.0, TAU, 128,
-			Color(col.r, col.g, col.b, 0.07), 1.0, true)
-		var idx := _chapter_indices(ch)
-		if idx.size() == 0:
-			continue
-		var a0 := ANGLE_START + ANGLE_STEP * float(idx[0]) - 26.0
-		var a1 := ANGLE_START + ANGLE_STEP * float(idx[idx.size() - 1]) + 26.0
-		ci.draw_arc(c, r, deg_to_rad(a0), deg_to_rad(a1), 96,
-			Color(col.r, col.g, col.b, 0.24), 2.0, true)
-		# 🔴 章名不画在环上：弧中点正好落在该章中间节点，会撞节点标签 —— 章名统一进
-		#    左上角目录（见 `_build_header`），地图只留颜色 + 轨道形状。
-
-	# 核心（终局）外的一圈脉冲环
-	var core_r := 62.0
-	ci.draw_arc(c, core_r, 0.0, TAU, 64, Color(_Style.C_ALERT.r, _Style.C_ALERT.g, _Style.C_ALERT.b, 0.16), 1.5, true)
+	for ch in range(1, 5):
+		var orbit := PackedVector2Array()
+		for k in range(129):
+			orbit.append(center + Vector2.from_angle(TAU * float(k) / 128.0) * MAP_SPREAD * unit * float(RING_FRAC[ch - 1]))
+		ci.draw_polyline(orbit, Color(_chapter_color(ch), 0.10), 1.0, true)
 
 
 func _draw_paths(ci: Control) -> void:
-	# 推进链：相邻两关之间一条线；已通关段辉金，未推进段钢灰。
 	for i in range(_CampaignData.STAGE_ORDER.size() - 1):
-		var a := String(_CampaignData.STAGE_ORDER[i])
-		var b := String(_CampaignData.STAGE_ORDER[i + 1])
-		if not _points.has(a) or not _points.has(b):
-			continue
-		var p0: Vector2 = _points[a]
-		var p1: Vector2 = _points[b]
-		var done: bool = _campaign_ref != null and _campaign_ref.is_cleared(a)
-		var col := Color(_Style.C_GOLD.r, _Style.C_GOLD.g, _Style.C_GOLD.b, 0.55) if done \
-			else Color(_Style.C_STEEL.r, _Style.C_STEEL.g, _Style.C_STEEL.b, 0.26)
-		ci.draw_line(p0, p1, col, 2.0 if done else 1.5, true)
-		# 推进方向：线段中点一个细箭头（已通关才画，未推进不暗示方向已打通）
-		if done:
-			var m := (p0 + p1) * 0.5
-			var d := (p1 - p0).normalized()
-			var n := Vector2(-d.y, d.x)
-			ci.draw_line(m, m - d * 7.0 + n * 4.0, col, 1.5, true)
-			ci.draw_line(m, m - d * 7.0 - n * 4.0, col, 1.5, true)
+		_draw_route(ci, String(_CampaignData.STAGE_ORDER[i]), String(_CampaignData.STAGE_ORDER[i + 1]), false)
+
+
+func _draw_route(ci: Control, source: String, target: String, gate: bool) -> void:
+	var direction: Vector2 = (_points[target] - _points[source]).normalized()
+	var p0: Vector2 = _points[source] + direction * (NODE_R + 8.0)
+	var p1: Vector2 = _points[target] - direction * (NODE_R + 8.0)
+	var done: bool = _campaign_ref != null and _campaign_ref.is_cleared(source)
+	var active: bool = _campaign_ref != null and _campaign_ref.is_unlocked(target)
+	var col := _Style.C_GOLD if done else (_Style.C_ALLY if active else _Style.C_STEEL)
+	var emphasis := source == _hovered or target == _hovered
+	var alpha := 0.8 if done or emphasis else 0.30
+	var curve := Curve2D.new()
+	var bend := p0.distance_to(p1) * 0.18
+	var normal := Vector2(-direction.y, direction.x)
+	curve.add_point(p0, Vector2.ZERO, direction * bend - normal * bend)
+	curve.add_point(p1, -direction * bend - normal * bend, Vector2.ZERO)
+	var line := curve.get_baked_points()
+	ci.draw_polyline(line, Color(_Style.C_BG, 0.9), 7.0, true)
+	if done or emphasis:
+		ci.draw_polyline(line, Color(col, 0.08), 9.0, true)
+	if gate or not active:
+		for k in range(line.size() - 1):
+			if k % 4 < 2:
+				ci.draw_line(line[k], line[k + 1], Color(col, alpha), 2.0, true)
+	else:
+		ci.draw_polyline(line, Color(col, alpha), 2.0, true)
+	var tip := curve.sample_baked(curve.get_baked_length() * 0.60)
+	var ahead := curve.sample_baked(curve.get_baked_length() * 0.60 + 2.0)
+	var d := (ahead - tip).normalized()
+	var n := Vector2(-d.y, d.x)
+	ci.draw_polyline(PackedVector2Array([tip - d * 6 + n * 4, tip, tip - d * 6 - n * 4]), Color(col, alpha), 1.5, true)
 
 
 func _draw_nodes(ci: Control, sz: Vector2) -> void:
-	var c := Vector2(sz.x * 0.5, sz.y * 0.47)
 	var node_tex: Texture2D = _ht("ui_map_node_v1.png")
 	var node_lk_tex: Texture2D = _ht("ui_map_node_locked_v1.png")
 	var halo_tex: Texture2D = _ht("ui_map_node_halo_v1.png")
@@ -639,35 +641,79 @@ func _draw_nodes(ci: Control, sz: Vector2) -> void:
 		if not used_tex:
 			_hex(ci, p, r, fill, ring, ring_w)
 
-		# 状态符号（形状通道）
-		if cleared:
-			_draw_check(ci, p, r * 0.52, _Style.C_GOLD)
-		elif not unlocked:
-			_draw_lock(ci, p, r * 0.46, Color(_Style.C_STEEL.r, _Style.C_STEEL.g, _Style.C_STEEL.b, 0.85))
-		elif cur:
-			_draw_play(ci, p, r * 0.50, col)
+		# 保持节点坐标、贴图与命中范围不变，只叠加机械装甲细节。
+		_draw_node_armor(ci, p, r, ring, unlocked, hov, cur)
 
-		# 关卡名（文字通道）。核心节点没有径向方向 → 标签挂在中心环上方。
-		#   🔴 位置按标签自身的**轴对齐包围盒**外推：只按半径外推会让长名字压住六边形
-		#     （初版实测 1-1 / 1-3 / 2-1 的标签都骑在节点边上）。
-		var dir := p - c
-		var name_pos: Vector2
-		if dir.length() < 0.001:
-			# 🔴 核心（9-1）标签挂**下方**，不是上方：8-1 在 rf=0.065 的右上角，
-			#    它的标签被径向推到中心正上方 —— 两个标签会挤在同一行（实测
-			#    「主脑·核心 / 主脑·外围」并排贴着，谁都读不出哪个属于哪个节点）。
-			#    核心的标签往下放，二者一上一下分开 ~130px，归属就一眼可辨。
-			name_pos = p + Vector2(0.0, r + LABEL_GAP + 26.0)
-		else:
-			name_pos = _label_pos(p, dir.normalized(), r, String(st.get("name", "")), NODE_LABEL_FONT)
-		# 贴边节点：把标签推回画布内，避免被裁掉（推回后仍在本节点附近）
-		name_pos.x = clampf(name_pos.x, 96.0, sz.x - 96.0)
+		# 状态符号（形状通道）：可挑战节点不再空心。
+		if cleared:
+			_draw_check(ci, p, r * 0.40, _Style.C_GOLD)
+		elif not unlocked:
+			_draw_lock(ci, p + Vector2(0.0, -2.0), r * 0.35, Color(_Style.C_STEEL.r, _Style.C_STEEL.g, _Style.C_STEEL.b, 0.85))
+		elif unlocked:
+			_draw_play(ci, p + Vector2(1.0, 0.0), r * 0.38, _Style.C_GOLD if hov else col)
+
+		# 标签统一位于节点下方，避免跨越线路；编号独立放在左侧。
+		var name_pos := p + Vector2(0, r + 27.0)
+		_draw_center_text(ci, p + Vector2(-r - 26.0, -12.0), sid, 16, ring)
+		var label_width := 150.0
+		ci.draw_style_box(_Style.panel(Color(ring, 0.25), 1, 8.0, 4.0),
+			Rect2(name_pos - Vector2(label_width * 0.5, 15), Vector2(label_width, 30)))
 		var name_col := _Style.C_WHITE
 		if cleared:
 			name_col = _Style.C_GOLD
 		elif not unlocked:
 			name_col = Color(_Style.C_STEEL.r, _Style.C_STEEL.g, _Style.C_STEEL.b, 0.72)
 		_draw_center_text(ci, name_pos, String(st.get("name", "")), NODE_LABEL_FONT, name_col)
+
+
+## 小尺寸机械站标：倒角装甲、内嵌面板、六向触点；均沿用原外接圆。
+## 不改变任何关卡布局或状态判定，贴图缺失的 draw_* 路径也能获得同样细节。
+func _draw_node_armor(ci: Control, p: Vector2, r: float, accent: Color,
+		unlocked: bool, hovered_node: bool, current_node: bool) -> void:
+	var steel := _Style.C_STEEL
+	var ink := _Style.C_BG.darkened(0.65)
+	var edge := accent if unlocked else Color(steel, 0.50)
+	var face := _Style.C_BG.lerp(accent, 0.10 if unlocked else 0.025)
+	# 遮住穿过节点的线路；实体面板不能随锁定状态变透明。
+	_hex(ci, p + Vector2(0.0, 2.5), r + 2.0, ink, Color(steel, 0.25), 1.0)
+	_hex(ci, p, r, face, edge, 2.0 if unlocked else 1.4)
+
+	# 上亮下暗的六块倒角装甲，避免只有一圈细线的纸片感。
+	for k in range(6):
+		var a := deg_to_rad(60.0 * float(k) - 90.0)
+		var b := deg_to_rad(60.0 * float(k + 1) - 90.0)
+		var d0 := Vector2(cos(a), sin(a))
+		var d1 := Vector2(cos(b), sin(b))
+		var bevel := PackedVector2Array([
+			p + d0 * (r - 2.0), p + d1 * (r - 2.0),
+			p + d1 * (r - 6.5), p + d0 * (r - 6.5),
+		])
+		var lit := k == 0 or k == 4 or k == 5
+		ci.draw_colored_polygon(bevel, Color(steel, (0.20 if lit else 0.065) if unlocked else (0.13 if lit else 0.045)))
+		var contact := p + (d0 + d1).normalized() * (r - 3.0)
+		ci.draw_line(contact - (d1 - d0).normalized() * 2.5,
+			contact + (d1 - d0).normalized() * 2.5,
+			Color(accent if unlocked else steel, 0.85 if unlocked else 0.32), 1.8, true)
+
+	# 内框和深色凹槽衬托状态符号，保证小窗下锁头与勾仍清晰。
+	_hex(ci, p, r * 0.67, ink, Color(edge, 0.58), 1.0)
+	ci.draw_circle(p, r * 0.45, Color(accent if unlocked else steel, 0.07 if unlocked else 0.025))
+	ci.draw_arc(p, r * 0.54, -PI * 0.85, -PI * 0.15, 20,
+		Color(accent if unlocked else steel, 0.45 if unlocked else 0.16), 1.1, true)
+	ci.draw_arc(p, r * 0.54, PI * 0.15, PI * 0.85, 20,
+		Color(accent if unlocked else steel, 0.27 if unlocked else 0.10), 1.1, true)
+
+	# 焦点只加强外侧短弧和定位刻度，不改变节点尺寸或邻居间距。
+	if hovered_node or current_node:
+		var focus_color := _Style.C_GOLD if hovered_node and unlocked else accent
+		var intensity := 0.9 if hovered_node else 0.48
+		for k in range(3):
+			var a := deg_to_rad(-75.0 + 120.0 * float(k))
+			ci.draw_arc(p, r + 5.0, a, a + deg_to_rad(38.0), 12,
+				Color(focus_color, intensity), 2.0, true)
+			var d := Vector2(cos(a), sin(a))
+			ci.draw_line(p + d * (r + 5.0), p + d * (r + 8.0),
+				Color(focus_color, intensity), 1.5, true)
 
 
 ## 标签落点：节点外接圆外再推「标签包围盒沿 dir 方向的半长」，保证不压六边形。

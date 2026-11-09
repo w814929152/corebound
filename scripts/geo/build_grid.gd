@@ -11,8 +11,10 @@ extends RefCounted
 ## 设计口径（玩家已拍板的三条）：
 ##   ① 保留径向竞技场（核心居中、怪从外沿直插）—— 不推翻 GDD 的空间设计；
 ##   ② 塔位置自由，但**吸附格点** —— 视觉对齐、判定无歧义、不会出现两塔半重叠；
-##   ③ 可建范围由战场边界与活动地图岩脊共同决定；阵地表只描述视觉地形，不限制摆塔。
-##      圆盘内除核心禁建区与岩脊障碍外均可建。
+##   ③ 可建范围 = **整个战场圆盘 − 核心禁建区 − 活动地图岩脊**。
+##      「障碍物区域不可摆放，非障碍物区域都可以摆放」是玩家拍板的唯一空间规则：
+##      不再有「只能落在 17 个阵地格」或「只能落在 44u 中圈」这类隐形边界。
+##      `SITES` 仅保留为地图战术标注 / 暴露度统计 / 起手锚点，**不参与可建判定**。
 ##
 ## 🔴 为什么是六边形而不是方格（玩家明确要求改掉方格）：
 ##   · **等距**：方格到 4 个邻格的距离是 a、到 4 个斜角邻格是 1.414a —— 斜向埋塔会"更便宜"，
@@ -60,17 +62,22 @@ const ROW_STEP := HEX_R * 1.7320508075688772
 const CELL_AREA := 2.598076211353316 * HEX_R * HEX_R
 
 ## 核心禁建半径（u）。核心本体外接圆 1.90u，留 2u 余量 → 贴脸堆塔不是"自由"而是"唯一解"。
+## 核心是**障碍物**（不是可建地面），所以这一圈仍然禁建。
 const CORE_BAN_R := 4.0
-## 可建外径（u）。出生环 55 − 11：让玩家能在中圈布防，但不给"怪一出生就挨打"的白嫖位。
-const FIELD_R := 44.0
+## 可建外径（u）= 战场出生环半径 55：除岩脊与核心外，整个战场圆盘都可建。
+## 🔴 旧值 44 是「中圈布防」时代留下的隐形边界：玩家看到 44–55 这段明明是平地却点不了，
+##    与「非障碍物区域都可以摆放」直接矛盾 → 已废弃（2026-11-09）。
+const FIELD_R := 55.0
 
 # ---------------------------------------------------------------------------
 #  阵地表「三裂环」（design/gdd/scene-map.md §5.5）
 # ---------------------------------------------------------------------------
-## 🔴 为什么要有阵地：改这个文件之前先读 scene-map.md §3 —— 塔的**输出与位置无关**
-##   （`wave_director` 按 `t_remain` 聚合结算，覆盖走路径常量），所以「965 格空圆盘」
-##   的最优解是**全堆最外圈挤成一团**（曝光 6.6% 最低 + E=9 最密，两个轴同时最优）。
-##   把可建格收敛到 17 格，才是让"站哪"重新变成决策的唯一办法。
+## 🆕 2026-11-09 口径变更：阵地**不再限制摆塔**（玩家要求「非障碍物区域都可以摆放」）。
+##   本表保留为三件事的共用数据源：
+##     · 起手塔锚点 / 探针取点；
+##     · 暴露度统计与 `EXPO_SAFE_MAX_SITES` 分派（地图设计读数）；
+##     · 测试里对 17 个经典落点的回归。
+##   🔴 不要在 `buildable()` 或 UI 里再拿它当白名单 —— 那会重新引入"看得见平地却点不了"。
 ##
 ## 🔴 格子用**轴向坐标**写死（不是极坐标现算）：吸附后的真实格心必须可复现，
 ##   一旦用「锚点 + 半径筛格」在运行时推导，台间距会随吸附误差漂移。
@@ -182,13 +189,15 @@ static func snap(p: Vector2) -> Vector2:
 
 ## 该格心能否建塔（只看几何；塔数上限 / 同格占用由 runtime 判）。
 ##   PATH 模式或布局关闭 → 圆盘规则（逐位回到改前口径）。
-##   RADIAL + 布局开启  → 圆盘内除核心与活动地图岩脊外均可建。
+##   RADIAL + 布局开启  → **圆盘内除核心禁建区与岩脊障碍外全可建**。
+##   🔴 注意这里**不查阵地表**：`SITES` 是可选的战术标注，不是可建白名单。
 static func buildable(p: Vector2) -> bool:
 	var d := p.distance_to(core())
 	if d < CORE_BAN_R or d > FIELD_R:
 		return false
-	if sites_active() and _is_obstacle(p):
-		return false
+	if _SpaceModel.mode == _SpaceModel.Mode.RADIAL and _SpaceModel.layout_enabled:
+		if _is_obstacle(p):
+			return false
 	return true
 
 
@@ -209,7 +218,9 @@ static func _is_obstacle(p: Vector2) -> bool:
 	return false
 
 
-## 阵地是否生效（RADIAL + 布局开关）。PATH 模式恒 false → 网格 / 可建区逐位不变。
+## 地图布局（岩脊障碍 / 出生口映射）是否生效 = RADIAL + 布局开关。
+## ⚠️ 历史名保留：2026-11-09 前它代表"阵地白名单生效"，现在**不参与可建判定**，
+##    只给暴露度阈值分派（`PathGeometry.expo_safe_max_for`）与地图断言使用。
 static func sites_active() -> bool:
 	return _SpaceModel.mode == _SpaceModel.Mode.RADIAL and _SpaceModel.layout_enabled
 
@@ -309,31 +320,6 @@ static func grid_edges() -> PackedVector2Array:
 			var cc := cell(q, r)
 			if not buildable(cc):
 				continue                      # 非可建格不参与网格线绘制
-			var cs := corners(cc)
-			for i in range(6):
-				var a: Vector2 = cs[i]
-				var b: Vector2 = cs[(i + 1) % 6]
-				var key := _edge_key(a, b)
-				if seen.has(key):
-					continue
-				seen[key] = true
-				var seg := _clip_disc(a, b, c, FIELD_R)
-				if seg.is_empty():
-					continue
-				out.append(seg[0])
-				out.append(seg[1])
-	return out
-
-
-## 阵地网格线：只画 17 个阵地格（含格间分隔线 + 外沿）。
-##   17 格 × 6 边 ≈ 102 段，比整盘 3660 段少两个数量级 —— 这本身就是「收敛」的视觉证据。
-static func _site_edges() -> PackedVector2Array:
-	var out := PackedVector2Array()
-	var seen := {}
-	var c := core()
-	for s in active_sites():
-		for k in s["cells"]:
-			var cc := cell(k.x, k.y)
 			var cs := corners(cc)
 			for i in range(6):
 				var a: Vector2 = cs[i]

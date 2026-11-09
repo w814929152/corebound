@@ -1247,11 +1247,9 @@ func _draw_map_layer(sc: float, c: Vector2, g: Dictionary) -> void:
 			draw_polyline(_closed(poly), Color(P_SPAWN_EDGE.r, P_SPAWN_EDGE.g, P_SPAWN_EDGE.b, 0.75),
 				maxf(1.5, 0.12 * sc), true)
 
-	# ④ 阵地：17 个可建台（薄α填充 + 细描边）。网格线在放置态才画，台子**始终**可见。
-	for poly in g.get("pads", []):
-		draw_colored_polygon(poly, Color(P_ALLY.r, P_ALLY.g, P_ALLY.b, 0.055))
-		draw_polyline(_closed(poly), Color(P_ALLY.r, P_ALLY.g, P_ALLY.b, 0.22),
-			maxf(1.0, 0.07 * sc), true)
+	# ④ 阵地薄台：**不再常驻绘制**（2026-11-09）。
+	#   阵地已不限制摆塔；常驻的 17 个六边形会让玩家误以为"只有这些格子能建"。
+	#   摆塔网格只在放置模式下画（`_draw_placement_marks`），平时战场上不出现格线。
 
 
 ## 环扇形（弧带）多边形：外弧正向 + 内弧反向 ⇒ 一个简单多边形（可直接三角化填充）。
@@ -1291,27 +1289,21 @@ func _radial_geo(sc: float, c: Vector2, rs: float) -> Dictionary:
 			var a := TAU * float(k) / 8.0
 			spokes.append([c, c + _dir(a) * rs])
 			ticks.append([c + _dir(a) * (rs - 0.8 * sc), c + _dir(a) * (rs + 0.8 * sc)])
-		# 🆕 地图几何（岩脊 / 阵地）：与环同一份缓存 —— 同由 `(c, sc)` 完全决定。
+		# 🆕 地图几何（岩脊）：与环同一份缓存 —— 同由 `(c, sc)` 完全决定。
 		#   🔴 世界→屏幕的换算自己算（`ox = c.x − core.x·sc`），不调 `_to_screen()`：
 		#      后者每次重跑 `_xform()`，在缓存重建里调 17×7 次纯属浪费。
+		#   🔴 2026-11-09：阵地「薄台」不再绘制 —— 阵地不限制摆塔后，常驻的 17 个六边形
+		#      会被读成"只有这 17 格能建"的网格。网格改为**只在放置模式**由
+		#      `_draw_placement_marks()` 画（见 `build_grid.gd` 文件头口径③）。
 		var ridges: Array = []
-		var pads: Array = []
 		if _SpaceModel.layout_enabled:
 			for rg in _SpaceModel.active_ridges():
 				var vpad := float(rg.get("pad", 0.0))
 				ridges.append(_sector_poly(c, float(rg["r0"]) * sc, float(rg["r1"]) * sc,
 					deg_to_rad(float(rg["a0"]) + vpad), deg_to_rad(float(rg["a1"]) - vpad), 12))
-			var ox := c.x - _SpaceModel.RADIAL_CORE.x * sc
-			var oy := c.y - _SpaceModel.RADIAL_CORE.y * sc
-			for s in _BuildGrid.active_sites():
-				for k in s["cells"]:
-					var poly := PackedVector2Array()
-					for v in _BuildGrid.corners(_BuildGrid.cell(k.x, k.y)):
-						poly.append(Vector2(ox + v.x * sc, oy + v.y * sc))
-					pads.append(poly)
 		_geo = {"ring0": rings[0], "ring1": rings[1], "ring2": rings[2],
 			"spawn": _circle_pts(c, rs, 160), "spokes": spokes, "ticks": ticks,
-			"ridges": ridges, "pads": pads}
+			"ridges": ridges}
 	return _geo
 
 
@@ -1383,10 +1375,10 @@ func _draw_radial_slot_layer(sc: float) -> void:
 ## 🆕 网格形状 = **正六边形蜂窝**（玩家要求从方格改过来）。理由见 `build_grid.gd` 文件头：
 ##    方格到 4 个斜角邻格的距离是 1.414a，塔阵会自发退化成对角条纹；六边形 6 邻格等距。
 ##
-## 视觉三层（由弱到强，不抢战场戏）：
-##   ① 网格线     α 0.11 —— 只暗示"这里有刻度"
-##   ② 可建区边界 α 0.30 —— 明确"圈外不能建"；核心禁建区用暗盘 + 红环
-##   ③ 悬停格     六边形描边 + 呼吸 + 徽标 —— 回答"我点下去会怎样"
+## 视觉两层（由弱到强，不抢战场戏）：
+##   ① 网格线     α 0.11 —— 只暗示"这里有刻度"；**非可建格（岩脊/核心）不铺线**
+##   ② 悬停格     六边形描边 + 呼吸 + 徽标 —— 回答"我点下去会怎样"
+## 🔴 网格**只在放置模式**出现（`_in_placement()` 早退）—— 平时战场干净，不显示格线。
 ##
 ## 🔴 只对**鼠标所指那一格**查落子模式（O(塔数)），不遍历全盘 ~960 格。
 ## 🔴 零文本（AC-T1-24）：＋ / ↑ 全部 `draw_line` 画，不写 `draw_string`。
@@ -1429,11 +1421,9 @@ func _draw_placement_marks(sc: float, phase: String = "bg") -> void:
 
 	# ---- ② 可建区边界 + 核心禁建区 ----
 	var core := _to_screen(_BuildGrid.core())
-	# 🔴 阵地化后可建边界**不再是 44u 圆**，而是那 17 个格子（已在地面层常驻绘制）。
-	#    这里再画一个圆会让玩家以为"圆内都能建"—— 与 `buildable()` 直接矛盾。
-	if not _BuildGrid.sites_active():
-		draw_arc(core, _BuildGrid.FIELD_R * sc, 0.0, TAU, 96,
-			Color(P_ALLY.r, P_ALLY.g, P_ALLY.b, 0.30), maxf(1.5, 0.10 * sc), true)
+	# 🔴 2026-11-09：可建区 = 出生环以内整盘，网格外沿本身就是边界（`grid_edges()` 已裁到
+	#   `FIELD_R = 55 = 出生环`）→ 不再额外画一圈与出生环重叠的实线。
+	#   岩脊障碍不铺网格（`buildable()` 过滤）—— "没有格线的地方就是石头/核心"。
 	draw_circle(core, _BuildGrid.CORE_BAN_R * sc, Color(0.020, 0.030, 0.060, 0.60))
 	draw_arc(core, _BuildGrid.CORE_BAN_R * sc, 0.0, TAU, 48,
 		Color(P_ALERT.r, P_ALERT.g, P_ALERT.b, 0.45), maxf(1.5, 0.09 * sc), true)

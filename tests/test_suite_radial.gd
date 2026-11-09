@@ -218,9 +218,9 @@ func _angular_span(angles: Array) -> float:
 # ===========================================================================
 #  E-M1..E-M8：地图「三裂环」（`design/gdd/scene-map.md` §5 / §11 步4）
 # ===========================================================================
-## 一句话：**地图的可玩性 = 可建格从 965 收敛到 17，而结算链一位不动。**
+## 一句话：**地图的可玩性 = 障碍区之外整盘自由建造，而结算链一位不动。**
 ##   所以这组断言只验两件事：
-##     ① 收敛真的发生了（格数 / 开口 / 跨台断链）—— 否则地图只是画了张背景；
+##     ① 可建范围真的按「障碍物」划（岩脊禁建、平地全可建），不是按阵地白名单；
 ##     ② 收敛没有偷偷改路（`G` 只做角向映射 · 出生角永不落在脊里 · 关掉开关逐位回退）。
 func _test_map_layout() -> void:
 	_log("")
@@ -236,6 +236,9 @@ func _test_map_layout() -> void:
 			all_in = true
 			break
 	_tally("E-M1 阵地外非障碍格可建", all_in)
+	# 2026-11-09：旧 FIELD_R=44 的「中圈隐形边界」已废弃 → 出生环内 50u 的平地理应可建。
+	var outer_open: Vector2 = _BuildGrid.snap(_SpaceModel.polar_pos(deg_to_rad(80.0), 50.0))
+	_check_bool("E-M1 出生环内 50u 非障碍平地可建", _BuildGrid.buildable(outer_open), true)
 	var outside: Vector2 = _BuildGrid.snap(_SpaceModel.polar_pos(deg_to_rad(27.0), 40.0))
 	_check_bool("E-M1 岩脊障碍格不可建", _BuildGrid.buildable(outside), false)
 	_check_bool("E-M1 离盘面很远的点不可建", _BuildGrid.buildable(Vector2(-500.0, -500.0)), false)
@@ -324,7 +327,7 @@ func _test_map_layout() -> void:
 	for c in _BuildGrid.site_points():
 		if (c as Vector2).distance_to(_SpaceModel.RADIAL_CORE) > _BuildGrid.FIELD_R:
 			in_field = false
-	_tally("E-M6 17 格全部落在可建外径 44u 内", in_field)
+	_tally("E-M6 17 格全部落在可建外径 55u 内", in_field)
 	_check_bool("E-M6 起手锚点（P1 首格）可建", _BuildGrid.buildable(_BuildGrid.site_anchor("P1")), true)
 	_check_bool("E-M6 起手锚点属于 P1",
 		_BuildGrid.site_id_of(_BuildGrid.site_anchor("P1")) == "P1", true)

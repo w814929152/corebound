@@ -563,16 +563,11 @@ func _test_world_map() -> void:
 	var pts: Dictionary = ov.layout_points(_StageSelect.DESIGN_SIZE)
 	_check_int("航图节点数 = 关卡数", pts.size(), _CampaignData.STAGE_ORDER.size())
 
-	# 五环：中枢在最外，主脑核心在正中（向内推进 = 越打越深）
-	var core := Vector2(_StageSelect.DESIGN_SIZE.x * 0.5, _StageSelect.DESIGN_SIZE.y * 0.47)
-	var d0 := Vector2(pts["0-1"]).distance_to(core)
-	var d1 := Vector2(pts["1-1"]).distance_to(core)
-	var d4 := Vector2(pts["4-1"]).distance_to(core)
-	var d8 := Vector2(pts["8-1"]).distance_to(core)
-	var d9 := Vector2(pts["9-1"]).distance_to(core)
-	_check("中枢在最外环（0-1 最远）", d0 > d1)
-	_check("外环 > 中环 > 内环 > 主脑核心", d1 > d4 and d4 > d8 and d8 > d9)
-	_check("主脑核心落在正中（误差 < 0.5）", d9 < 0.5)
+	var center := Vector2(_StageSelect.DESIGN_SIZE.x * 0.59, _StageSelect.DESIGN_SIZE.y * 0.48)
+	_check("Spiral moves inward", pts["0-1"].distance_to(center) > pts["1-1"].distance_to(center)
+		and pts["1-1"].distance_to(center) > pts["4-1"].distance_to(center)
+		and pts["4-1"].distance_to(center) > pts["8-1"].distance_to(center))
+	_check("Final stage at core", pts["9-1"].distance_to(center) < 0.5)
 
 	_check_int("章标题 = 5 环", _StageSelect.CHAPTER_TITLES.size(), 5)
 	_check("章标题与 CampaignData 逐字一致", _titles_match())
@@ -597,6 +592,16 @@ func _test_world_map() -> void:
 	_check("锁定关卡 enter_stage 返回 false", not ov.enter_stage("2-1"))
 	_check_int("锁定关卡不发 stage_selected", got.size(), 0)
 	_check("锁定关卡不改当前关", c.current_stage() == _CampaignData.START_STAGE)
+	var backs: Array = []
+	ov.back_requested.connect(func(): backs.append(true))
+	var before_back: String = c.current_stage()
+	ov.return_to_menu()
+	_check("Back closes map and emits signal", not ov.visible and backs.size() == 1)
+	_check("Back preserves stage and progress", c.current_stage() == before_back and not c.is_cleared("0-1"))
+	ov.return_to_menu()
+	_check("Hidden map does not emit back again", backs.size() == 1)
+	ov.open(c)
+
 	ov._hovered = "2-1"
 	ov._refresh_detail()
 	_check("锁定关卡详情提示「未解锁 · 先通关」",
