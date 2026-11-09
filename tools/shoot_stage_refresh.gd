@@ -32,7 +32,7 @@ func _process(_delta: float) -> bool:
 			DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(OUT))
 			image.save_png(OUT + String(job.name) + ".png")
 		print("[checked] ", job.name, " logical viewport=", _stage._canvas.size,
-			" button_disabled=", _stage._enter_button.disabled)
+			" layout_errors=", _errors)
 		_stage.free()
 		_index += 1
 		_frame = 0

@@ -18,10 +18,11 @@ extends SceneTree
 
 const AUDIO_SRC := "res://scripts/audio/audio_director.gd"
 
+## 当前玩法基线包含自由落子/取消信号，以及战局结束通知；音频层不增加玩法信号。
 const SIG_BASELINE := {
 	"res://scripts/gameplay/wave_director.gd": 8,
-	"res://scripts/ui/time_director.gd": 15,
-	"res://scripts/gameplay/shop_controller.gd": 2,
+	"res://scripts/ui/time_director.gd": 17,
+	"res://scripts/gameplay/shop_controller.gd": 3,
 }
 
 var _pass := 0

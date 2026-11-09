@@ -26,7 +26,7 @@ signal stage_selected(stage_id: String)
 signal back_requested()
 
 ## Spiral display order is independent of campaign unlock rules.
-## Escape and the back button return to the main menu.
+## Escape returns to the main menu.
 
 const _Style := preload("res://scripts/ui/ui_style.gd")
 const _CampaignData := preload("res://scripts/data/campaign_data.gd")
@@ -153,23 +153,23 @@ func _build() -> void:
 	_build_header()
 	_build_ember()
 	_build_detail_panel()
-	_build_back_button()
+	_build_back_hint()
 
 
-func _build_back_button() -> void:
-	var button := Button.new()
-	button.text = "← 返回主菜单 / Esc"
-	button.anchor_left = 1.0
-	button.anchor_right = 1.0
-	button.anchor_top = 1.0
-	button.anchor_bottom = 1.0
-	button.offset_left = -320.0
-	button.offset_right = -56.0
-	button.offset_top = -104.0
-	button.offset_bottom = -48.0
-	_Style.button(button)
-	button.pressed.connect(return_to_menu)
-	add_child(button)
+func _build_back_hint() -> void:
+	var hint := _Style.label("Esc 返回主菜单", 18, _Style.C_TEXT_DIM)
+	hint.anchor_left = 1.0
+	hint.anchor_right = 1.0
+	hint.anchor_top = 1.0
+	hint.anchor_bottom = 1.0
+	hint.offset_left = -320.0
+	hint.offset_right = -56.0
+	hint.offset_top = -104.0
+	hint.offset_bottom = -48.0
+	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	hint.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(hint)
 
 
 func return_to_menu() -> void:

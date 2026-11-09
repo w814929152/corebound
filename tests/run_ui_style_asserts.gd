@@ -230,8 +230,12 @@ func _test_c_font_floor() -> void:
 			gsmall.append("%s=%d" % [String((l as Label).text).substr(0, 10), fs])
 	_check("【航图】%d 个 Label 全部 ≥16px%s" % [glabels.size(), "" if gsmall.is_empty() else " → " + str(gsmall)],
 		gsmall.is_empty())
-	_check("【航图】零系统默认控件（画布自绘，不含 Button）",
-		_collect(stage, [], "button").is_empty())
+	_check("【航图】无返回按钮", _collect(stage, [], "button").is_empty())
+	var has_back_hint := false
+	for label in glabels:
+		if label.text == "Esc 返回主菜单":
+			has_back_hint = true
+	_check("【航图】保留 Esc 返回文字提示", has_back_hint)
 	_check("【航图】画布节点文字 ≥16px",
 		float(_StageSelect.NODE_LABEL_FONT) >= float(FONT_MIN)
 		and float(_StageSelect.CHAPTER_FONT) >= float(FONT_MIN))

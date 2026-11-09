@@ -229,7 +229,7 @@ func _on_wave_started(w: int) -> void:
 #  构建
 # ---------------------------------------------------------------------------
 func _build() -> void:
-	set_anchors_preset(Control.PRESET_FULL_RECT)
+	set_anchors_preset(Control.PRESET_TOP_LEFT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 
 	# 🆕 L0 区缓存样式：积分卡面板 + 波次条轨道 / 填充（避免 `_draw` 每帧 new）
