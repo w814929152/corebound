@@ -27,6 +27,9 @@ signal restart_requested()
 signal quit_requested()
 
 const _Style := preload("res://scripts/ui/ui_style.gd")
+const _CampaignData := preload("res://scripts/data/campaign_data.gd")
+const _Briefings := preload("res://scripts/data/stage_briefings.gd")
+const _Packs := preload("res://scripts/data/card_packs.gd")
 
 ## 🆕 v4 结算情绪层 + 横幅（asset-pack-v4-result.md §3.1）
 ##    贴图缺失 → 不加层（回纯黑幕 + 纯色标题），判空降级 headless 安全。
@@ -250,6 +253,27 @@ func _on_restart_pressed() -> void:
 	if _on_restart.is_valid():
 		_on_restart.call()
 	restart_requested.emit()
+	queue_free()
+
+
+func show_campaign_result(stage_id: String, won: bool, result: Dictionary) -> void:
+	var st: Dictionary = _CampaignData.STAGES.get(stage_id, {})
+	var lines: Array[String] = ["%s · %s" % [stage_id, String(st.get("name", ""))]]
+	if won:
+		lines.append(String(_Briefings.get_briefing(stage_id).get("clear", "中继站已守住。")))
+	else:
+		lines.append("中继站失去连接，重新布防后可再次挑战。")
+	var deck := String(result.get("unlocked_deck", ""))
+	if deck != "":
+		lines.append("获得科技：" + _Packs.pack_name(deck))
+	var unlocked: Array = result.get("unlocked_stages", [])
+	if not unlocked.is_empty():
+		var names: Array[String] = []
+		for sid in unlocked:
+			names.append(String(_CampaignData.STAGES[String(sid)]["name"]))
+		lines.append("新区域：" + "、".join(names))
+	_body_label.text = "\n".join(lines)
+	_restart_btn.text = "返回航图"
 
 
 func _on_quit_pressed() -> void:

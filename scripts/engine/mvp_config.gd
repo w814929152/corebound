@@ -37,6 +37,8 @@ const HP_BASE := 16.0
 const FOCUS_PER_LAYER := 0.06
 const LINK_RULE := "substantial"
 const SALVAGE_REFUND := 0.50
+## 玩家手动战斗的开局金币（模拟路线仍沿用原经济）。
+const PLAYER_STARTING_SCRAP := 30.0
 
 # ---------------------------------------------------------------------------
 #  切片3 新增 · 商店 / 时钟口径（`design/gdd/shop-reroll.md` v1.1 §3.1 常量表）

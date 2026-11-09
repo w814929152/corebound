@@ -133,7 +133,7 @@ func on_cleared(stage_id: String) -> Dictionary:
 	var unlocked_deck := ""
 	var st: Dictionary = _CampaignData.STAGES.get(sid, {})
 	var dk := String(st.get("unlock_deck", ""))
-	if dk != "" and _CampaignData.deck_exists(dk):
+	if first and dk != "" and _CampaignData.deck_exists(dk):
 		_decks[dk] = true
 		unlocked_deck = dk
 	# Ember：首次满额 / 重复递减

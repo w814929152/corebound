@@ -26,6 +26,10 @@
 
 ## 卡池与扩展包
 
+> 🔴 **2026-11-09 起玩家商店只出售建筑卡**（`shop_runtime.EFFECT_CARDS_ENABLED = false`，效果卡实现保留）。
+> 当前基础池 = `Arrow` / `Cannon` / `Frost` **3 张**；下文的 `FireUp` / `FrostUp` / `ScrapUp` 与扩展包强化卡
+> **暂不进池**。把该常量改回 `true` 即恢复 6 张混合池口径。
+
 玩家路线商店基础池 6 张：`Arrow` / `Cannon` / `Frost`（三塔）+ `FireUp` / `FrostUp`（强化）+ `ScrapUp`（经济）。
 
 **扩展包**（实机默认开启，`shop_runtime.set_extended_pack()` 一行可关）再加 4 张：
@@ -171,6 +175,17 @@
 设计与取舍见 `docs/phase6/free-placement.md`；上一轮"落子入口不可达"的修复复盘见
 `docs/phase6/placement-fix.md`。
 
+## 关卡实装（2026-11-09）
+
+十关各自一张异形地块（`scripts/data/battlefield_maps.gd`）：地形绘制、建塔、放置网格、敌人出生边界共用同一份数据；
+场地扩为原版 1.5 倍宽高。战场镜头支持左键拖空地 / 中键平移 / 滚轮缩放 / `F` 回到核心，商店与背包不抢手势。
+
+- **怪物攻建筑**：从第一波起，怪到仇恨范围停下打塔；无塔可打时抵近核心 3 单位持续攻核，可被击杀。参数在 `monster_data.gd`（基础 20/s × 原型系数），仍属可玩初值、未做整局平衡。
+- **战术战斗**：玩家关卡逐塔按真实射程找目标，溢出只在同一射程内结转；模拟器与历史回归仍走原聚合池。
+- **开局**：只有核心 + 30 废料，没有起手塔；准备阶段自行买卡、落塔，确认后开战。
+
+推导与验收见 `docs/phase6/battlefield-redesign.md`、`docs/phase6/monster-structure-attacks.md`、`docs/phase6/stage-implementation.md`。
+
 ## 本地运行与自测
 
 需要 Godot **4.7.2-stable**。
@@ -178,11 +193,14 @@
 ```bash
 GODOT="<你的 Godot 可执行文件>"
 
-# 全量 headless 回归（切片 1–8 + T1 仇恨）
+# 全量 headless 回归（切片 1–8 + T1 仇恨 + world 关卡实装 11 套）
 "$GODOT" --headless --path . --script res://tests/run_tests.gd
 
 # 只跑某切片（参数必须以 slice 开头）
 "$GODOT" --headless --path . --script res://tests/run_tests.gd -- slice5
+
+# 只跑关卡实装那一组（地形 / 镜头导航 / 结构攻防 / 建筑卡商店 / 准备阶段 / 卡面详情 / 关卡推进）
+"$GODOT" --headless --path . --script res://tests/run_tests.gd -- world
 
 # 只跑某一套结构断言（uistyle / tlv / campaign / cardpack / combat_types / extpack / tutorial）
 #   两种入口等价：单套件可直跑（`extends SceneTree`，中文输出不过 OS.execute 的 GBK 转换，不会乱码）
@@ -204,6 +222,8 @@ GODOT="<你的 Godot 可执行文件>"
 > ⚠️ `--script` 指向的文件**必须继承 `SceneTree` / `MainLoop`**（`--script` 是「换主循环」而非「加载模块」）。
 > `tests/run_*_asserts.gd` 因此统一 `extends SceneTree` + `_initialize() -> quit(0/1)`；
 > `run_tests.gd` 的进程内聚合走 `.new().run_all()` —— `.new()` 不触发 `_initialize()`，两条入口共用同一份断言。
+> 需要**真帧**的脚本（`call_deferred("run")`：地形 / 镜头 / 准备阶段 / 结构攻防…）无法进程内直调，
+> 由 `run_tests.gd` 用 `OS.execute` 拉子进程收集退出码（`-- world` 与默认回归都会跑）。
 > 若写成 `extends RefCounted`，直跑会被引擎拒载：「Can't load the script as it doesn't inherit from SceneTree or MainLoop」。
 
 ## 打包可玩版本
@@ -224,7 +244,7 @@ GODOT="<你的 Godot 可执行文件>"
 
 `.github/workflows/ci.yml` 在 push / PR 时自动跑（`docs/**`、`**/*.md`、`.workbuddy/**` 的改动不触发），ubuntu-latest + Godot 4.7.2-stable，共 **9 步测试**：
 
-1. **默认回归** —— 切片 1–8 + T1 仇恨 + B-1 引导状态机 + 扩展包/UI 样式/塔等级牌/卡包/关卡推进/战斗类型，多段汇总、退出码 0；
+1. **默认回归** —— 切片 1–8 + T1 仇恨 + B-1 引导状态机 + 扩展包/UI 样式/塔等级牌/卡包/关卡推进/战斗类型，外加 **world 关卡实装 11 套**（地形 / 镜头导航 / 结构攻防 / 建筑卡商店 / 准备阶段 / 卡面详情 / 关卡推进，子进程串行），多段汇总、退出码 0；
 2. **音频资产 lint** —— 免导入的 `key → path` 兜底校验（关闭 G-6：音频 id 打错在运行时只会静默 null）；
 3. **音频框架回归断言** —— audio-spec-a §7 五条（池 24+4 / 总线名 / 信号数 / 聚焦低通 / token 扫描）；
 4. **radial8 聚合闸门** —— 9 个子套件：geo8 / radial / geo8_smoke / geo8_golden / expo / bulwark8 / panorama8 / attrition8 / vfx_cache_guard；
@@ -275,5 +295,9 @@ Phase 3 MVP：切片 1–8 已交付（伤害引擎 → 战斗循环 → 商店 
 径向迁移收官（默认窗口即 RADIAL）；三原型 / 精英波已上线。
 Phase 6：扩展包 / 卡包（8 包共 81 张，每局最多 3 包）/ 关卡推进 + 裂隙航图（10 关 × 10 张地图变体）/
 战斗类型（物攻 · 魔攻 · 真实 × 双抗性）已落地并进默认回归。
+
+**2026-11-09 关卡实装（已进默认回归）**：十关异形地块 + 战场镜头 /
+怪物攻建筑 / 逐塔真实判距 / 建筑卡商店（效果卡暂停、无起手塔、30 废料）。
+旧 `slice4` / 扩展包 / 卡包 / UI 套件已同步到该口径；`world` 组 11 个脚本全绿。
 
 > 🔴 数值口径为工程级冻结资产：`ATTRITION` / `κ_r` / `AGGRO_R` / 塔位 / `SPAWN_RADIUS` / 核心 HP / `hp_growth` / 三原型表等，改动一律走 ADR 并需拍板。

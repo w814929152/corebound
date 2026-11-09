@@ -26,6 +26,9 @@ const _Geo6 := preload("res://scripts/geo/geo6.gd")
 const _ShopLayout := preload("res://scripts/ui/shop_layout.gd")
 const _TSM := preload("res://scripts/engine/time_state_machine.gd")
 const _SpaceModel := preload("res://scripts/geo/space_model.gd")
+const _Terrain := preload("res://scripts/ui/battlefield_terrain.gd")
+const _BattlefieldCamera := preload("res://scripts/ui/battlefield_camera.gd")
+const _PlacementTowerData := preload("res://scripts/data/tower_data.gd")
 const _BuildGrid := preload("res://scripts/geo/build_grid.gd")
 const _MonsterData := preload("res://scripts/data/monster_data.gd")
 const _WD := preload("res://scripts/gameplay/wave_director.gd")   # 仅取 MState 枚举（AGGRO_TOWER）
@@ -192,6 +195,7 @@ var time_director: Node = null   # TimeDirector（读抽屉宽，决定战场可
 ## 🟡 切片8·I-7：商店控制器（读 runtime.snapshot() 画已建塔 + 点选/合法宿主高亮）。
 ##   🔴 只读，不写玩法状态（与 WaveDirector 一样是"画面事实"来源）。
 var controller: Node = null
+var placement_backpack: Control = null
 var _slot_rows: Array = []
 var _snap: Dictionary = {}
 ## 🔒 V-8：塔位 → 爬起动效**剩余秒数**（纯演出计时器，UI 本地状态）。
@@ -395,6 +399,8 @@ func _field_width() -> float:
 func _xform() -> Dictionary:
 	var vw := _field_width()
 	var vh := float(get_viewport().get_visible_rect().size.y)
+	if _SpaceModel.uses_terrain():
+		return _BattlefieldCamera.terrain_transform(Vector2(vw,vh))
 	var x0: float
 	var x1: float
 	var z0: float
@@ -430,8 +436,8 @@ func _to_screen(p: Vector2) -> Vector2:
 
 
 ## 世界坐标 → 屏幕坐标（**公开别名**，供同类叠加层复用）。
-##   🔴 为什么不各自复写一份 `_xform()`：抽屉展开会改可视宽（`_field_width()`），
-##      战场整体重新居中；两份换算只要漂移一点，叠加层就会和塔身/怪物错位
+##   地图与叠加层共用固定的视口坐标映射，商店浮层开关不改变地图位置。
+##   两份换算只要漂移一点，叠加层就会和塔身/怪物错位
 ##      （本项目已踩过"手抄第二份网格数字"的坑）。需要世界坐标的叠加层一律走这里。
 func world_to_screen(p: Vector2) -> Vector2:
 	return _to_screen(p)
@@ -963,6 +969,7 @@ func _draw_radial(sc: float) -> void:
 	_draw_radial_towers(sc)       # 层6：双层八边形塔
 	_draw_placement_marks(sc, "fg")   # 层6.5：⑤ 悬停格描边 + 徽标（塔之上）
 	_draw_radial_monsters(sc)     # 层7：12 边不规则 + 朝核心尖刺扇
+	_draw_structure_attacks(sc)
 	_draw_minions(sc)             # 层7.5：召唤小兵（只读快照）
 	_draw_projectiles(sc)         # 层8：字段缺失 → 零绘制（保留既有 hook）
 	_draw_revive_flash(sc)        # 层9：爬起扩散环（沿用既有）
@@ -1146,18 +1153,14 @@ func _draw_tower_form(c: Vector2, R: float, h: int, sc: float) -> void:
 # ---- 层1/2：地面 decal + 出生环（spec §A.7；换装见 §A.6）----
 func _draw_radial_ground(sc: float) -> void:
 	var c := _to_screen(_SpaceModel.RADIAL_CORE)
+	if _SpaceModel.uses_terrain():
+		_Terrain.draw(self,c,sc)
+		return
 	var rs := float(_SpaceModel.SPAWN_RADIUS) * sc
 	# 🔴 P0（spec §A.6）：场地 / 同心环 / 放射刻度**按档取色 + 3s 过渡**（同 `env_palette.gd`）。
-	var col_field := _env_col("field", 1.0)
 	var col_ring := _env_col("ring", 0.5)     # 同心环 α=0.5（沿用现状，只换 RGB 基底）
 	var col_spoke := _env_col("ring", 0.35)   # 放射刻度 α=0.35（同档 ring RGB）
-	# 🟠 T-P6-07 C4（描画去重 · perf §4）：父节点 `Battlefield`
-	#   （`battlefield_placeholder._draw_radial_ground`）**先画**全屏 bg + 场地圆。抽屉**收起**时
-	#   本层与父层几何/颜色**逐位相同**（同 `sc`、同中心、同 `_env_col`，且换装档同源 `sm.wave`≡`w`）
-	#   → 本层**跳过重复**的场地圆，省一次每帧重铺。抽屉**展开**时父层用全视口、本层用战场宽 →
-	#   二者不同（各画各的轮廓）→ 仍由本层画，行为与改前一致。
-	if _drawer_open():
-		draw_circle(c, (float(_SpaceModel.SPAWN_RADIUS) + 2.0) * sc, col_field)
+	# 地面由父层绘制；商店浮层不再改变地图几何，无需重复覆盖场地圆。
 	# 🟠 T-P6-07 C3（几何缓存 · perf §4）：静态径向几何（同心环×3 / 放射刻度×8 / 出生环+方位刻度）
 	#   按 `(c.x, c.y, sc)` 缓存为折线点，仅在签名变化时重建 → 省掉每帧 ~500 顶点的三角重算
 	#   （点数与直接 `draw_arc` 同分度数，视觉逐像素一致；缓存**只含几何**，颜色仍每帧取档）。
@@ -1307,6 +1310,49 @@ func _radial_geo(sc: float, c: Vector2, rs: float) -> Dictionary:
 	return _geo
 
 
+## 建筑攻防的只读演出：攻击方向、核心受攻环，以及受损防御塔的生命条。
+func _draw_structure_attacks(sc: float) -> void:
+	if not bool(_snap.get("structure_attacks",false)):
+		return
+	var slots := _slots_arr()
+	var core_attacked := false
+	for monster in _snap.get("monsters",[]):
+		if float(monster.get("hp",0.0))<=0.0 or bool(monster.get("frozen",false)):
+			continue
+		var state := int(monster.get("state",0))
+		var target: Vector2
+		if state==_WD.MState.AGGRO_CORE:
+			target = _SpaceModel.core_pos()
+			core_attacked = true
+		elif state==_WD.MState.AGGRO_TOWER:
+			var slot := int(monster.get("target_slot",-1))
+			if slot<0 or slot>=slots.size():
+				continue
+			target = slots[slot]
+		else:
+			continue
+		var phase := fposmod(_vfx_t*1.8+float(monster.get("index",0))*0.17,1.0)
+		if phase>0.35:
+			continue
+		var source: Vector2 = monster["pos"]
+		var a := _to_screen(source.lerp(target,0.25))
+		var b := _to_screen(source.lerp(target,0.85))
+		draw_line(a,b,Color(P_ENEMY,0.80*(1.0-phase/0.35)),maxf(2.0,0.16*sc),true)
+	if core_attacked:
+		draw_arc(_to_screen(_SpaceModel.core_pos()),3.3*sc,0.0,TAU,48,Color(P_ENEMY,0.75),2.0,true)
+	for tower in _snap.get("towers",[]):
+		var hp := float(tower.get("hp",0.0))
+		var maximum := float(tower.get("hp_max",0.0))
+		var slot := int(tower.get("slot",-1))
+		if maximum<=0.0 or hp>=maximum or slot<0 or slot>=slots.size():
+			continue
+		var center := _to_screen(slots[slot])+Vector2(0.0,3.0*sc)
+		var width := maxf(26.0,4.8*sc)
+		var rect := Rect2(center-Vector2(width*0.5,0.0),Vector2(width,4.0))
+		draw_rect(rect,Color(0.02,0.03,0.05,0.95))
+		draw_rect(Rect2(rect.position,Vector2(width*clampf(hp/maximum,0.0,1.0),4.0)),P_ENEMY)
+
+
 func _circle_pts(c: Vector2, r: float, seg: int) -> PackedVector2Array:
 	var pts := PackedVector2Array()
 	for i in range(seg + 1):
@@ -1398,10 +1444,11 @@ func _draw_placement_marks(sc: float, phase: String = "bg") -> void:
 	# 🔴 一次 `draw_multiline` 画完 ~3660 段边（逐段 draw_line 是不可接受的调用量）；
 	#    屏幕坐标按 (ox, oy, sc) 缓存 —— 抽屉开合会改 `_field_width()` → 战场重新居中，
 	#    签名一变必须重算，否则网格会和塔身错位（本项目踩过手抄坐标的坑）。
+	var map_cache_key := _SpaceModel.active_map_id + (":terrain" if _SpaceModel.uses_terrain() else "")
 	if (_grid_edges.is_empty() or _grid_sites_mode != _BuildGrid.sites_active()
-			or _grid_map_id != _SpaceModel.active_map_id):
+			or _grid_map_id != map_cache_key):
 		_grid_sites_mode = _BuildGrid.sites_active()
-		_grid_map_id = _SpaceModel.active_map_id
+		_grid_map_id = map_cache_key
 		_grid_edges = _BuildGrid.grid_edges()
 		_grid_scr_sig = Vector4(-1.0, -1.0, -1.0, -1.0)
 	var xf := _xform()
@@ -1429,18 +1476,15 @@ func _draw_placement_marks(sc: float, phase: String = "bg") -> void:
 		Color(P_ALERT.r, P_ALERT.g, P_ALERT.b, 0.45), maxf(1.5, 0.09 * sc), true)
 
 	if phase == "bg":
+		_draw_placement_range(sc)
 		return                      # 背景段到此为止（塔之上还要再调一次 fg 段）
 
 	# ---- ③ 悬停格预览 ----
-	# 鼠标在抽屉 / HUD 上时不高亮（`_field_width` 已扣掉抽屉占位）。
-	var wp: Vector2
-	if probe_hover_world != null:
-		wp = _BuildGrid.snap(Vector2(probe_hover_world))      # 取证注入（见变量注释）
-	else:
-		var mpos := get_viewport().get_mouse_position()
-		if mpos.x > _field_width():
-			return
-		wp = _to_world(mpos)
+	# 鼠标在商店浮层 / HUD 上时不高亮；命中区域与地图坐标映射分开。
+	var hovered = _placement_hover_world()
+	if hovered == null:
+		return
+	var wp: Vector2 = hovered
 	var info: Dictionary = controller.runtime.placement_mode_at(wp)
 	var mode := String(info["mode"])
 	if mode == "":
@@ -1484,6 +1528,50 @@ func _draw_placement_marks(sc: float, phase: String = "bg") -> void:
 		_draw_place_badge(c + Vector2(0.0, -(_BuildGrid.HEX_HALF_H * sc + br * 1.30)), br, mode, col, sc)
 
 
+## 放置预览与最终落子共用吸附坐标；鼠标回到背包或控件时不在地图上残留预览。
+func _placement_hover_world(screen_point = null):
+	if probe_hover_world != null:
+		return _BuildGrid.snap(Vector2(probe_hover_world))
+	var pointer: Vector2 = get_viewport().get_mouse_position() if screen_point == null else Vector2(screen_point)
+	if placement_backpack != null and placement_backpack.is_visible_in_tree() and placement_backpack.get_global_rect().has_point(pointer):
+		return null
+	var hovered := get_viewport().gui_get_hovered_control()
+	if hovered != null and hovered.mouse_filter != Control.MOUSE_FILTER_IGNORE:
+		return null
+	return _BuildGrid.snap(_to_world(pointer))
+
+
+## 纯预览数据：射程读取战斗同一参数，中心为实际吸附落点。
+func placement_range_preview() -> Dictionary:
+	if not _in_placement() or controller == null or controller.runtime == null:
+		return {}
+	var name: String = controller.runtime.placing_card_name()
+	if name == "" or _PlacementTowerData.tower_dps(name)<=0.0:
+		return {}
+	var radius := _PlacementTowerData.tower_rng(name)
+	var point = _placement_hover_world()
+	if radius<=0.0 or point == null:
+		return {}
+	var mode: String = controller.runtime.placement_mode_at(point)["mode"]
+	return {"center":point,"radius":radius,"mode":mode,"valid":mode in ["new","upgrade"]}
+
+
+func _draw_placement_range(sc: float) -> void:
+	var preview := placement_range_preview()
+	if preview.is_empty():
+		return
+	var center := _to_screen(preview["center"])
+	var radius := float(preview["radius"])*sc
+	var color := P_GOLD if String(preview["mode"])=="upgrade" else P_ALLY
+	if not bool(preview["valid"]):
+		color = P_ALERT
+	draw_circle(center,radius,Color(color,0.07 if bool(preview["valid"]) else 0.025))
+	draw_arc(center,radius,0.0,TAU,128,Color(color,0.80),2.0,true)
+	# 四侧短刻度使边界在地面和网格上都容易辨认。
+	for direction in [Vector2.LEFT,Vector2.RIGHT,Vector2.UP,Vector2.DOWN]:
+		draw_line(center+direction*(radius-4.0),center+direction*(radius+4.0),Color(color,0.95),2.0,true)
+
+
 ## 落子徽标：圆盘衬底 + 几何符号（零文本）。`mode` ∈ {new, upgrade, invalid}。
 func _draw_place_badge(c: Vector2, r: float, mode: String, col: Color, sc: float) -> void:
 	draw_circle(c, r, Color(0.035, 0.045, 0.085, 0.90))
@@ -1525,6 +1613,14 @@ func _draw_threat_wedges(sc: float) -> void:
 	for idx in sect:
 		var ac := TAU * float(idx) / 8.0 + TAU / 16.0     # 扇区中心
 		var alpha := minf(0.60, 0.35 + 0.05 * float(mini(int(sect[idx]), 5)))
+		if _SpaceModel.uses_terrain():
+			var edge := PackedVector2Array()
+			for k in range(9):
+				var angle := ac+lerpf(-deg_to_rad(11.0),deg_to_rad(11.0),float(k)/8.0)
+				var radius := _SpaceModel.BattlefieldMaps.entry_radius(_SpaceModel.active_map_id,angle)
+				edge.append(c+Vector2.from_angle(angle)*radius*sc)
+			draw_polyline(edge,Color(P_ENEMY,alpha),maxf(2.0,0.3*sc),true)
+			continue
 		draw_arc(c, rs, ac - deg_to_rad(11.0), ac + deg_to_rad(11.0), 8,
 			Color(P_ENEMY.r, P_ENEMY.g, P_ENEMY.b, alpha), maxf(2.0, 0.30 * sc), true)
 

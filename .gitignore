@@ -26,6 +26,7 @@ desktop.ini
 
 # 验证日志 / 探针截帧产物（不入库：体量与可复现性均不适配版本库）
 ci-logs/
+*.err
 
 # Godot 4 导入元数据 / UID
 #   本仓约定 = 0 跟踪（`git ls-files "*.import" "*.uid"` 为空），由引擎按需重生成。

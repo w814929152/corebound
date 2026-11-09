@@ -6,8 +6,7 @@ extends SceneTree
 ##    金标本 A/B 构筑只用 slot 0-5（前六槽），S6/S7 空置。
 ##    E-G8-5 已证 Geo8 前六槽邻接 == Geo6（诱导子图守恒）
 ##    → 八槽下 A/B 的 DPS 应与六槽锚点**逐位相同**：
-##      · A  TOTAL = 10,903,440.347229
-##      · B/tier = 4,991,135.610234
+##      · A  TOTAL / B/tier TOTAL 一律取 `tests/golden_reference.gd`（唯一 SSOT）
 ##    若这一条破了，说明八槽 geo 泄漏进了前六槽的 E/共鸣/DPS 链。
 ##
 ## 跑法：
@@ -19,11 +18,11 @@ const _DE = preload("res://scripts/engine/damage_engine.gd")
 const _PS = preload("res://scripts/engine/player_state.gd")
 const _Geo6 = preload("res://scripts/geo/geo6.gd")
 const _Geo8 = preload("res://scripts/geo/geo8.gd")
-
-# 六槽 V-0′ 锚点（来自 run_radial_golden 实跑，2026-10-08）
-const A_TOTAL := 10903440.347229
-const B_TIER_TOTAL := 4991135.610234
-const B_E := [9.0, 0.0, 134.0, 0.0, 0.0, 0.0]
+# 🔴 2026-11-09：锚点从 `tests/golden_reference.gd` 取（唯一 SSOT），不再本地复制。
+#    此前本地硬编码的是 GDD §10.1 手算值（10,903,440 / 4,991,135）；数值再平衡
+#    （`chore(balance)` cdf4fc1）只更新了 golden_reference / golden_slice2，漏了本文件 →
+#    八槽读数与「六槽锚点」对不上。锚点归 golden_reference 后，两边不会再各走各的。
+const _Golden = preload("res://tests/golden_reference.gd")
 
 var _fail = 0
 
@@ -82,7 +81,7 @@ func _initialize() -> void:
 	var rA6: Dictionary = _DE.compute_dps(pa, cfgA, geo6)
 	print("   八槽 A TOTAL = %.6f" % float(rA8["total"]))
 	print("   六槽 A TOTAL = %.6f" % float(rA6["total"]))
-	_check("八槽 A TOTAL == 六槽锚点", float(rA8["total"]), A_TOTAL, 1e-4)
+	_check("八槽 A TOTAL == 六槽锚点", float(rA8["total"]), _Golden.A_TOTAL, 1e-4)
 	_check("八槽 A == 六槽 A（逐位）", float(rA8["total"]), float(rA6["total"]), 1e-12)
 	# E 向量逐位一致
 	var e8: Array = rA8["info"]["E"]
@@ -101,7 +100,7 @@ func _initialize() -> void:
 	var rB6: Dictionary = _DE.compute_dps(pb, cfgB, geo6)
 	print("   八槽 B/tier TOTAL = %.6f" % float(rB8["total"]))
 	print("   六槽 B/tier TOTAL = %.6f" % float(rB6["total"]))
-	_check("八槽 B/tier TOTAL == 六槽锚点", float(rB8["total"]), B_TIER_TOTAL, 1e-4)
+	_check("八槽 B/tier TOTAL == 六槽锚点", float(rB8["total"]), _Golden.B_TIER_TOTAL, 1e-4)
 	_check("八槽 B/tier == 六槽 B/tier（逐位）", float(rB8["total"]), float(rB6["total"]), 1e-12)
 	# E 向量：B 有 6 塔，E 应含 [9,0,134,0,0,0]
 	var eb8: Array = rB8["info"]["E"]

@@ -29,6 +29,7 @@ enum State {
 	MARCHING = 0,      # 沿路径冲核心（MVP 恒此态）
 	AGGRO_TOWER = 1,   # 🔒 T1：停下攻击最近的塔（v = 0）
 	LEAKED = 2,        # 抵达核心 → Core.hp −= 50 → 移除
+	AGGRO_CORE = 3,    # 正式关卡：停在核心附近，持续攻击
 }
 
 
@@ -99,6 +100,8 @@ func arc_s(v0_: float, total_len: float = _PathGeometry.TOTAL_LEN) -> float:
 	# 🔴 PATH 模式：逐位等价基准（`s = L − v₀·m_spd·t_remain`），一行不改。
 	if _SpaceModel.mode != _SpaceModel.Mode.RADIAL:
 		return _PathGeometry.arc_of_t(t_remain, m_spd, v0_, total_len)
+	if _SpaceModel.uses_terrain():
+		return _SpaceModel.radial_pos_of_t(t_remain,m_spd,theta).distance_to(_SpaceModel.RADIAL_CORE)
 	# RADIAL：极径 ρ 与弧长 s 是同一状态量的两种读法（ρ = R_s·m_spd·t_remain/t_reach）。
 	#   返回 ρ（到核心距离），供渲染 / 仇恨用；不影响 t_remain 结算。
 	return _SpaceModel.rho_of_t(t_remain, m_spd)
@@ -131,4 +134,6 @@ func state_name() -> String:
 			return "AggroTower"
 		State.LEAKED:
 			return "Leaked"
+		State.AGGRO_CORE:
+			return "AggroCore"
 	return "?"

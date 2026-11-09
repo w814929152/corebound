@@ -25,6 +25,7 @@ extends Node
 const _TimeDirector := preload("res://scripts/ui/time_director.gd")
 const _ShopController := preload("res://scripts/gameplay/shop_controller.gd")
 const _WaveDirector := preload("res://scripts/gameplay/wave_director.gd")
+const _BattlefieldNavigation := preload("res://scripts/ui/battlefield_navigation.gd")
 
 
 var director: Node = null
@@ -94,6 +95,8 @@ func _ready() -> void:
 			vfx.bind_controller(controller)
 	var hud := get_node_or_null("HudLayer/Hud")
 	tower_backpack = get_node_or_null("InventoryLayer/TowerBackpack")
+	if ml != null:
+		ml.placement_backpack = tower_backpack
 	if tower_backpack != null:
 		if tower_backpack.has_method("bind_director"):
 			tower_backpack.bind_director(director)
@@ -137,6 +140,11 @@ func _ready() -> void:
 			tut.bind_hud(hud)
 
 	# ---- 开局：由 `WaveDirector` 发出 W1 的 wave_started ----
+	var navigation := _BattlefieldNavigation.new()
+	navigation.name = "BattlefieldNavigation"
+	navigation.battle = self
+	add_child(navigation)
+
 	#   🆕 卡包：`auto_start_run = false` 时留给 boot 选完包再开（见字段注释）
 	if controller != null and auto_start_run:
 		controller.call_deferred("start_run", 1)

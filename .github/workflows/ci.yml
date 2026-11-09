@@ -101,14 +101,17 @@ jobs:
           "$GODOT" --headless --path . --import 2>&1 | tee ci-logs/import.log \
             || "$GODOT" --headless --path . --editor --quit 2>&1 | tee -a ci-logs/import.log
 
-      - name: 默认回归（切片 1–8 + T1 仇恨）
+      # 🆕 2026-11-09 关卡实装：默认回归末尾追加 `world` 子进程组（地形 / 镜头导航 / 结构攻防 /
+      #    建筑卡商店 / 准备阶段 / 卡面详情 / 关卡推进 共 11 个脚本，约 +20 s）。
+      #    单独复跑：`-- world`；任一子脚本非零退出 = 本步红。
+      - name: 默认回归（切片 1–8 + T1 仇恨 + 关卡实装 world）
         run: |
           set -euo pipefail
           GODOT="$HOME/godot/Godot_v${GODOT_VERSION}_linux.x86_64"
           mkdir -p ci-logs
           "$GODOT" --headless --path . --script res://tests/run_tests.gd 2>&1 | tee ci-logs/default.log
           echo "---- 九段汇总 ----"
-          grep -E "汇总：通过|合计：PASS" ci-logs/default.log || true
+          grep -E "汇总：通过|合计：PASS|world 结论" ci-logs/default.log || true
 
       # 🟢 T-P6-07 音频框架门禁（2026-10-13 team-lead 批准 · audio-verify G-6 盲区兜底）：
       #    G-6 事实：音频 id→路径 是**运行时映射**，打错 key = 运行时**静默 null**；

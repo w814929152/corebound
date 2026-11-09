@@ -30,6 +30,7 @@ extends Node2D
 ##
 
 const _SpaceModel := preload("res://scripts/geo/space_model.gd")
+const _BattlefieldCamera := preload("res://scripts/ui/battlefield_camera.gd")
 const _ShopLayout := preload("res://scripts/ui/shop_layout.gd")
 const _Style := preload("res://scripts/ui/ui_style.gd")
 const _TowerData := preload("res://scripts/data/tower_data.gd")
@@ -212,6 +213,8 @@ func _field_width() -> float:
 func _sc() -> float:
 	var vw := _field_width()
 	var vh := float(get_viewport().get_visible_rect().size.y)
+	if _SpaceModel.uses_terrain():
+		return float(_BattlefieldCamera.terrain_transform(Vector2(vw,vh))["sc"])
 	var span := float(_SpaceModel.SPAWN_RADIUS) + 3.0
 	var sc := minf((vw - 2.0 * MARGIN) / (2.0 * span), (vh - 2.0 * MARGIN) / (2.0 * span))
 	return sc if sc > 0.0 else 1.0
@@ -221,8 +224,24 @@ func _to_screen(p: Vector2) -> Vector2:
 	# 径向映射：中心在视口/战场中心；`screen = center + (world − RADIAL_CORE) · sc`。
 	var vw := _field_width()
 	var vh := float(get_viewport().get_visible_rect().size.y)
+	if _SpaceModel.uses_terrain():
+		var camera := _BattlefieldCamera.terrain_transform(Vector2(vw,vh))
+		return Vector2(float(camera["ox"]),float(camera["oy"]))+p*float(camera["sc"])
 	return Vector2(vw * 0.5, vh * 0.5) + (p - _SpaceModel.RADIAL_CORE) * _sc()
 
+
+## 活跃伤害数字原本储存屏幕位置；镜头改变时同步重投影，避免残留在旧视野。
+func reproject_camera(previous: Dictionary, current: Dictionary) -> void:
+	var old_origin := Vector2(previous["ox"],previous["oy"])
+	var new_origin := Vector2(current["ox"],current["oy"])
+	var ratio := float(current["sc"])/float(previous["sc"])
+	_dmg_grid.clear()
+	for entry in _dmg:
+		entry["base"] = new_origin+(Vector2(entry["base"])-old_origin)*ratio
+		var point: Vector2 = entry["base"]
+		entry["cell"] = Vector2i(floori(point.x/DMG_CELL.x),floori(point.y/DMG_CELL.y))
+		_dmg_grid[entry["cell"]] = _vfx_t+DMG_LIFE
+	queue_redraw()
 
 func _dir(a: float) -> Vector2:
 	return Vector2(cos(a), sin(a))
@@ -474,7 +493,7 @@ func _update_bolts(dt: float) -> void:
 			b["t"] = float(b["t"]) + dt / maxf(0.0001, float(b["dur"]))
 			var tp := _monster_pos_by_index(int(b["tgt"]))
 			if tp == Vector2.INF:
-				if front_idx >= 0:
+				if front_idx >= 0 and not bool(_snap.get("tactical_combat", false)):
 					b["tgt"] = front_idx
 					b["to"] = front_pos
 			else:
@@ -494,11 +513,19 @@ func _update_bolts(dt: float) -> void:
 	for tw in controller.runtime.snapshot().get("slots", []):
 		if bool(tw.get("empty", true)):
 			continue
+		if bool(tw.get("disabled", false)):
+			continue
 		if _TowerData.tower_dps(String(tw.get("ctype", "Arrow"))) <= 0.0:
 			continue
 		var slot := int(tw.get("slot", -1))
 		if slot < 0 or slot >= slot_pos.size():
 			continue
+		var target := front2
+		if bool(_snap.get("tactical_combat", false)):
+			target = _front_in_range(slot_pos[slot], _TowerData.tower_rng(String(tw.get("ctype", "Arrow"))))
+			if target.is_empty():
+				_bolt_t.erase(slot)
+				continue
 		var hz := clampf(2.0 + 0.5 * float(int(tw.get("h", 1))), 2.0, 12.0) * gscale
 		hz *= _TowerData.tower_attack_speed(String(tw.get("ctype", "Arrow")))
 		var interval := 1.0 / maxf(0.5, hz)
@@ -507,7 +534,7 @@ func _update_bolts(dt: float) -> void:
 		while acc >= interval and _bolts.size() < VFX_MAX_BOLTS and guard < 4:
 			guard += 1
 			acc -= interval
-			_spawn_bolt(slot, slot_pos[slot], front_pos2, front_idx2)
+			_spawn_bolt(slot, slot_pos[slot], target.get("pos", front_pos2), int(target.get("index", front_idx2)))
 		_bolt_t[slot] = acc
 
 
@@ -524,6 +551,18 @@ func _front_monster() -> Dictionary:
 		var tr := float(m.get("t_remain", INF))
 		if tr < bt:
 			bt = tr
+			best = m
+	return best
+
+
+func _front_in_range(center: Vector2, radius: float) -> Dictionary:
+	var best: Dictionary = {}
+	var remain := INF
+	for m in _snap.get("monsters", []):
+		var p: Vector2 = m.get("pos", Vector2.ZERO)
+		if float(m.get("hp", 0.0)) > 0.0 and center.distance_squared_to(p) <= radius * radius \
+				and float(m.get("t_remain", INF)) < remain:
+			remain = float(m["t_remain"])
 			best = m
 	return best
 

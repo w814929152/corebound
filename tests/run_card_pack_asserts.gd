@@ -41,7 +41,7 @@ const _TowerEffects := preload("res://scripts/engine/tower_effects.gd")
 const _PackUI := preload("res://scripts/ui/pack_select_overlay.gd")
 
 ## 老口径常量（与 `run_ext_pack_asserts.gd` 同值，改动前基线）
-const POOL_TOTAL_6 := 0.905
+const POOL_TOTAL_6 := 0.47
 const FONT_MIN := 16
 
 var _pass := 0
@@ -361,20 +361,22 @@ func _test_d_pool() -> void:
 # ---------------------------------------------------------------------------
 func _test_e_legacy() -> void:
 	_log("")
-	_log("--- [E] 未选包（老口径）：6 张 / 0.905 · 扩展包 16 张 / 1.740 ---")
+	_log("--- [E] 未选包（建筑卡商店口径）：3 张塔 / 0.47 · 扩展包 8 张 / 0.93 ---")
 	_ShopRuntime.set_active_packs([])
-	_eq_int("E1 默认玩家池 6 张", _ShopRuntime.player_card_names().size(), 6)
-	_eq_float("E2 默认权重和 0.905", _ShopRuntime.player_pool_total(), POOL_TOTAL_6)
+	_eq_int("E1 默认玩家池 3 张（建筑卡）", _ShopRuntime.player_card_names().size(), 3)
+	_eq_float("E2 默认权重和 0.47", _ShopRuntime.player_pool_total(), POOL_TOTAL_6)
 	_ShopRuntime.set_extended_pack(true)
-	# 🔴 扩展包张数 = 6 基础 + EXT_CARD_ORDER 条数（并行会话可能继续扩，动态现查不自燃）
-	var exp_n := 6 + _ShopRuntime.EXT_CARD_ORDER.size()
-	var exp_total := 0.905
+	# 🔴 效果卡停用（`shop_runtime.EFFECT_CARDS_ENABLED=false`）：扩展包只追加 tower 类卡。
+	var exp_n := 3
+	var exp_total := POOL_TOTAL_6
 	for nm in _ShopRuntime.EXT_CARD_ORDER:
-		exp_total += _Packs.card_weight(String(nm))
-	_eq_int("E3 扩展包张数 = 6 + 扩展卡序", _ShopRuntime.player_card_names().size(), exp_n)
-	_eq_float("E4 扩展包权重和 = 0.905 + Σ扩展卡权重", _ShopRuntime.player_pool_total(), exp_total)
+		if _ShopRuntime._card_kind(String(nm)) == "tower":
+			exp_n += 1
+			exp_total += _Packs.card_weight(String(nm))
+	_eq_int("E3 扩展包张数 = 3 + 扩展卡序中的塔", _ShopRuntime.player_card_names().size(), exp_n)
+	_eq_float("E4 扩展包权重和 = 0.47 + Σ扩展塔权重", _ShopRuntime.player_pool_total(), exp_total)
 	_ShopRuntime.set_extended_pack(false)
-	_eq_int("E5 关掉扩展包回 6 张", _ShopRuntime.player_card_names().size(), 6)
+	_eq_int("E5 关掉扩展包回 3 张", _ShopRuntime.player_card_names().size(), 3)
 
 
 # ---------------------------------------------------------------------------
@@ -646,7 +648,7 @@ func _test_l_splash() -> void:
 	_eq_int("L2 Omen 溅射 2 个", _TD.tower_splash("Omen"), 2)
 	_eq_int("L3 Curse 溅射 1 个", _TD.tower_splash("Curse"), 1)
 	_eq_int("L4 非溅射塔（Arrow）", _TD.tower_splash("Arrow"), 0)
-	_ok("L5 Cinder 卡面写明「溅射 2 个」", _CardText.describe("Cinder").find("溅射 2 个") >= 0)
+	_ok("L5 Cinder 悬停详情写明「溅射 2 个」", _CardText.details("Cinder").find("溅射 2 个") >= 0)
 	_ok("L6 基础塔 Frost 不带溅射（金标本口径不动）", _TD.tower_splash("Frost") == 0)
 
 # ---------------------------------------------------------------------------

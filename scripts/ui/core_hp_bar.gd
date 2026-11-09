@@ -13,6 +13,8 @@ extends Control
 ## 🔴 零玩法耦合：只读快照，不写任何状态、不发玩法信号（control-manifest §5）。
 ##
 
+const _Layout := preload("res://scripts/ui/shop_layout.gd")
+
 const C_BG := Color(0.078, 0.090, 0.149, 0.92)      # #141726 @92%
 const C_BORDER := Color(0.243, 0.816, 0.910)        # #3ED0E8 描边（§5.1）
 const C_FILL := Color(0.243, 0.816, 0.910)          # #3ED0E8 段填充
@@ -20,15 +22,18 @@ const C_FILL_LOW := Color(1.000, 0.180, 0.306)      # #FF2E4E ≤25% 告警
 const C_TEXT := Color(0.784, 0.812, 0.855)          # #C8CFDA 数字（对比度 ≥4.5:1）
 
 const SEG_COUNT := 20          # 20 段
-const SEG_W := 28.0
-const SEG_H := 22.0
-const SEG_GAP := 4.0           # 🆕 3 → 4：1600×900 缩放下 2.5px 的缝几乎看不出"分段"
-const BOTTOM_MARGIN := 46.0    # 🆕 28 → 46：原设计贴屏幕底边（1080p 下仅 18px），显得"被裁掉"
+const SEG_W := 10.0
+const SEG_H := 10.0
+const SEG_GAP := 3.0           # 🆕 3 → 4：1600×900 缩放下 2.5px 的缝几乎看不出"分段"
+const BOTTOM_MARGIN := 26.0    # 🆕 28 → 46：原设计贴屏幕底边（1080p 下仅 18px），显得"被裁掉"
 const PAD := 10.0
 const SEG_RADIUS := 3          # 🆕 段圆角（直角方块在暗底上过于生硬）
 const CORE_CAP := "核心"       # 🆕 血条左侧说明（原来只有一串裸数字，读不出是什么）
 # P1 增强（spec §C.2）：段碎裂演出时长（满→空时短促闪白再隐没）。
 const SHATTER_SEC := 0.18
+
+const _Battle := preload("res://scripts/ui/battle_theme.gd")
+var _box_health: StyleBoxFlat
 
 const _Style := preload("res://scripts/ui/ui_style.gd")
 
@@ -51,6 +56,7 @@ func _ready() -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_build_boxes()
+	_box_health = _Battle.panel(_Style.C_ALLY, 0.0)
 	if get_tree() != null:
 		get_tree().root.size_changed.connect(_refresh_size)
 
@@ -159,13 +165,14 @@ func _draw() -> void:
 		return
 	var vs := vp.get_visible_rect().size
 	var total_w := float(SEG_COUNT) * SEG_W + float(SEG_COUNT - 1) * SEG_GAP
-	var x0 := (float(vs.x) - total_w) * 0.5
-	var y0 := float(vs.y) - BOTTOM_MARGIN - SEG_H
+	var x0 := 40.0
+	var y0 := 168.0
 
+	draw_style_box(_box_health, Rect2(x0 - 16.0, y0 - 52.0, total_w + 32.0, 80.0))
 	# 底槽（深色 + 亮色描边 + 圆角，§5.1）
 	#   🆕 段贴图生效时**让位**：每个段自带槽/填充的轮廓，再套一层整块底座会读成
 	#      "双层盒子"（实机截图确认）。贴图缺失时仍走旧底座，画面与改前一致。
-	var t_seg_any := _ht("ui_core_seg_slot_v1.png")
+	var t_seg_any: Texture2D = null
 	var slot := Rect2(x0 - PAD, y0 - PAD, total_w + 2.0 * PAD, SEG_H + 2.0 * PAD)
 	if _box_slot != null and t_seg_any == null:
 		draw_style_box(_box_slot, slot)
@@ -175,7 +182,7 @@ func _draw() -> void:
 	var filled := int(ceil(frac * float(SEG_COUNT)))
 	var seg_box := _box_seg_low if frac <= 0.25 else _box_seg
 	# 🆕 仪表段贴图（28x22 与 SEG_W/SEG_H 逐像素对齐，缺失时各段自动走旧路径）
-	var t_seg := _ht("ui_core_seg_fill_low_v1.png" if frac <= 0.25 else "ui_core_seg_fill_v1.png")
+	var t_seg: Texture2D = null
 	for i in SEG_COUNT:
 		var r := Rect2(x0 + float(i) * (SEG_W + SEG_GAP), y0, SEG_W, SEG_H)
 		if i < filled:
@@ -210,12 +217,12 @@ func _draw() -> void:
 	var font_cjk := _Style.font_medium()
 	if font != null:
 		var txt := "%d / %d" % [int(round(_hp)), int(round(_hp_max))]
-		var fs := 22
+		var fs := 18
 		var tw: float = font.get_string_size(txt, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
-		draw_string(font, Vector2((float(vs.x) - tw) * 0.5, y0 - 10.0),
+		draw_string(font, Vector2(x0 + total_w - tw, y0 - 16.0),
 			txt, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, C_TEXT)
 		# 🆕 左侧说明「核心」：右对齐贴在底槽左沿外，垂直居中于条
 		if font_cjk != null:
 			var cw: float = font_cjk.get_string_size(CORE_CAP, HORIZONTAL_ALIGNMENT_LEFT, -1, 16).x
-			draw_string(font_cjk, Vector2(x0 - PAD - 14.0 - cw, y0 + SEG_H * 0.5 + 5.0),
+			draw_string(font_cjk, Vector2(x0, y0 - 16.0),
 				CORE_CAP, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, C_TEXT)

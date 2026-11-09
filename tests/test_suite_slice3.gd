@@ -395,7 +395,7 @@ func _test_layout_rule() -> void:
 	# ---- 8.2 基准屏 1920：两条约束正好一致（抽屉 32% / 战场 68%）----
 	_check("1920 → 614.4（正好 32%）", _ShopLayout.drawer_width(1920.0), 614.4)
 	_check("1920 占屏比", _ShopLayout.drawer_ratio(1920.0), 0.32)
-	_check("1920 抽屉展开时战场宽 = 1920 − 614.4", _ShopLayout.battlefield_width(1920.0, true), 1305.6)
+	_check("1920 商店浮层不改变战场宽", _ShopLayout.battlefield_width(1920.0, true), 1920.0)
 	_check("1920 抽屉收起时战场宽（放置模式全屏）", _ShopLayout.battlefield_width(1920.0, false), 1920.0)
 
 	# ---- 8.3 非基准屏安全网（算尺逻辑未变，保留作 resize / expand 后的兜底）----
@@ -403,7 +403,7 @@ func _test_layout_rule() -> void:
 	_check("1280 占屏比", _ShopLayout.drawer_ratio(1280.0), 0.4375)
 	_check("1000 → 仍 560（不得突破下限）", _ShopLayout.drawer_width(1000.0), 560.0)
 	_check("3840 → 1228.8", _ShopLayout.drawer_width(3840.0), 1228.8)
-	_check("抽屉展开时战场宽（1280）", _ShopLayout.battlefield_width(1280.0, true), 720.0)
+	_check("商店浮层不改变战场宽（1280）", _ShopLayout.battlefield_width(1280.0, true), 1280.0)
 	_check("抽屉收起时战场宽（1280，放置模式全屏）", _ShopLayout.battlefield_width(1280.0, false), 1280.0)
 	_log("   [info] ✅ 视口已按 Q-S3-C 提到 1920×1080 → 抽屉 614.4px（32%）/ 战场 1305.6px（68%），")
 	_log("          与 GDD §2.4 的『614px / 32%』完全吻合；maxf() 仍保留作非基准屏安全网。")

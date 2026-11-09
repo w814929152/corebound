@@ -79,7 +79,7 @@ const ROLE := {
 	"Scout": "击杀赏金",
 	"Kinetic": "最近塔转物理",
 	"Foundry": "经济：每波产废料",
-	"Blaze": "近距持续灼烧",
+	"Blaze": "近距范围点火",
 	"Cinder": "单体点火",
 	"Pyre": "阵亡：爆炸 40",
 	"Glacier": "十层冻结 2 秒",
@@ -320,10 +320,17 @@ static func describe(nm: String) -> String:
 	# 🆕 相位塔：不攻击，只把最近的塔转成指定伤害类型。
 	if _TD.tower_convert(nm) != "":
 		return "%s\n不攻击 · 占塔位\n最近 1 座塔" % r
-	# 🆕 击杀升级：任意击杀都给本塔加等级（优先于弹射显示 —— 它是成长身份）。
+	# 火系身份优先显示，不能被旧 slow 属性对应的附加冰冻覆盖。
+	var definition := _tower_def(nm)
+	if not definition.is_empty() and String(definition.get("tag", "")) == "fire" and float(definition.get("dps",0.0))>0.0:
+		var fire: Dictionary = _TD.FIRE_EFFECT
+		return "%s\n附火焰 %s 秒\n%d层引爆 %s" % [r,_num(float(fire["duration"])),int(fire["max_stacks"]),_num(float(fire["blast_damage"]))]
+	# slow 来源在当前实时规则下附加冰冻，包含部分非冰系建筑。
 	var frost_def := _tower_def(nm)
 	if not frost_def.is_empty() and float(frost_def.get("slow", 0.0)) > 0.0:
-		return "%s\n每层减速 10%%\n十层冻结 2 秒" % r
+		var frost: Dictionary = _TD.FROST_EFFECT
+		var stacks := "十层" if int(frost["max_stacks"])==10 else "%d层" % int(frost["max_stacks"])
+		return "%s\n每层减速 %s%%\n%s冻结 %s 秒" % [r,_num(float(frost["slow_per_stack"])*100.0),stacks,_num(float(frost["freeze_duration"]))]
 	if _TD.tower_on_kill_lv(nm):
 		return "%s\n%s\n击杀 +1 级" % [r, stat_line(nm)]
 	if _TD.tower_buff_debuff_dmg(nm) > 0.0:
@@ -350,3 +357,33 @@ static func describe(nm: String) -> String:
 		return "%s\n每层 +%.0f%% 废料\n占1槽，上限%d层" % [
 			r, INCOME_STEP * 100.0, GLOBAL_SLOT_MAX]
 	return r
+
+
+## 悬停详情独立于旧三行卡面；并列展示实际生效的主效果和附加状态。
+static func details(nm: String) -> String:
+	var definition := _tower_def(nm)
+	if definition.is_empty():
+		return describe(nm)
+	var charge := _TD.tower_fire_charge(nm)
+	if not charge.is_empty():
+		return "不自动攻击\n全场每附加 %d 次火焰触发一次爆发。\n爆发伤害 %s · 半径 %s" % [int(charge["capacity"]),_num(float(charge["damage"])),_num(float(charge["radius"]))]
+	var has_fire := String(definition.get("tag",""))=="fire" and float(definition.get("dps",0.0))>0.0
+	var has_frost := float(definition.get("slow",0.0))>0.0 and float(definition.get("dps",0.0))>0.0
+	if not has_fire and not has_frost:
+		return describe(nm)
+	var lines: Array = [role(nm),stat_line(nm),"射程 %s · %s攻击" % [_num(float(definition["rng"])),"群体" if bool(definition["aoe"]) else "单体"]]
+	if has_fire:
+		var fire: Dictionary = _TD.FIRE_EFFECT
+		lines.append("火焰：攻击附加1层，持续 %s 秒；重复附加刷新时间。" % _num(float(fire["duration"])))
+		lines.append("%d层引爆：半径 %s 内造成 %s 魔法伤害，随后清空火焰。" % [int(fire["max_stacks"]),_num(float(fire["blast_radius"])),_num(float(fire["blast_damage"]))])
+	if has_frost:
+		var frost: Dictionary = _TD.FROST_EFFECT
+		lines.append("附加冰冻：每层减速 %s%%，%d层冻结 %s 秒。" % [_num(float(frost["slow_per_stack"])*100.0),int(frost["max_stacks"]),_num(float(frost["freeze_duration"]))])
+		lines.append("冻结时被击杀：半径 %s 内造成 %s 魔法伤害，并附加%d层冰冻。" % [_num(float(frost["storm_radius"])),_num(float(frost["storm_damage"])),int(frost["storm_stacks"])])
+	for extra in [{"key":"splash","label":"溅射 %d 个"},{"key":"bounce","label":"弹射 %d 次"},{"key":"pierce","label":"贯穿 %d 个"}]:
+		var value := int(definition.get(extra["key"],0))
+		if value>0:
+			lines.append(String(extra["label"]) % value)
+	if float(definition.get("dot",0.0))>0.0:
+		lines.append("持续伤害：每秒 %s" % _num(float(definition["dot"])))
+	return _join_sep(lines,"\n")

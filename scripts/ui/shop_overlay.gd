@@ -19,6 +19,16 @@ extends Control
 ##
 
 # 🔴 G6：headless 无 global_script_class_cache → 一律 preload
+const _Battle := preload("res://scripts/ui/battle_theme.gd")
+var _hovered_slot := -1
+
+const _Runtime := preload("res://scripts/gameplay/shop_runtime.gd")
+const _Hover := preload("res://scripts/ui/card_hover.gd")
+var _inner: VBoxContainer
+var _budget_row: HBoxContainer
+var _hover: CanvasLayer
+var _pointer := Vector2(-1000.0, -1000.0)
+
 const _Cfg := preload("res://scripts/engine/mvp_config.gd")
 const _TSM := preload("res://scripts/engine/time_state_machine.gd")
 const _ShopLayout := preload("res://scripts/ui/shop_layout.gd")
@@ -47,7 +57,7 @@ const C_WARN := Color(0.86, 0.20, 0.20, 1.0)   # E5：刷新买不起 → 价格
 #      SLOT_W/SLOT_H 必须同步（该冒烟按像素反查三个位）。
 #   🆕 352 → 424（2026-11-08）：卡面新增**插画带**（art/2d/cards 批次②③，恒 72px 高）——
 #      keyout 透明底插画经 `_Style.card_art()` 接入，缺失时整带隐藏（降级为无图版式）。
-const SLOT_SIZE := Vector2(168.0, 424.0)       # 🔴 三个位完全一致（X3）
+const SLOT_SIZE := Vector2(230.0, 280.0)       # 🔴 三个位完全一致（X3）
 ## 描述块行数（恒 3 行 → 三个位等高同构）；
 ## 16px 字号实测行高 25px（Godot 默认字体 ascent+descent），3 行 = 75px。
 const DESC_LINES := 3
@@ -140,49 +150,71 @@ func _runtime_snapshot() -> Dictionary:
 #  布局
 # ---------------------------------------------------------------------------
 func _refresh_size() -> void:
-	var vw := float(get_viewport().get_visible_rect().size.x)
-	var w := _ShopLayout.drawer_width(vw)
-	# PRESET_RIGHT_WIDE: L=1,T=0,R=1,B=1 → 靠右；再用 offset_left 拉出宽度
-	set_anchors_preset(Control.PRESET_RIGHT_WIDE)
-	set_offset(SIDE_LEFT, -w)
-	set_offset(SIDE_RIGHT, 0.0)
-	set_offset(SIDE_TOP, 0.0)
-	set_offset(SIDE_BOTTOM, 0.0)
+	var vs := get_viewport().get_visible_rect().size
+	var w := minf(1060.0, vs.x - 520.0)
+	w = maxf(660.0, w)
+	position = Vector2((vs.x - w) * 0.5, 104.0)
+	var height := 400.0
+	if _inner != null:
+		height = minf(vs.y * 0.48, _inner.get_combined_minimum_size().y + 58.0)
+	size = Vector2(w, height)
+
+
 
 
 func _build() -> void:
+	_hover = _Hover.new()
+	add_child(_hover)
+	# 🔴 离树构造（`tests/run_ui_style_asserts.gd` 只调 `_build()`）时 get_viewport() 为 null。
+	var vp := get_viewport()
+	if vp != null:
+		vp.mouse_exited.connect(func() -> void: _pointer = Vector2(-1000.0, -1000.0))
 	# 🔴 抽屉底座：深色底 + 亮色描边（art-bible §5.1）。改造前此处无 StyleBox ⇒ 全透明。
 	_panel = PanelContainer.new()
 	_panel.set_anchors_preset(Control.PRESET_FULL_RECT)
-	_panel.add_theme_stylebox_override("panel", _Style.panel())
+	_panel.add_theme_stylebox_override("panel", _Battle.panel())
 	add_child(_panel)
 
 	var margin := MarginContainer.new()
 	margin.add_theme_constant_override("margin_left", 18)
 	margin.add_theme_constant_override("margin_right", 18)
-	margin.add_theme_constant_override("margin_top", 16)
-	margin.add_theme_constant_override("margin_bottom", 14)
+	margin.add_theme_constant_override("margin_top", 10)
+	margin.add_theme_constant_override("margin_bottom", 10)
 	_panel.add_child(margin)
 
 	var inner := VBoxContainer.new()
+	_inner = inner
 	inner.add_theme_constant_override("separation", 10)
-	margin.add_child(inner)
+	var scroll := ScrollContainer.new()
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	margin.add_child(scroll)
+	inner.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(inner)
 
 	# ---- 标题行：标题 + 右侧模式徽标（层级 §5.2：文字 L2）----
 	var title_row := HBoxContainer.new()
 	title_row.add_theme_constant_override("separation", 8)
 	inner.add_child(title_row)
-	_title = _Style.label("商店", 20, _Style.C_WHITE)
+	_title = _Style.label("建筑商店", 24, _Style.C_WHITE)
 	_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	title_row.add_child(_title)
 	_mode_tag = _Style.label("轻决策", _Style.FONT_MIN, _Style.C_TEXT_DIM)
 	_mode_tag.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	title_row.add_child(_mode_tag)
+	_mode_tag.hide()
+	var close := Button.new()
+	close.text = "收起 · Tab"
+	_Battle.button(close)
+	close.pressed.connect(func() -> void:
+		if director != null:
+			director.close_shop())
+	title_row.add_child(close)
 
 	inner.add_child(_Style.hline())
 
 	# ---- 减速预算条（🔴 常驻可见，锚点 6 第 4 条）----
 	var budget_row := HBoxContainer.new()
+	_budget_row = budget_row
 	budget_row.add_theme_constant_override("separation", 10)
 	inner.add_child(budget_row)
 	var budget_cap := _Style.label("减速预算", _Style.FONT_MIN, _Style.C_TEXT_DIM)
@@ -205,22 +237,23 @@ func _build() -> void:
 	_budget_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	budget_row.add_child(_budget_label)
 
-	inner.add_child(_Style.hline())
-
 	# ---- 槽位占用读数（3 列网格；原为一行 5 组数字拼接，难以扫读）----
 	var grid := GridContainer.new()
 	grid.columns = 3
 	grid.add_theme_constant_override("h_separation", 10)
 	grid.add_theme_constant_override("v_separation", 2)
 	inner.add_child(grid)
+	grid.hide()
 	for key in STAT_KEYS:
 		var cell := HBoxContainer.new()
 		cell.add_theme_constant_override("separation", 6)
-		cell.add_child(_Style.label(String(key), _Style.FONT_MIN, _Style.C_TEXT_DIM))
+		cell.add_child(_Style.label("建筑" if key == "塔位" else String(key), _Style.FONT_MIN, _Style.C_TEXT_DIM))
 		var val := _Style.label("--", _Style.FONT_MIN, _Style.C_TEXT)
 		cell.add_child(val)
 		_stat_vals.append(val)
 		grid.add_child(cell)
+		if key in ["废料", "主塔塔位"] or (not _Runtime.EFFECT_CARDS_ENABLED and key in ["强化槽", "全局槽"]):
+			cell.hide()
 
 	_no_scrap_label = _Style.label("", _Style.FONT_MIN, _Style.C_TEXT_DIM)
 	_no_scrap_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -238,16 +271,11 @@ func _build() -> void:
 		slots_row.add_child(slot)
 		_slots.append(slot)
 
-	# 🆕 购买流程提示：**按卡种**说一次（三种卡各一行），不占卡面高度。
-	#   改造前这类「买后要去哪」的信息完全缺失 —— 玩家买了建筑卡不知道要再进安全窗落子。
-	var flow := _Style.label(_CardText.FLOW_HINT, _Style.FONT_MIN, _Style.C_TEXT_DIM)
-	flow.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	inner.add_child(flow)
-
 	# ---- 刷新按钮（E5：买不起置灰 + 价格标红）----
 	_reroll_btn = Button.new()
-	_reroll_btn.text = "刷新 R"
-	_Style.button(_reroll_btn, "normal")
+	_reroll_btn.text = "刷新"
+	_reroll_btn.tooltip_text = "R 刷新商店"
+	_Battle.button(_reroll_btn)
 	# 🆕 重掷图标（资产包 v1 批次②）：缺失时降级为纯文本（icon() 判空）
 	var reroll_tex := _Style.icon("ic_reroll")
 	if reroll_tex != null:
@@ -256,9 +284,8 @@ func _build() -> void:
 	_reroll_btn.pressed.connect(func() -> void:
 		if director != null:
 			director.emit_signal("reroll_requested"))
-	inner.add_child(_reroll_btn)
-
-	inner.add_child(_Style.hline())
+	title_row.add_child(_reroll_btn)
+	title_row.move_child(close, -1)
 
 	# ---- 待放置队列（Q-SR5 跨波保留 · E2 角标持续提醒）----
 	_pending_label = _Style.label("待放置队列（0）", _Style.FONT_MIN, _Style.C_TEXT_DIM)
@@ -276,9 +303,9 @@ func _build() -> void:
 	# ---- 重决策入口组（🔴 仅 SafeWindow 露出；战斗中置灰且不响应，T-C1 / E16）----
 	_heavy_panel = VBoxContainer.new()
 	_heavy_panel.add_theme_constant_override("separation", 6)
-	inner.add_child(_heavy_panel)
-	_heavy_panel.add_child(_Style.hline())
-	_heavy_panel.add_child(_Style.label("重决策（仅安全窗）", _Style.FONT_MIN, _Style.C_TEXT_DIM))
+	title_row.add_child(_heavy_panel)
+	_heavy_panel.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+
 
 	var heavy_grid := GridContainer.new()
 	heavy_grid.columns = 2
@@ -293,6 +320,8 @@ func _build() -> void:
 	for b in [_discard_btn, _detach_btn, _salvage_btn, _repair_btn]:
 		(b as Button).size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		heavy_grid.add_child(b)
+		if not _Runtime.EFFECT_CARDS_ENABLED and b in [_discard_btn, _detach_btn]:
+			b.hide()
 	_salvage_btn.pressed.connect(func() -> void:
 		if director != null:
 			director.emit_signal("salvage_requested"))
@@ -309,7 +338,7 @@ func _build() -> void:
 func _mk_heavy_btn(text: String, variant: String) -> Button:
 	var b := Button.new()
 	b.text = text
-	_Style.button(b, variant)
+	_Battle.button(b)
 	return b
 
 
@@ -322,22 +351,7 @@ func _make_slot(_i: int) -> PanelContainer:
 	p.custom_minimum_size = SLOT_SIZE            # 🔴 三个位完全一致
 	p.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	p.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	p.add_theme_stylebox_override("panel", _Style.card_blueprint())
-	# 🆕 资产包 v6：9-slice 中性承托板（v2-hud §7 #2 遗留件）。
-	#    🔴 必须**先于** vb 加入 —— PanelContainer 会把每个子节点铺满 content rect，
-	#       先加者画在下、后加者画在上；末尾的 chrome 仍保持最上层。
-	#    缺贴图 / headless 未导入 → 整层不建，版式逐字回落改前状态。
-	#    承托板不染色也不做四角刻线：稀有度由 card_blueprint 边框、四角由 chrome 承担。
-	var plate_tex := _Style.slot_plate_tex()
-	if plate_tex != null:
-		var plate := NinePatchRect.new()
-		plate.texture = plate_tex
-		plate.patch_margin_left = 12
-		plate.patch_margin_right = 12
-		plate.patch_margin_top = 12
-		plate.patch_margin_bottom = 12
-		plate.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		p.add_child(plate)
+	p.add_theme_stylebox_override("panel", _Battle.card())
 	var vb := VBoxContainer.new()
 	vb.add_theme_constant_override("separation", 5)
 	p.add_child(vb)
@@ -346,7 +360,8 @@ func _make_slot(_i: int) -> PanelContainer:
 	var idx_row := HBoxContainer.new()
 	idx_row.add_theme_constant_override("separation", 6)
 	vb.add_child(idx_row)
-	var idx := _Style.label("商品位 %d" % (_i + 1), _Style.FONT_MIN, _Style.C_TEXT_DIM)
+	var idx := _Style.label("%d" % (_i + 1), _Style.FONT_MIN, _Style.C_TEXT_DIM)
+	idx.tooltip_text = "快捷键 %d 购买" % (_i + 1)
 	idx.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	idx_row.add_child(idx)
 	var pips := _Style.label("", _Style.FONT_MIN, _Style.C_STEEL)
@@ -358,9 +373,10 @@ func _make_slot(_i: int) -> PanelContainer:
 	var name_row := HBoxContainer.new()
 	name_row.add_theme_constant_override("separation", 6)
 	vb.add_child(name_row)
-	var nm := _Style.label("—", 26, _Style.C_WHITE)
+	var nm := _Style.label("—", 22, _Style.C_WHITE)
 	_Style.apply_font(nm, "display")              # §5.4：卡名 = Black 展示字重（L1 主信息）
-	nm.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	nm.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	nm.clip_text = true
 	nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	name_row.add_child(nm)
 	_slot_name.append(nm)
@@ -374,24 +390,30 @@ func _make_slot(_i: int) -> PanelContainer:
 	#    🔴 构建时只建空带：卡名在 `_refresh_shop` 刷新时才落到槽位（此处 `nm` 是占位
 	#    Label，不是卡名字符串），纹理由刷新链路按卡名填充（`_slot_art`）。
 	var art := TextureRect.new()
-	art.custom_minimum_size = Vector2(0.0, 72.0)
+	art.custom_minimum_size = Vector2(0.0, 112.0)
 	art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	art.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	art.visible = false
-	vb.add_child(art)
+	var art_frame := PanelContainer.new()
+	art_frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	art_frame.add_theme_stylebox_override("panel", _Battle.well())
+	vb.add_child(art_frame)
+	art_frame.add_child(art)
 	_slot_art.append(art)
 
 	# 卡种（L2 常规）
 	var kind := _Style.label("—", _Style.FONT_MIN, _Style.C_TEXT_DIM)
 	kind.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	vb.add_child(kind)
+	kind.hide()
 	_slot_kind.append(kind)
 
 	# 价格行（L1 重要）：✓/✗ 标记（§9.2 双通道）+ **等宽数字**（§5.5）+ 单位
 	var price_row := HBoxContainer.new()
 	price_row.add_theme_constant_override("separation", 4)
 	vb.add_child(price_row)
+	price_row.hide()
 	_slot_price_row.append(price_row)
 	# 🆕 批次③：✓/✗ 从 Unicode 字形升级为 ic_check/ic_cross 图标（资产包 v1）——
 	#    形状通道不变（§9.2 红线①），颜色跟随价格（_set_price_color 改 modulate）；
@@ -435,7 +457,7 @@ func _make_slot(_i: int) -> PanelContainer:
 	price_row.add_child(price_unit)
 	_slot_price_unit.append(price_unit)
 
-	vb.add_child(_Style.hline(0.12))
+
 
 	# 🆕 效果描述块（§5.2 L2 文字；比备注亮一档 —— 它是「这张卡干什么」的正面信息，
 	#   备注只是条件事实）。🔴 高度固定 DESC_LINES 行：三个位的描述块**等高同构**（X3）。
@@ -443,12 +465,14 @@ func _make_slot(_i: int) -> PanelContainer:
 	desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	desc.custom_minimum_size = Vector2(0.0, DESC_LINE_H * float(DESC_LINES))
 	vb.add_child(desc)
+	desc.hide()
 	_slot_desc.append(desc)
 
 	# 事实备注（H2/H3/H4/H5/H6/H9）—— 只在有事实时占位（min 0），否则不占高度
 	var note := _Style.label("", _Style.FONT_MIN, _Style.C_TEXT_DIM)
 	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	vb.add_child(note)
+	note.hide()
 	_slot_note.append(note)
 
 	# 撑开 → 三位等高时按钮对齐底部（不靠 padding 凑）
@@ -458,22 +482,25 @@ func _make_slot(_i: int) -> PanelContainer:
 
 	var buy := Button.new()
 	buy.text = "购买"
-	_Style.button(buy, "primary")
+	_Battle.button(buy, true)
 	buy.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	buy.pressed.connect(func() -> void:
 		if director != null:
 			director.emit_signal("buy_requested", _i))
-	vb.add_child(buy)
+	var actions := HBoxContainer.new()
+	actions.add_theme_constant_override("separation", 6)
+	vb.add_child(actions)
+	actions.add_child(buy)
 	_slot_buy.append(buy)
 
 	var lock := Button.new()
 	lock.text = "锁定"
-	_Style.button(lock, "ghost")
-	lock.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_Battle.button(lock)
+	lock.custom_minimum_size.x = 66.0
 	lock.pressed.connect(func() -> void:
 		if director != null:
 			director.emit_signal("lock_toggled", _i))
-	vb.add_child(lock)
+	actions.add_child(lock)
 	_slot_lock.append(lock)
 
 	# 🆕 蓝图 chrome（§5.5）：四角刻线，**后于** vb 加入 → 画在内容之上。
@@ -484,6 +511,7 @@ func _make_slot(_i: int) -> PanelContainer:
 	chrome.set_meta("accent", "normal")
 	chrome.draw.connect(func() -> void: _draw_slot_chrome(chrome))
 	p.add_child(chrome)
+	chrome.hide()
 	_slot_chrome.append(chrome)
 	return p
 
@@ -518,6 +546,7 @@ func _draw_slot_chrome(c: Control) -> void:
 #  商品位刷新（事件驱动：controller.shop_changed / run_changed，🔴 不每帧重算，SR-6）
 # ---------------------------------------------------------------------------
 func _refresh_shop() -> void:
+	call_deferred("_refresh_size")
 	var s := _runtime_snapshot()
 	if s.is_empty():
 		_no_scrap_label.visible = true
@@ -539,7 +568,7 @@ func _refresh_shop() -> void:
 			_set_price_color(i, C_DIM)
 			_slot_desc[i].text = ""
 			_slot_note[i].text = ""
-			_slots[i].add_theme_stylebox_override("panel", _Style.card_blueprint("dim"))
+			_slots[i].add_theme_stylebox_override("panel", _Battle.card())
 			_set_chrome_accent(i, "dim")
 			_slot_buy[i].disabled = true
 			_slot_lock[i].disabled = true
@@ -577,7 +606,7 @@ func _refresh_shop() -> void:
 			_set_price_color(i, C_DIM)
 			_slot_desc[i].text = ""
 			_slot_note[i].text = String(s["notes"][i])
-			_slots[i].add_theme_stylebox_override("panel", _Style.card_blueprint("dim"))
+			_slots[i].add_theme_stylebox_override("panel", _Battle.card())
 			_set_chrome_accent(i, "dim")
 		else:
 			_slot_name[i].text = nm
@@ -618,7 +647,7 @@ func _refresh_shop() -> void:
 			_set_price_color(i, C_ACCENT if _aff else C_DIM)
 			# 卡片描边 = 稀有度色（§2.3）；可购性由 ✓/✗ + 价格色 + 角刻线表达（第二通道）
 			_slots[i].add_theme_stylebox_override("panel",
-				_Style.card_blueprint("normal", rar))
+				_Battle.card(i == _hovered_slot))
 			_set_chrome_accent(i, "affordable" if _aff else "normal")
 			var note := String(s["notes"][i])
 			if note == "" and bool(s["at_cap"][i]):
@@ -637,15 +666,16 @@ func _refresh_shop() -> void:
 				note = (note + " · " if note != "" else "") + " · ".join(extra)
 			_slot_note[i].text = note
 		_slot_buy[i].disabled = not ok
-		_slot_buy[i].text = "购买" if nm == "" else "购买 %.0f" % price
+		_slot_buy[i].text = "购买" if nm == "" else "购买 · %.0f" % price
 		# 锁定：3 位中可锁 1；锁定位显示"已锁"
 		var locked := (int(s["lock_index"]) == i)
-		_slot_lock[i].text = "已锁 · Space 解锁" if locked else "锁定"
+		_slot_lock[i].text = "已锁定" if locked else "锁定"
 		_slot_lock[i].disabled = (nm == "")
+		_slot_lock[i].tooltip_text = "保留此商品，下次刷新不替换"
 
 	# ---- 刷新按钮：显示 5+3n 的实时成本（E5：买不起置灰 + 标红）----
 	var rc := float(s["reroll_cost"])
-	_reroll_btn.text = "刷新 R（%.0f 分 · 已刷 %d 次）" % [rc, int(s["rerolls"])]
+	_reroll_btn.text = "刷新 · %.0f" % rc
 	var can_reroll := float(s["scrap"]) >= rc
 	_reroll_btn.disabled = not can_reroll
 	_reroll_btn.add_theme_color_override("font_color", C_TEXT if can_reroll else C_WARN)
@@ -696,30 +726,15 @@ func _refresh_repair_btn(s: Dictionary) -> void:
 		_repair_btn.add_theme_color_override("font_color", C_DIM)
 	# 🔴 可否点 = 有受损塔 且 安全窗（两者缺一不可）
 	_repair_btn.disabled = not (n > 0 and heavy_on)
+	_repair_btn.visible = n > 0
+	_heavy_panel.visible = heavy_on and not s.get("slots", []).is_empty()
 
 
 func _refresh_pending(s: Dictionary) -> void:
+	# 已购买建筑统一在底部背包展示，商店不再重复列队列。
 	_clear_children(_pending_box)
-	var pend: Array = s["pending"]
-	_pending_label.text = "待放置队列（%d）" % pend.size()
-	var can_enter := _can_enter_placement()
-	for i in pend.size():
-		var row := HBoxContainer.new()
-		row.add_theme_constant_override("separation", 8)
-		var lb := _Style.label("%d · %s" % [i + 1, String(pend[i])], _Style.FONT_MIN, _Style.C_TEXT)
-		lb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		row.add_child(lb)
-		var btn := Button.new()
-		btn.text = "放置"
-		_Style.button(btn, "normal")
-		btn.custom_minimum_size = Vector2(84.0, 0.0)
-		btn.disabled = not can_enter
-		var idx := i
-		btn.pressed.connect(func() -> void:
-			if controller != null:
-				controller.request_placement(idx))
-		row.add_child(btn)
-		_pending_box.add_child(row)
+	_pending_label.hide()
+	_pending_box.hide()
 
 
 ## 🔴 放置模式（⑤）只能从 ②③④ 进入（GDD §2.1 转换表）；战斗态 ① 下不响应。
@@ -768,7 +783,8 @@ func _refresh_mode(drawer: int) -> void:
 			_mode_tag.add_theme_color_override("font_color", _Style.C_GOLD)
 	# 🔴 T-C1 / E16：重决策入口**仅**安全窗可用，其余态置灰 + 不响应
 	var heavy_on := (drawer == _TSM.Drawer.HEAVY)
-	_heavy_panel.visible = true                       # 保持可见以展示"置灰"状态
+	_heavy_panel.visible = heavy_on and controller != null and controller.runtime != null and not controller.runtime.player.towers.is_empty()
+	_budget_row.visible = director != null and director.sm.wave > _Cfg.NOVICE_WAVE_MAX and not heavy_on
 	_discard_btn.disabled = not heavy_on
 	_detach_btn.disabled = not heavy_on
 	_salvage_btn.disabled = not heavy_on
@@ -786,3 +802,36 @@ func _on_budget_changed(left: float, budget_max: float) -> void:
 	_budget_label.text = "%.1f / %.0f s" % [left, budget_max]
 	if left <= 0.0:
 		_budget_label.text += " 已耗尽"
+
+
+func _process(_delta: float) -> void:
+	if _hover == null:
+		return
+	if is_visible_in_tree() and controller != null and controller.runtime != null:
+		var mouse := _pointer
+		for i in _slots.size():
+			var card: Control = _slots[i]
+			if card.get_global_rect().has_point(mouse):
+				if _hovered_slot != i:
+					_set_hovered_slot(i)
+				var nm: String = controller.runtime.offer_at(i)
+				var info := "价格：%.0f 废料" % controller.runtime.price_at(i)
+				if _slot_note[i].text != "":
+					info += "\n" + _slot_note[i].text
+				_hover.show_card(nm, card.get_global_rect(), info, false, true)
+				return
+	_hover.clear()
+	_set_hovered_slot(-1)
+
+
+func _input(event: InputEvent) -> void:
+	if event is InputEventMouseMotion:
+		_pointer = event.position
+
+
+func _set_hovered_slot(index: int) -> void:
+	if _hovered_slot == index:
+		return
+	_hovered_slot = index
+	for i in _slots.size():
+		_slots[i].add_theme_stylebox_override("panel", _Battle.card(i == index))

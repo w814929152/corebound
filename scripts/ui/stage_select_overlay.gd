@@ -1,4 +1,6 @@
 extends CanvasLayer
+
+const _Briefings := preload("res://scripts/data/stage_briefings.gd")
 ##
 ## 关卡选择覆盖层（大地图版）—— `stage_select_overlay.gd`
 ## ---------------------------------------------------------------------------
@@ -197,7 +199,7 @@ func _build_header() -> void:
 	title.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	head.add_child(title)
 
-	var sub := _Style.label("点击已解锁关卡进入 · ←→ 选择 / Enter 进入 · 沿航线推进，突破主脑防线", 16, _Style.C_TEXT_DIM)
+	var sub := _Style.label("点击已解锁关卡进入 · ←→ 选择 / Enter 进入 · 重连五区进入外围，七区齐备挑战核心", 16, _Style.C_TEXT_DIM)
 	sub.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	head.add_child(sub)
 
@@ -382,13 +384,11 @@ func _refresh_detail() -> void:
 	if sid == "":
 		sid = String(_campaign_ref.current_stage())
 	var st: Dictionary = _CampaignData.STAGES.get(sid, {})
-	var ch := int(st.get("chapter", 1))
 	_detail_name.text = "%s · %s" % [sid, String(st.get("name", ""))]
-	_detail_meta.text = "%d 波 · 地图 %s · %s" % [
-		int(st.get("wave_count", 0)),
-		_map_label(String(st.get("map_id", "tri-fissure"))),
-		String(CHAPTER_TITLES.get(ch, "")),
-	]
+	var briefing := _Briefings.get_briefing(sid)
+	_detail_meta.text = "%d 波 · %s\n%s" % [int(st.get("wave_count", 0)),
+		String(briefing.get("terrain", "")), String(briefing.get("hint", ""))]
+	_detail_meta.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	var cleared: bool = _campaign_ref.is_cleared(sid)
 	var unlocked: bool = _campaign_ref.is_unlocked(sid)
 	if cleared:
@@ -398,8 +398,7 @@ func _refresh_detail() -> void:
 		_detail_state.text = "▶ 可挑战 · 点击进入"
 		_detail_state.add_theme_color_override("font_color", _Style.C_ALLY)
 	else:
-		var prev := _prev_stage(sid)
-		_detail_state.text = "🔒 未解锁 · 先通关 %s" % prev
+		_detail_state.text = "🔒 未解锁 · " + _Briefings.unlock_hint(sid)
 		_detail_state.add_theme_color_override("font_color", _Style.C_TEXT_DIM)
 
 
@@ -545,8 +544,21 @@ func _draw_tracks(ci: Control, sz: Vector2) -> void:
 
 
 func _draw_paths(ci: Control) -> void:
-	for i in range(_CampaignData.STAGE_ORDER.size() - 1):
-		_draw_route(ci, String(_CampaignData.STAGE_ORDER[i]), String(_CampaignData.STAGE_ORDER[i + 1]), false)
+	for edge in route_edges():
+		_draw_route(ci, String(edge["source"]), String(edge["target"]), bool(edge["gate"]))
+
+
+## 展示真实解锁关系。地区数量门槛不伪造为某一条必经航线。
+func route_edges() -> Array:
+	var edges: Array = []
+	for sid in _CampaignData.STAGE_ORDER:
+		var st: Dictionary = _CampaignData.STAGES[sid]
+		for source in st.get("prereq", []):
+			edges.append({"source": String(source), "target": String(sid), "gate": false})
+		var required := String(st.get("need_cleared", ""))
+		if required != "":
+			edges.append({"source": required, "target": String(sid), "gate": true})
+	return edges
 
 
 func _draw_route(ci: Control, source: String, target: String, gate: bool) -> void:

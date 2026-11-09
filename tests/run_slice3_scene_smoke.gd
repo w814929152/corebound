@@ -60,11 +60,11 @@ class Driver extends Node:
 		print("  视口宽            = %.0f px" % vw)
 		print("  抽屉宽（算尺）    = %.1f px  → 占屏 %.2f%%" % [dw, _ShopLayout.drawer_ratio(vw) * 100.0])
 		print("  战场可视宽        = %.1f px  → 占屏 %.2f%%" % [bw, bw / vw * 100.0])
-		print("  取整口径：算尺返回浮点原值（614.4 / 1305.6），不 floor 不 round")
+		print("  商店覆盖地图，不压缩战场坐标")
 		_tally("视口宽 = 1920（Q-S3-C 拍板）", is_equal_approx(vw, 1920.0))
 		_tally("抽屉宽 = 614.4（0.32×1920）", is_equal_approx(dw, 614.4))
 		_tally("抽屉占屏 ≈ 32%%", absf(_ShopLayout.drawer_ratio(vw) - 0.32) <= 1e-9)
-		_tally("战场可视宽 = 1305.6（68%%）", is_equal_approx(bw, 1305.6))
+		_tally("商店浮层不改变地图宽度", is_equal_approx(bw, vw))
 
 		# ---- 五态巡游 ----
 		print("")

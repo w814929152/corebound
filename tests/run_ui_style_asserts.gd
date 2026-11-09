@@ -542,12 +542,13 @@ func _test_j_placement_entry() -> void:
 	_check("ShopOverlay 已移除不可达的 _place_box（死代码清除）",
 		shop_src.find("_place_box") < 0 and shop_src.find("_refresh_placement") < 0)
 	_check("HUD ⑤ 态有放置专属提示（不再误导「Tab 商店 / R 刷新」）",
-		hud_src.find("HINT_DEFAULT") >= 0 and hud_src.find("点地图上的格子落子") >= 0)
+		hud_src.find("HINT_DEFAULT") >= 0 and hud_src.find("点格子放置") >= 0)
 
 	# 「进入 ⑤」与「在 ⑤ 里落子」是两个入口，一个都不能少：
-	#   进 ⑤ = 抽屉里的待放置队列（抽屉展开时可见）；落子 = 战场（抽屉已收起）。
-	_check("待放置队列入口仍在（进 ⑤ 靠它，落子靠战场）",
-		shop_src.find("_pending_box") >= 0 and shop_src.find("request_placement") >= 0)
+	#   进 ⑤ = 战场底部背包（拖动/点击建筑卡）；落子 = 战场（抽屉已收起）。
+	var bp_src := FileAccess.get_file_as_string("res://scripts/ui/tower_backpack.gd")
+	_check("待放置入口仍在（战场底部背包 → controller.request_placement，商店不再重复列队列）",
+		bp_src.find("request_placement") >= 0 and shop_src.find("request_placement") < 0)
 
 
 # ---------------------------------------------------------------------------
@@ -650,10 +651,9 @@ func _test_k_free_placement() -> void:
 	# ---- ⑤ 坐标落子：新建 / 升级 / 拒绝 ----
 	var rt = _Runtime.new()
 	rt.setup("B", 1234, {"tower_cap": 3})
-	_check("玩家路线几何从空槽起步，只含起手塔那一个槽（got=%d）" % rt.geo.slots.size(),
-		rt.geo.slots.size() == 1)
-	_check("起手塔所在格可建（坐标落在格点上，与网格对齐）",
-		_BuildGrid.buildable(rt.geo.slots[0]))
+	_check("玩家路线从空场起步：无起手塔、无预置槽位（got slots=%d towers=%d）" % [
+		rt.geo.slots.size(), rt.player.towers.size()],
+		rt.geo.slots.size() == 0 and rt.player.towers.is_empty())
 
 	# 🆕 点位用**轴向坐标**显式取格心，不再写 `core + Vector2(10.0, 0.0)` 这类"随手偏一点"：
 	#    六边形吸附会把任意偏移拉到最近的格心，靠手写的偏移量去赌"落在不同格"是不可靠的。
@@ -665,8 +665,8 @@ func _test_k_free_placement() -> void:
 	rt.begin_placement(0)
 	var ok_new: bool = rt.confirm_placement_at(p_new)
 	_check("核心外格点落子成功（%s）" % rt.last_error, ok_new)
-	_check("落子后槽位表 1 → %d（新格即新槽）" % rt.geo.slots.size(), rt.geo.slots.size() == 2)
-	_check("落子后场上 2 座塔", rt.player.towers.size() == 2)
+	_check("落子后槽位表 0 → %d（新格即新槽）" % rt.geo.slots.size(), rt.geo.slots.size() == 1)
+	_check("落子后场上 1 座塔", rt.player.towers.size() == 1)
 
 	# 同格同原型 → 升级（不新增槽、不新增塔）
 	rt.pending = ["Cannon"]
@@ -674,8 +674,8 @@ func _test_k_free_placement() -> void:
 	rt.begin_placement(0)
 	var ok_up: bool = rt.confirm_placement_at(p_new + Vector2(0.7, -0.6))   # 故意偏移 → 吸附同格
 	_check("同格再次落同原型卡 = 升级（%s）" % rt.last_error, ok_up)
-	_check("升级不新增槽（仍 %d）" % rt.geo.slots.size(), rt.geo.slots.size() == 2)
-	_check("升级不新增塔（仍 %d 座）" % rt.player.towers.size(), rt.player.towers.size() == 2)
+	_check("升级不新增槽（仍 %d）" % rt.geo.slots.size(), rt.geo.slots.size() == 1)
+	_check("升级不新增塔（仍 %d 座）" % rt.player.towers.size(), rt.player.towers.size() == 1)
 
 	# 同格异原型 → 拒绝
 	rt.pending = ["Frost"]
@@ -695,16 +695,21 @@ func _test_k_free_placement() -> void:
 	rt.pending = []
 	rt.cancel_placement()
 
-	# 塔数上限：tower_cap=3，已有 2 座 → 第 3 座可建，第 4 座被拒
+	# 塔数上限：tower_cap=3，已有 1 座 → 第 2 / 3 座可建，第 4 座被拒
 	rt.pending = ["Frost"]
 	rt.pending_cost = [12.0]
 	rt.begin_placement(0)
-	var ok_third: bool = rt.confirm_placement_at(_BuildGrid.cell(-4, 2))      # 正左方 9.30u
-	_check("第 3 座塔可建（未超上限 3）", ok_third)
+	var ok_second: bool = rt.confirm_placement_at(_BuildGrid.cell(-4, 2))      # 正左方 9.30u
+	_check("第 2 座塔可建（未超上限 3）", ok_second)
 	rt.pending = ["Frost"]
 	rt.pending_cost = [12.0]
 	rt.begin_placement(0)
-	var ok_fourth: bool = rt.confirm_placement_at(_BuildGrid.cell(0, 5))      # 正下方 13.42u
+	var ok_third: bool = rt.confirm_placement_at(_BuildGrid.cell(0, 5))        # 正下方 13.42u
+	_check("第 3 座塔可建（正好到上限 3）", ok_third)
+	rt.pending = ["Frost"]
+	rt.pending_cost = [12.0]
+	rt.begin_placement(0)
+	var ok_fourth: bool = rt.confirm_placement_at(_BuildGrid.cell(0, -5))     # 正上方
 	_check("第 4 座塔被塔数上限拒绝（tower_cap=3）", not ok_fourth)
 	_check("被拒后槽位表不变（仍 %d）" % rt.geo.slots.size(), rt.geo.slots.size() == 3)
 

@@ -3,11 +3,17 @@ extends Control
 
 const _BuildGrid := preload("res://scripts/geo/build_grid.gd")
 ## 🆕 字体注册表（art-bible §5.4）：面板文字不再走引擎默认字体（400 太细）。
+const _Battle := preload("res://scripts/ui/battle_theme.gd")
 const _Style := preload("res://scripts/ui/ui_style.gd")
-const BAR_H := 104.0
-const BAR_BOTTOM_GAP := 98.0
-const CARD_W := 86.0
-const CARD_H := 76.0
+const _Hover := preload("res://scripts/ui/card_hover.gd")
+var _hover: CanvasLayer
+var _pointer := Vector2(-1000.0, -1000.0)
+
+const _Layout := preload("res://scripts/ui/shop_layout.gd")
+const BAR_H := 156.0
+const BAR_BOTTOM_GAP := 20.0
+const CARD_W := 120.0
+const CARD_H := 132.0
 const GAP := 8.0
 const C_TEXT := Color(0.784, 0.812, 0.855)
 const C_DIM := Color(0.545, 0.580, 0.647)
@@ -27,10 +33,13 @@ var _card_box: StyleBoxFlat
 var _active_box: StyleBoxFlat
 
 func _ready() -> void:
+	_hover = _Hover.new()
+	add_child(_hover)
+	get_viewport().mouse_exited.connect(func() -> void: _pointer = Vector2(-1000.0, -1000.0))
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_panel_box = _make_box(C_PANEL, Color(0.243, 0.816, 0.910, 0.35), 1, 6)
-	_card_box = _make_box(C_CARD, Color(1.0, 1.0, 1.0, 0.14), 1, 4)
-	_active_box = _make_box(Color(0.09, 0.20, 0.25, 0.98), C_ACTIVE, 2, 4)
+	_panel_box = _Battle.panel()
+	_card_box = _Battle.card()
+	_active_box = _Battle.card(true)
 	_layout()
 	get_tree().root.size_changed.connect(_layout)
 
@@ -50,6 +59,10 @@ func bind_controller(c: Node) -> void:
 
 func bind_director(d: Node) -> void:
 	director = d
+	if d != null:
+		d.state_changed.connect(func(_from: int, _to: int) -> void: _layout())
+		d.drawer_mode_changed.connect(func(_mode: int) -> void: _layout())
+	_layout()
 
 func bind_world_layer(layer: Node) -> void:
 	world_layer = layer
@@ -65,8 +78,10 @@ func _refresh_snapshot() -> void:
 
 func _layout() -> void:
 	var vs := get_viewport().get_visible_rect().size
-	position = Vector2(18.0, vs.y - BAR_BOTTOM_GAP - BAR_H)
-	size = Vector2(maxf(0.0, vs.x - 36.0), BAR_H)
+	var width := minf(1120.0, vs.x - 48.0)
+	position = Vector2((vs.x - width) * 0.5, vs.y - BAR_BOTTOM_GAP - BAR_H)
+	size = Vector2(width, BAR_H)
+	_first_visible = mini(_first_visible, maxi(0, _pending.size() - _visible_count()))
 	queue_redraw()
 
 func _visible_count() -> int:
@@ -76,6 +91,8 @@ func _bar_rect() -> Rect2:
 	return Rect2(position, size)
 
 func _input(event: InputEvent) -> void:
+	if event is InputEventMouseMotion:
+		_pointer = event.position
 	if event is InputEventMouseButton:
 		var mb := event as InputEventMouseButton
 		if mb.button_index == MOUSE_BUTTON_WHEEL_UP or mb.button_index == MOUSE_BUTTON_WHEEL_DOWN:
@@ -152,18 +169,27 @@ func _draw() -> void:
 	var font: Font = _Style.font_medium()
 	if font == null:
 		font = ThemeDB.fallback_font
-	draw_string(font, Vector2(18.0, 39.0), "背包", HORIZONTAL_ALIGNMENT_LEFT, -1, 18, C_TEXT)
-	draw_string(font, Vector2(18.0, 65.0), "拖放 · 滚轮翻页", HORIZONTAL_ALIGNMENT_LEFT, 104.0, 16, C_DIM)
+	draw_string(font, Vector2(18.0, 39.0), "建筑背包", HORIZONTAL_ALIGNMENT_LEFT, -1, 18, C_TEXT)
+	draw_string(font, Vector2(18.0, 65.0), "拖动部署", HORIZONTAL_ALIGNMENT_LEFT, 104.0, 16, C_DIM)
+	if _pending.is_empty():
+		draw_string(font, Vector2(136.0, 57.0), "暂无建筑", HORIZONTAL_ALIGNMENT_LEFT, size.x - 160.0, 18, C_DIM)
 	var visible := _visible_count()
 	for offset in range(visible):
 		var index := _first_visible + offset
 		if index >= _pending.size():
 			break
 		var rect := Rect2(112.0 + offset * (CARD_W + GAP), 16.0, CARD_W, CARD_H)
-		var active := index == _drag_index
+		var active := index == _drag_index or index == _card_at(_pointer - position)
 		draw_style_box(_active_box if active else _card_box, rect)
-		draw_string(font, rect.position + Vector2(8.0, 29.0), String(_pending[index]).left(8), HORIZONTAL_ALIGNMENT_LEFT, CARD_W - 16.0, 16, C_TEXT)
-		draw_string(font, rect.position + Vector2(8.0, 57.0), "放置中" if active else "建筑塔", HORIZONTAL_ALIGNMENT_LEFT, -1, 16, C_ACTIVE if active else C_DIM)
+		var nm := String(_pending[index])
+		var art := _Style.card_art(nm)
+		if art != null:
+			var area := Rect2(rect.position + Vector2(8.0, 4.0), Vector2(CARD_W - 16.0, 96.0))
+			var art_size := art.get_size()
+			var factor := minf(area.size.x / art_size.x, area.size.y / art_size.y)
+			var target := art_size * factor
+			draw_texture_rect(art, Rect2(area.get_center() - target * 0.5, target), false)
+		draw_string(font, rect.position + Vector2(8.0, 122.0), nm, HORIZONTAL_ALIGNMENT_LEFT, CARD_W - 16.0, 16, C_ACTIVE if active else C_TEXT)
 	if _pending.size() > visible:
 		draw_string(font, Vector2(size.x - 70.0, 62.0), "%d/%d" % [_first_visible + 1, _pending.size() - visible + 1], HORIZONTAL_ALIGNMENT_RIGHT, 52.0, 16, C_DIM)
 	if _drag_index >= 0:
@@ -173,3 +199,17 @@ func _draw() -> void:
 		# 🆕 v4 光标三态：拖动中逐帧判定落点合法性（motion 每帧 redraw 驱动）
 		#    落点非法 → deny 禁止光标；合法 → place 准星；拖回背包条 → default。
 		_drag_cursor_update()
+
+
+func _process(_delta: float) -> void:
+	queue_redraw()
+	if _hover == null:
+		return
+	if is_visible_in_tree() and _drag_index < 0:
+		var index := _card_at(_pointer - position)
+		if index >= 0:
+			var offset := index - _first_visible
+			var rect := Rect2(position + Vector2(112.0 + offset * (CARD_W + GAP), 16.0), Vector2(CARD_W, CARD_H))
+			_hover.show_card(String(_pending[index]), rect, "已购买 · 拖到战场放置", true)
+			return
+	_hover.clear()

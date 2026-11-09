@@ -56,6 +56,8 @@ var last_realtime_result: Dictionary = {}
 ##   而是交给它（`boot.gd` 弹选包界面 → 选完再调 `start_new_run()`）。
 ##   无效 = 老口径（直接重开，行为与改动前一致）。
 var restart_hook: Callable = Callable()
+## boot 在 run_finished 的同步回调中注入局外结算，随后由结算界面只读展示。
+var campaign_result: Dictionary = {}
 
 
 func _ready() -> void:
@@ -164,6 +166,8 @@ func _show_result(p_won: bool, p_wave: int) -> void:
 	#   重开 → 重新走 start_run；退出 → 退出场景树（headless 下仅打印）。
 	ov.show_result(p_won, p_wave, hp, hp_max, scrap,
 		Callable(self, "_on_restart_requested"), Callable(self, "_on_quit_requested"))
+	if wave_director != null and String(wave_director.stage_id) != "":
+		ov.show_campaign_result(String(wave_director.stage_id), p_won, campaign_result)
 
 
 func _on_restart_requested() -> void:
@@ -181,6 +185,7 @@ func _on_restart_requested() -> void:
 ##   🔴 卡包选择在调用方（`ShopRuntime.set_active_packs()`），本函数不碰卡池。
 func start_new_run() -> void:
 	over = false
+	campaign_result = {}
 	if runtime != null:
 		runtime.setup("B", DEFAULT_RUN_SEED)
 	if wave_director != null:
@@ -267,7 +272,9 @@ func _on_place_at_requested(pos: Vector2) -> void:
 		# 把原因送到商店快照的 `last_error`，UI 会显示在抽屉里；玩家仍可继续点别处。
 		_emit_shop()
 		return
-	director.exit_placement(true, runtime.last_placed_slot)
+	# confirm_placement_at 已消费卡牌；只退出模式，并广播新的背包状态。
+	director.finish_placement()
+	_emit_shop()
 
 
 func _on_salvage_requested() -> void:
@@ -409,7 +416,11 @@ func _on_wave_started(w: int) -> void:
 		return
 	# 🔴 R1：本波打的是**上波买出来的构筑** → 战前先结算一次并存起来（波末才入账）
 	_pending_result = runtime.simulate_wave_result(w)
-	runtime.start_wave(w)            # n ← 0 · 锁定清空 · 发初始商店（pity）
+	# 准备期购买后的商店、刷新次数、锁定和待放置操作保持原样。
+	if _prepared_wave == w:
+		_prepared_wave = -1
+	else:
+		runtime.start_wave(w)
 	_emit_shop()
 	_emit_run()
 
@@ -445,13 +456,17 @@ func _realtime_is_golden_equivalent() -> bool:
 		and (not bool(wave_director.tower_aggro_enabled))
 
 
-## 开局：由 `WaveDirector` 发出第一波的 `wave_started`
+## 开局先进入准备阶段；只有玩家点击开始才发出波次信号。
+var _prepared_wave: int = -1
+
 func start_run(w: int = 1) -> void:
-	if wave_director != null:
-		wave_director.start_run(w)
+	if runtime == null or director == null:
 		return
-	if director != null:
-		director.wave_start(w)
+	_prepared_wave = w
+	runtime.start_wave(w)
+	director.prepare_run(w)
+	_emit_shop()
+	_emit_run()
 
 
 # ---------------------------------------------------------------------------

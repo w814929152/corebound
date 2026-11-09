@@ -37,8 +37,8 @@ const OLD_FROST_DPS := 5.0
 const OLD_FROST_SLOW := 0.30
 ## 玩家池权重和：6 张 = 1 − 0.095(RerollD) = 0.905；
 ##   扩展包开启 16 张 = 0.905 + 0.835（10 张扩展卡权重和）= 1.740
-const POOL_TOTAL_6 := 0.905
-const POOL_TOTAL_16 := 1.740
+const POOL_TOTAL_6 := 0.47
+const POOL_TOTAL_16 := 0.93
 const EPS := 1e-9
 
 var _pass := 0
@@ -239,30 +239,31 @@ func _test_f_pool_switch() -> void:
 	_ShopRuntime.set_extended_pack(false)
 
 	var names6: Array = _ShopRuntime.player_card_names().duplicate()
-	_check_int("F1 默认池卡数", names6.size(), 6)
+	_check_int("F1 默认池卡数", names6.size(), 3)
 	_check_bool("F2 默认池不含 Lance", names6.has("Lance"), false)
 	_check_float("F3 默认池权重和", _ShopRuntime.player_pool_total(), POOL_TOTAL_6)
 	_check_bool("F4 默认 extended_pack", _ShopRuntime.extended_pack, false)
 
 	_ShopRuntime.set_extended_pack(true)
 	var names10: Array = _ShopRuntime.player_card_names().duplicate()
-	_check_int("F5 开启池卡数", names10.size(), 16)
+	_check_int("F5 开启池卡数", names10.size(), 8)
 	_check_bool("F6 开启池含 Lance", names10.has("Lance"), true)
 	_check_bool("F7 开启池含 Tesla", names10.has("Tesla"), true)
-	_check_bool("F8 开启池含 PirUp", names10.has("PirUp"), true)
-	_check_bool("F9 开启池含 ShkUp", names10.has("ShkUp"), true)
+	# 🔴 效果卡停用（EFFECT_CARDS_ENABLED=false）：强化卡不再进玩家池。
+	_check_bool("F8 开启池不含强化卡 PirUp", names10.has("PirUp"), false)
+	_check_bool("F9 开启池不含强化卡 ShkUp", names10.has("ShkUp"), false)
 	_check_bool("F10 开启池含 Sunder", names10.has("Sunder"), true)
 	_check_bool("F11 开启池含 Hex", names10.has("Hex"), true)
-	_check_bool("F12 开启池含 SunUp", names10.has("SunUp"), true)
-	_check_bool("F13 开启池含 HexUp", names10.has("HexUp"), true)
+	_check_bool("F12 开启池不含强化卡 SunUp", names10.has("SunUp"), false)
+	_check_bool("F13 开启池不含强化卡 HexUp", names10.has("HexUp"), false)
 	_check_bool("F13b 开启池含 Oblivion", names10.has("Oblivion"), true)
-	_check_bool("F13c 开启池含 TrueUp", names10.has("TrueUp"), true)
+	_check_bool("F13c 开启池不含强化卡 TrueUp", names10.has("TrueUp"), false)
 	_check_float("F14 开启池权重和", _ShopRuntime.player_pool_total(), POOL_TOTAL_16)
-	_check_int("F15 开启池权重条数一致", _ShopRuntime.player_card_weights().size(), 16)
+	_check_int("F15 开启池权重条数一致", _ShopRuntime.player_card_weights().size(), 8)
 
-	# 🔴 静态缓存清理：关闭后必须回 6 张（否则开关静默失效）
+	# 🔴 静态缓存清理：关闭后必须回 3 张（否则开关静默失效）
 	_ShopRuntime.set_extended_pack(false)
-	_check_int("F16 关闭后池卡数（缓存已清）", _ShopRuntime.player_card_names().size(), 6)
+	_check_int("F16 关闭后池卡数（缓存已清）", _ShopRuntime.player_card_names().size(), 3)
 	_check_float("F17 关闭后权重和", _ShopRuntime.player_pool_total(), POOL_TOTAL_6)
 
 	# 金标本 AI 池恒不受影响（这是"零扰动"的核心断言）
@@ -285,14 +286,18 @@ func _test_g_order() -> void:
 		if String(before[i]) != String(after[i]):
 			same_prefix = false
 			break
-	_check_bool("G1 前 6 张顺序不变（累积区间起点不动）", same_prefix, true)
+	_check_bool("G1 前 3 张顺序不变（累积区间起点不动）", same_prefix, true)
 
 	var tail_ok := true
-	for i in range(_ShopRuntime.EXT_CARD_ORDER.size()):
-		if String(after[before.size() + i]) != String(_ShopRuntime.EXT_CARD_ORDER[i]):
+	var ext_towers: Array = []
+	for nm in _ShopRuntime.EXT_CARD_ORDER:
+		if _ShopRuntime._card_kind(String(nm)) == "tower":
+			ext_towers.append(String(nm))
+	for i in ext_towers.size():
+		if String(after[before.size() + i]) != String(ext_towers[i]):
 			tail_ok = false
 			break
-	_check_bool("G2 扩展卡按 EXT_CARD_ORDER 追加在末尾", tail_ok, true)
+	_check_bool("G2 扩展塔按 EXT_CARD_ORDER 追加在末尾", tail_ok, true)
 
 	# 权重与名字同序（错位 = 权重张冠李戴）
 	var w: Array = _ShopRuntime.player_card_weights()

@@ -65,6 +65,7 @@ const _CombatTypes := preload("res://scripts/data/combat_types.gd")
 ## 🆕 触发型建筑（2026-11-07）：整备（每波）/ 阵亡 时给塔加等级。
 const _TowerEffects := preload("res://scripts/engine/tower_effects.gd")
 const _TD := preload("res://scripts/data/tower_data.gd")
+const _TacticalCombat := preload("res://scripts/gameplay/tactical_combat.gd")
 ## 🔒 V-8：复用批处理镜像的**诊断量容器工厂** —— 复活诊断字典与 `wave_sim_aggro` 共用
 ##   同一份 schema（键名/初值逐位相同）→ 实时↔批处理逐位比对才能直接对键取值，
 ##   也杜绝"两边各写一份 schema、改了一边忘了另一边"的漂移。🔴 只调它的 static 工厂，
@@ -83,6 +84,7 @@ enum MState {
 	MARCHING = 0,
 	AGGRO_TOWER = 1,
 	LEAKED = 2,
+	AGGRO_CORE = 3,
 }
 
 
@@ -109,6 +111,8 @@ signal run_won(w: int)
 # ---------------------------------------------------------------------------
 ## 🔒 T1：Q-T3 机会型仇恨（AGGRO_R = 9.0）。MVP 恒 false → 怪物恒 MARCHING。
 var tower_aggro_enabled: bool = false
+## 正式关卡建筑攻防；默认关闭，保留历史模拟的漏怪结算。
+var structure_attacks_enabled: bool = false
 ## 🔒 T1 反制窗口 M-1：战斗内即时被动复活（**产品开关**，与 proto/elite/aggro 同族）。
 ##   MVP 默认 false → `_revive_mode()` 读 cfg（默认 0）→ off 路径逐位不变（金标本零扰动）。
 ##   🟢 与 `repair_on_disable` 解耦：那个枚举的 0/1/2 是 V-7 诊断臂、9/11 是 V-8 扫描档；
@@ -146,6 +150,8 @@ var cur_spec: Dictionary = {}
 ## 🆕 战斗类型系统（物理/魔法 × 物抗/魔抗）。🔴 默认 false = 旧聚合池口径逐位不变。
 ##   打开后：塔按攻击类型拆分 DPS 池，怪物按原型抗性分别结算（见 `_substep` ②）。
 var combat_types_enabled: bool = false
+## 仅玩家关卡开启；基准模拟与历史回归仍使用原聚合池。
+var tactical_combat_enabled: bool = false
 
 # ---- 运行时注入 ----
 var runtime = null          # ShopRuntime（提供 player / cfg / geo）
@@ -388,7 +394,7 @@ func start_wave(p_w: int) -> void:
 	#   MVP 无修复机制 → 每波满血是最简口径（Disabled 塔保持 Disabled，
 	#   留给后续批次的波次间「修复/拆除/放着不管」三选一）。
 	#   🔴 仅 tower_aggro_enabled 时触碰 player.towers → 金标本等价口径零扰动。
-	if tower_aggro_enabled:
+	if tower_aggro_enabled or structure_attacks_enabled:
 		_init_tower_hp()
 	state = State.SPAWNING
 
@@ -549,7 +555,9 @@ func _substep() -> void:
 	_stable_sort_by_remain()
 	_tick_frost_effects(_WaveSim.DT)
 	_tick_fire_effects(_WaveSim.DT)
-	if combat_types_enabled:
+	if tactical_combat_enabled:
+		_TacticalCombat.apply(self, _WaveSim.DT)
+	elif combat_types_enabled:
 		# 🆕 类型分池：物攻池 / 魔攻池 / 真实池各自独立集火，每只怪按原型抗性减免；
 		#   真实伤害无视抗性。🔴 与 `WaveSim._apply_pool` 语义同构（同 SSOT → 逐位等价）。
 		var _phys_dmg := _phys_dps * _WaveSim.DT
@@ -576,7 +584,7 @@ func _substep() -> void:
 	# ---- ②b 🆕 持续掉血（DoT）：无视抗性的全场每秒伤害（Plague 等）。
 	#   🔴 金标本无 dot 塔 → 0 → 本段不进入（逐位不变）。
 	var _dot := _TowerEffects.dot_dps(player)
-	if _dot > 0.0:
+	if _dot > 0.0 and not tactical_combat_enabled:
 		_apply_pool_live(_dot * _TowerEffects.debuff_damage_mult(player) * _WaveSim.DT,
 			_CombatTypes.TRUE, 0.0)
 
@@ -593,13 +601,28 @@ func _substep() -> void:
 			continue
 		if float(m2.frozen_remaining) > 0.0:
 			frozen_this_step.append(m2)
-		if tower_aggro_enabled and m2.state == MState.AGGRO_TOWER:
-			# 停下攻塔：冻结 t_remain，仍留在队列（不漏怪、不前进）
+		var attacking_tower: bool = (tower_aggro_enabled or structure_attacks_enabled) and m2.state == MState.AGGRO_TOWER
+		var attacking_core: bool = structure_attacks_enabled and m2.state == MState.AGGRO_CORE
+		if attacking_tower or attacking_core:
+			# 攻击建筑时冻结 t_remain，仍可被防御塔击杀。
 			monsters[wpos] = m2
 			wpos += 1
 			continue
+		var previous_time := float(m2.t_remain)
+		var previous_distance: float = m2.pos(v0_).distance_to(_SpaceModel.core_pos()) if structure_attacks_enabled else 0.0
 		var move_dt := _frost_move_dt(m2, _WaveSim.DT)
 		m2.t_remain = float(m2.t_remain) - move_dt
+		if structure_attacks_enabled and (m2.t_remain<=0.0 or m2.pos(v0_).distance_to(_SpaceModel.core_pos())<=_MonsterData.CORE_ATTACK_R):
+			# 径向位移与剩余时间成正比，将位置钳在核心接触圈，避免穿入核心。
+			if _SpaceModel.is_radial():
+				m2.t_remain = maxf(0.0,previous_time*_MonsterData.CORE_ATTACK_R/maxf(previous_distance,_MonsterData.CORE_ATTACK_R))
+			else:
+				m2.t_remain = 0.0
+			m2.state = MState.AGGRO_CORE
+			m2.target_slot = -1
+			monsters[wpos] = m2
+			wpos += 1
+			continue
 		if float(m2.t_remain) <= 0.0:
 			m2.state = MState.LEAKED
 			leaked_count += 1
@@ -621,7 +644,9 @@ func _substep() -> void:
 	#   与塔损耗，**不动** ② 的 DPS 分配口径（全场池→t_remain 排序→填满→结转）。
 	#   🔒 T1 V-1 定稿起手保护：W1..WARMUP(=2) 仇恨不激活（与批处理镜像 simulate_wave_aggro
 	#     对称 → 实时↔批处理逐位一致）。无此保护起手塔 W1 必死、起飞率 0%。
-	if tower_aggro_enabled and w > warmup_waves:
+	if structure_attacks_enabled:
+		_apply_structure_attacks()
+	elif tower_aggro_enabled and w > warmup_waves:
 		_apply_aggro()
 
 	# ---- ④b 🆕 召唤小兵（2026-11-07）：移动 + 攻击最近敌人。
@@ -944,6 +969,35 @@ func _update_minions(dt: float) -> void:
 ##     → 回 Marching；否则对目标塔造成 `ATTRITION × HP0 × m_dps` 伤害。
 ##     塔 hp 归零 → 进入 Disabled 中间态（断输出不断链）→ 发 tower_destroyed。
 ##   🔴 迟滞带（AGGRO_R=9.0 进 / AGGRO_EXIT=10.8 出）防边界抖动（Q-T3 R4）。
+## 实机关卡从第一波开始攻击建筑。锁塔怪也必须进入攻击范围，不能隔图扣血。
+func _apply_structure_attacks() -> void:
+	if player == null or run_failed:
+		return
+	for monster in monsters:
+		if float(monster.hp)<=0.0 or float(monster.frozen_remaining)>0.0 or monster.state==MState.LEAKED:
+			continue
+		if monster.state==MState.AGGRO_TOWER:
+			var target = _tower_by_slot(int(monster.target_slot))
+			if target==null or bool(target.disabled) or monster.pos(v0_).distance_to(_tower_pos(target))>_MonsterData.AGGRO_EXIT:
+				monster.state = MState.MARCHING
+				monster.target_slot = -1
+				continue
+			_damage_tower(monster,_MonsterData.sapper_dmg_mult(w))
+			continue
+		var slot := _nearest_exposed_tower(monster,v0_)
+		if slot>=0:
+			monster.state = MState.AGGRO_TOWER
+			monster.target_slot = slot
+			_damage_tower(monster,_MonsterData.sapper_dmg_mult(w))
+		elif monster.state==MState.AGGRO_CORE:
+			core_hp = maxf(0.0,core_hp-_MonsterData.STRUCTURE_ATTACK_DPS*float(monster.m_dps)*_WaveSim.DT)
+			player.core_hp = core_hp
+			if core_hp<=0.0:
+				run_failed = true
+				emit_signal("run_lost",w)
+				break
+
+
 func _apply_aggro() -> void:
 	if player == null:
 		return
@@ -1037,7 +1091,8 @@ func _damage_tower(m, sapper_mult: float) -> void:
 	# 对塔 DPS = ATTRITION × HP0 × m_dps(proto)（V-1 复合比口径；attrition_override>=0 时覆盖）
 	# 🔒 T1 ⑤ Sapper：对塔伤害 ×`sapper_mult`（= SSOT `sapper_dmg_mult(w)`；中性 g≡1 ⇒ 逐位 = 3.0）。
 	var mdps: float = float(m.m_dps) * (sapper_mult if m.sapper else 1.0)
-	var dmg := _MonsterData.resolve_attrition(attrition_override) * _MonsterData.HP0 * mdps * _WaveSim.DT
+	var base_dps := _MonsterData.STRUCTURE_ATTACK_DPS if structure_attacks_enabled else _MonsterData.resolve_attrition(attrition_override) * _MonsterData.HP0
+	var dmg := base_dps * mdps * _WaveSim.DT
 	t.hp = float(t.hp) - dmg
 	if float(t.hp) <= 0.0:
 		t.hp = 0.0
@@ -1256,7 +1311,7 @@ func _spawn_one(idx: int) -> void:
 	# 🆕 径向模式：注入黄金角出生角（确定性 · 零 RNG · 不碰商店发牌流，E-4/Q-R6）。
 	#   PATH 模式下 set_theta 被忽略（恒 0），位置仍走折线 → 逐位等价。
 	if _SpaceModel.mode == _SpaceModel.Mode.RADIAL:
-		m.set_theta(_SpaceModel.spawn_theta(idx, w))
+		m.set_theta(_TacticalCombat.spawn_theta(idx, w, stage_id) if tactical_combat_enabled else _SpaceModel.spawn_theta(idx, w))
 	# 🔒 T1 ⑤ Sapper：Elite 波（每5波）里沿波次均匀铺开的精英怪 = Sapper（锁塔 ×3 增伤）。
 	#   与批处理镜像 WaveSimAggro._build_sapper_flags 逐位对齐（同一 elite_indices 算法）。
 	#   🔴 金标本零改动：elite_waves_enabled=false → 不标记任何 sapper。
@@ -1464,6 +1519,8 @@ func snapshot() -> Dictionary:
 			})
 	return {
 		"w": w,
+		"stage_id": stage_id,
+		"tactical_combat": tactical_combat_enabled,
 		"state": state,
 		"t_wave": t_wave,
 		"spawned": spawned,
@@ -1500,7 +1557,8 @@ func snapshot() -> Dictionary:
 		#   `aggro_ui` = "塔会挨打"这一**事实层总闸**（= 仇恨开关本身，与复活档位解耦）→
 		#                供渲染层门控"停机压暗"（塔因仇恨倒下就该看见它倒下）。
 		#   `next_is_elite_wave` = **下一波**是否精英波（供 HUD 安全窗"预告"，区别于"当前波"）。
-		"aggro_ui": tower_aggro_enabled,
+		"aggro_ui": tower_aggro_enabled or structure_attacks_enabled,
+		"structure_attacks": structure_attacks_enabled,
 		"next_is_elite_wave": _is_elite_wave_at(w + 1),
 	}
 

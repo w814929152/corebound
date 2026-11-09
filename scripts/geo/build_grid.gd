@@ -11,7 +11,8 @@ extends RefCounted
 ## 设计口径（玩家已拍板的三条）：
 ##   ① 保留径向竞技场（核心居中、怪从外沿直插）—— 不推翻 GDD 的空间设计；
 ##   ② 塔位置自由，但**吸附格点** —— 视觉对齐、判定无歧义、不会出现两塔半重叠；
-##   ③ 可建范围 = **整个战场圆盘 − 核心禁建区 − 活动地图岩脊**。
+##   ③ 可建范围 = **实际战场地块 − 核心禁建区 − 活动地图障碍**。
+##      新关卡通过 battlefield_maps 共用异形地块与墙体；旧圆盘仅保留为基准模式。
 ##      「障碍物区域不可摆放，非障碍物区域都可以摆放」是玩家拍板的唯一空间规则：
 ##      不再有「只能落在 17 个阵地格」或「只能落在 44u 中圈」这类隐形边界。
 ##      `SITES` 仅保留为地图战术标注 / 暴露度统计 / 起手锚点，**不参与可建判定**。
@@ -193,6 +194,9 @@ static func snap(p: Vector2) -> Vector2:
 ##   🔴 注意这里**不查阵地表**：`SITES` 是可选的战术标注，不是可建白名单。
 static func buildable(p: Vector2) -> bool:
 	var d := p.distance_to(core())
+	if _SpaceModel.uses_terrain():
+		return d >= CORE_BAN_R and _SpaceModel.BattlefieldMaps.contains(_SpaceModel.active_map_id,p) \
+			and not _SpaceModel.BattlefieldMaps.blocked(_SpaceModel.active_map_id,p,_SpaceModel.active_ridges())
 	if d < CORE_BAN_R or d > FIELD_R:
 		return false
 	if _SpaceModel.mode == _SpaceModel.Mode.RADIAL and _SpaceModel.layout_enabled:
@@ -328,6 +332,11 @@ static func grid_edges() -> PackedVector2Array:
 				if seen.has(key):
 					continue
 				seen[key] = true
+				if _SpaceModel.uses_terrain():
+					if buildable(a) and buildable(b) and buildable((a+b)*0.5):
+						out.append(a)
+						out.append(b)
+					continue
 				var seg := _clip_disc(a, b, c, FIELD_R)
 				if seg.is_empty():
 					continue
@@ -338,6 +347,8 @@ static func grid_edges() -> PackedVector2Array:
 
 ## 网格覆盖半径（供 UI 定包围盒余量，避免网格描边被裁）。
 static func extent() -> float:
+	if _SpaceModel.uses_terrain():
+		return _SpaceModel.BattlefieldMaps.CAMERA_EXTENT.x
 	return FIELD_R
 
 
@@ -359,12 +370,12 @@ static func all_cells() -> Array:
 #  内部
 # ---------------------------------------------------------------------------
 static func _q_bound() -> int:
-	return int(ceilf(FIELD_R / COL_STEP)) + 1
+	return int(ceilf(extent() / COL_STEP)) + 1
 
 
 ## r 的上界要额外加 `q_max/2`：y 的偏移是 √3R(r + q/2)，q 越大 r 的可取范围越偏。
 static func _r_bound() -> int:
-	return int(ceilf(FIELD_R / ROW_STEP + float(_q_bound()) * 0.5)) + 1
+	return int(ceilf(extent() / ROW_STEP + float(_q_bound()) * 0.5)) + 1
 
 
 ## 边的去重 key：两端点各自量化到 0.01u，再按字典序排好（与端点顺序无关）。

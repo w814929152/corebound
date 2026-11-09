@@ -117,6 +117,42 @@ const RADIAL8_DIAG_HEAVY: Array = [
 	{"name": "probe_radial_aggro", "script": "res://tests/probe_radial_aggro.gd"},
 ]
 
+# ---------------------------------------------------------------------------
+# 实机关卡验证（world）· 2026-11-09 关卡实装
+# ---------------------------------------------------------------------------
+# 地形 / 镜头导航 / 结构攻防 / 建筑卡商店 / 准备阶段 / 卡面详情 / 关卡推进……
+# 这些脚本一律 `extends SceneTree` + `call_deferred("run")`（要真帧），**进程内调不动**
+# （`run_all()` 是异步的）→ 与 radial8 闸门同款：用 OS.execute 拉起子进程收集 exit code。
+# 默认无参回归与 `-- world` 都会跑这一组。
+const WORLD_GATES: Array = [
+	{"name": "building_only", "script": "res://tests/run_building_only_shop_asserts.gd"},
+	{"name": "shop_overlay", "script": "res://tests/run_shop_overlay_asserts.gd"},
+	{"name": "shop_interaction", "script": "res://tests/run_shop_interaction_asserts.gd"},
+	{"name": "battle_start", "script": "res://tests/run_battle_start_asserts.gd"},
+	{"name": "preparation", "script": "res://tests/run_preparation_asserts.gd"},
+	{"name": "card_description", "script": "res://tests/run_card_description_asserts.gd"},
+	{"name": "placement_range", "script": "res://tests/run_placement_range_asserts.gd"},
+	{"name": "stage_implementation", "script": "res://tests/run_stage_implementation_asserts.gd"},
+	{"name": "structure_attacks", "script": "res://tests/run_structure_attacks_asserts.gd"},
+	{"name": "battlefield_maps", "script": "res://tests/run_battlefield_maps_asserts.gd"},
+	{"name": "battlefield_nav", "script": "res://tests/run_battlefield_navigation_asserts.gd"},
+]
+
+
+## 串行拉起 WORLD_GATES；任一子进程非零退出 = 闸门红。
+func _run_world_gates() -> bool:
+	print("===================================================================")
+	print("world 入口 · 关卡实装 / 地形 / 镜头 / 结构攻防 / 建筑卡商店")
+	print("===================================================================")
+	var ok := true
+	var t_all := Time.get_ticks_msec()
+	for item in WORLD_GATES:
+		var r: Dictionary = _subproc(item)
+		if int(r["code"]) != 0:
+			ok = false
+	print("world 结论：%s（%.1f s）" % ["PASS" if ok else "FAIL", (Time.get_ticks_msec() - t_all) / 1000.0])
+	return ok
+
 
 ## 聚合 `run_*_asserts.gd`（tutorial / extpack / uistyle / tlv / cardpack / campaign / combat_types）。
 ##   🔴 这些套件 `extends SceneTree`（为了 `--script` 能直跑，见各自文件头），所以聚合时
@@ -137,7 +173,8 @@ func _initialize() -> void:
 				or a == "repair8" or a == "aggro_golive" or a == "tutorial"
 				or a == "extpack" or a == "uistyle" or a == "tlv"
 				or a == "cardpack" or a == "campaign" or a == "combat_types"
-				or a == "stagewaves" or a == "firecharge" or a == "frost"):
+				or a == "stagewaves" or a == "firecharge" or a == "frost"
+				or a == "world"):
 			only = a
 
 	var ok := true
@@ -211,6 +248,10 @@ func _initialize() -> void:
 	#   V-5「0-1 每一波必中性」是整条回归链的锚点，必须每次都被检查到。
 	if only == "" or only == "stagewaves":
 		ok = _run_suite(TestSuiteStageWaves) and ok
+	# 🆕 关卡实装（2026-11-09）：地形 / 镜头 / 结构攻防 / 建筑卡商店 / 准备阶段 …
+	#   进默认回归（子进程串行，约 20–40 s）；只想跑这一组时用 `-- world`。
+	if only == "" or only == "world":
+		ok = _run_world_gates() and ok
 	# 🔴 第五刀 · 三轴合并镜像退化逐位守护（独立入口，**不进**默认无参回归 → 九段聚合读数逐位不变）。
 	if only == "aggro_golive":
 		ok = TestSuiteAggroGolive.new().run_all() and ok
@@ -236,10 +277,10 @@ func _godot_bin() -> String:
 	return OS.get_executable_path()
 
 
-## 串行拉起一个独立 SceneTree 验证脚本，收集 exit code / 耗时 / 输出。
+## 串行拉起一个独立 SceneTree 验证脚本（radial8 / world 共用），收集 exit code / 耗时 / 输出。
 ## 返回值：{"name": String, "code": int, "ms": int, "marks": int}
 ##   marks = 该子脚本输出中 "[FAIL]" 标记出现次数（进程内套件没有这一项，记 -1）。
-func _radial8_subproc(item: Dictionary) -> Dictionary:
+func _subproc(item: Dictionary) -> Dictionary:
 	var name := String(item["name"])
 	var script := String(item["script"])
 	var exe := _godot_bin()
@@ -255,14 +296,14 @@ func _radial8_subproc(item: Dictionary) -> Dictionary:
 
 	# 路径写错要响亮地失败，而不是让 Godot 静默退出 0 —— 否则聚合网会假绿。
 	if not FileAccess.file_exists(exe):
-		print("[radial8] 失败：%s · Godot 可执行文件不存在：%s" % [name, exe])
+		print("[gate] 失败：%s · Godot 可执行文件不存在：%s" % [name, exe])
 		return {"name": name, "code": 1, "ms": 0}
 	if not FileAccess.file_exists(script):
-		print("[radial8] 失败：%s · 验证脚本不存在：%s" % [name, script])
+		print("[gate] 失败：%s · 验证脚本不存在：%s" % [name, script])
 		return {"name": name, "code": 1, "ms": 0}
 
 	print("")
-	print("[radial8] ────────── %s ──────────" % name)
+	print("[gate] ────────── %s ──────────" % name)
 	var out: Array = []
 	var t0 := Time.get_ticks_msec()
 	var code := OS.execute(exe, argv, out, true)
@@ -279,7 +320,7 @@ func _radial8_subproc(item: Dictionary) -> Dictionary:
 		print(String(chunk))
 	# 注意：本行**故意不写 "[FAIL]"** —— 让 `[FAIL]` 在聚合日志里只可能来自子脚本真实断言失败，
 	# 便于 CI 直接 grep `[FAIL]` 而不被聚合器自身标签误报。
-	print("[radial8] ────────── %s 结束 · exit=%d · %d ms · 失败标记 %d 处 ──────────"
+	print("[gate] ────────── %s 结束 · exit=%d · %d ms · 失败标记 %d 处 ──────────"
 		% [name, code, dt, fail_marks])
 	return {"name": name, "code": code, "ms": dt, "marks": fail_marks}
 
@@ -290,7 +331,7 @@ func _run_repair8() -> bool:
 	print("repair8 入口 · V-7 repair_on_disable 三臂诊断扫描")
 	print("===================================================================")
 	var item := {"name": "scan_repair_on_disable", "script": "res://tests/scan_repair_on_disable.gd"}
-	var r: Dictionary = _radial8_subproc(item)
+	var r: Dictionary = _subproc(item)
 	# scan 脚本是诊断件（恒 quit 0）；非零退出 = 脚本崩溃（真信号 → 计失败）。
 	return int(r["code"]) == 0
 
@@ -331,14 +372,14 @@ func _run_radial8(include_heavy: bool) -> bool:
 
 	# ---- ② 闸门件（子进程）----
 	for item in RADIAL8_GATES:
-		var r: Dictionary = _radial8_subproc(item)
+		var r: Dictionary = _subproc(item)
 		results.append(r)
 		if int(r["code"]) != 0:
 			ok = false
 
 	# ---- ③ 轻量诊断件（子进程，恒 exit 0）----
 	for item in RADIAL8_DIAG:
-		var rd: Dictionary = _radial8_subproc(item)
+		var rd: Dictionary = _subproc(item)
 		rd["diag"] = true
 		results.append(rd)
 		if int(rd["code"]) != 0:
@@ -347,7 +388,7 @@ func _run_radial8(include_heavy: bool) -> bool:
 	# ---- ④ 重型诊断件（仅 radial8diag）----
 	if include_heavy:
 		for item in RADIAL8_DIAG_HEAVY:
-			var rh: Dictionary = _radial8_subproc(item)
+			var rh: Dictionary = _subproc(item)
 			rh["diag"] = true
 			results.append(rh)
 			if int(rh["code"]) != 0:

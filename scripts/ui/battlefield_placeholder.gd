@@ -166,6 +166,10 @@ func _draw_radial_ground() -> void:
 	var vw := float(vs.x)
 	var vh := float(vs.y)
 	draw_rect(Rect2(0.0, 0.0, vw, vh), _env_col("bg", 1.0))
+	if _SpaceModel.uses_terrain():
+		var profile: Dictionary = _SpaceModel.BattlefieldMaps.profile(_SpaceModel.active_map_id)
+		draw_rect(Rect2(Vector2.ZERO,vs),Color.html(String(profile["void"])))
+		return
 	var span := float(_SpaceModel.SPAWN_RADIUS) + 3.0
 	var sc := minf((vw - 2.0 * MARGIN) / (2.0 * span), (vh - 2.0 * MARGIN) / (2.0 * span))
 	if sc <= 0.0:

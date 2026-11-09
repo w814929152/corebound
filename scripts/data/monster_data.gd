@@ -36,6 +36,9 @@ const M_HP: Dictionary = {"Rush": 0.60, "Swarm": 0.40, "Tank": 3.00}
 const M_SPD: Dictionary = {"Rush": 4.0 / 3.0, "Swarm": 1.0, "Tank": 2.0 / 3.0}
 ## 对塔伤害系数 m_dps（🔒 T1 才消费；MVP 塔不死 → 不生效）
 const M_DPS: Dictionary = {"Rush": 0.80, "Swarm": 0.60, "Tank": 2.20}
+## 正式关卡对建筑持续攻击：每秒基础伤害乘原型系数；核心接触半径。
+const STRUCTURE_ATTACK_DPS := 20.0
+const CORE_ATTACK_R := 3.0
 
 # ---- GDD §2.5.4 Elite 波（词缀版，非新原型）----
 const ELITE_EVERY := 5              # Elite 波 = {5,10,15,20,…}

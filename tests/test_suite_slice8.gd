@@ -203,6 +203,8 @@ func _test_discard_card() -> void:
 	_add_tower(rt, 1, "Cannon", 2, 24.0, {"FireUp": 2})
 	_add_tower(rt, 2, "Arrow", 1, 12.0, {"FireUp": 1})
 	rt.player.cards["FireUp"] = true
+	# 开局 scrap = PLAYER_STARTING_SCRAP（30）；弃卡的判据是「本次不返还」，不是绝对值。
+	var scrap0 := float(rt.scrap)
 
 	var res := rt.discard_card("FireUp")
 	_check_bool("discard ok", bool(res["ok"]), true)
@@ -212,7 +214,7 @@ func _test_discard_card() -> void:
 	_check_bool("塔1 FireUp 清空", rt.player.towers[0].attach.has("FireUp"), false)
 	_check_bool("塔2 FireUp 清空", rt.player.towers[1].attach.has("FireUp"), false)
 	# 🔴 无返还（弃卡不回收）
-	_check("弃卡无返还：scrap 不变", rt.scrap, 0.0)
+	_check("弃卡无返还：scrap 不变", rt.scrap, scrap0)
 
 	# 弃不存在的卡 → 拒绝
 	var res2 := rt.discard_card("FrostUp")

@@ -74,6 +74,7 @@ func _ready() -> void:
 		#        （后者根本不装载 main.tscn）→ 金标本零扰动。
 		#    回滚：把下面这行删掉 / 改回 `Mode.PATH` 即可（一行回退，双模设计本就为此）。
 		SpaceModel.mode = SpaceModel.Mode.RADIAL
+		SpaceModel.terrain_enabled = true
 		# 🆕 扩展包（2026-11-06 · 「丰富玩法」）：把 Lance / Tesla / PirUp / ShkUp
 		#    放进**玩家路线**商店卡池（6 张 → 10 张）。
 		#    🔴 为什么安全：金标本 `ShopAI.CARD_NAMES` / `WEIGHTS` **一字不动**，
@@ -108,6 +109,7 @@ func _ready() -> void:
 		bs.wave_director.prototype_split_enabled = true
 		bs.wave_director.elite_waves_enabled = true
 		bs.wave_director.tower_aggro_enabled = true
+		bs.wave_director.structure_attacks_enabled = true
 		# 🔒 反制窗口 M-1（产品开关 · 与上面三开关同族）：战斗中即时被动复活。
 		#    🔴 一行回滚：删掉下一行即退回默认（塔死亡只走安全窗三选一）。
 		bs.wave_director.combat_revive_enabled = true
@@ -116,6 +118,7 @@ func _ready() -> void:
 		#       怪物按原型抗性分别结算（Rush 魔抗 0.20 / Tank 物抗 0.30 / Swarm 双抗 0）。
 		#    🔴 一行回滚：删掉下一行即退回旧口径。
 		bs.wave_director.combat_types_enabled = true
+		bs.wave_director.tactical_combat_enabled = CAMPAIGN_ENABLED
 		print("[boot] proto/elite/aggro/revive/combat_types 全 ON（战斗类型系统 · RADIAL 实机口径）")
 		print("[boot] SpaceModel.mode = RADIAL（径向核心围攻 · 实机默认）")
 		print("[boot] Corebound MVP · 切片4（实时商店覆盖层 + 完整商店逻辑接线）")
@@ -301,6 +304,7 @@ func _on_run_finished(won: bool, wave: int) -> void:
 		var sid: String = _campaign.current_stage()
 		if won:
 			var r: Dictionary = _campaign.on_cleared(sid)
+			_bs.controller.campaign_result = r.duplicate(true)
 			if r.get("ok", false):
 				var bits: Array = []
 				bits.append("Ember +%d" % int(r.get("ember_gained", 0)))
@@ -311,6 +315,7 @@ func _on_run_finished(won: bool, wave: int) -> void:
 				print("[boot] 关卡推进 · %s · %s" % [sid, _join(bits, " · ")])
 		else:
 			var r: Dictionary = _campaign.on_failed(sid, wave)
+			_bs.controller.campaign_result = r.duplicate(true)
 			if r.get("ok", false):
 				print("[boot] 关卡推进 · %s 失败 · Ember +%d" % [sid, int(r.get("ember_gained", 0))])
 		# 🆕 守住新地区 → 立刻把它并入卡包判据（下一局选包 / 图鉴都读同一份）。

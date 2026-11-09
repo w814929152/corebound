@@ -48,6 +48,12 @@
 | MC `seed` / 局数 | **20260930** / **300** | |
 | 塔数值表 | `scripts/data/tower_data.gd` | 🔴 SSOT，禁止在引擎侧二次定义 |
 
+> 🆕 **2026-11-09 玩家路线口径（非金标本，模拟器/Card-Text 常量不读）**：
+> `shop_runtime.EFFECT_CARDS_ENABLED = false`（商店只卖建筑卡，基础池 3 张）/ 开局无起手塔 +
+> `mvp_config.PLAYER_STARTING_SCRAP = 30` / `wave_director.structure_attacks_enabled`（怪物攻塔攻核）/
+> `wave_director.tactical_combat_enabled`（逐塔真实判距）/ `SpaceModel.terrain_enabled`（十关地形）。
+> 每条都是单行回滚开关，只影响窗口模式玩家路线；`wave_sim` / `shop_ai` / 金标本一字未动。
+
 ---
 
 ## 2. 🔴 浮点可移植性（N1 / N2 —— 全工程强制，ADR-0002 已拍板）
@@ -169,7 +175,7 @@ for p in per_tower: subtotal += float(p["dps"])
 ```bash
 GODOT="/c/Users/junhewang/Downloads/Godot_v4.7.2-stable_win64.exe/Godot_v4.7.2-stable_win64_console.exe"
 
-# 全量（切片1–5，含 MC 300 局，约 1.5 分钟）
+# 全量（切片1–8 + T1 仇恨 + world 关卡实装 11 套，含 MC 300 局，约 4 分钟）
 "$GODOT" --headless --path D:/roguedemo --script res://tests/run_tests.gd
 
 # 只跑切片N（注意：参数必须以 "slice" 开头才会被过滤，写 "-- only=slice5" 会跑全量）
@@ -190,11 +196,13 @@ GODOT="/c/Users/junhewang/Downloads/Godot_v4.7.2-stable_win64.exe/Godot_v4.7.2-s
 "$GODOT" --headless --path D:/roguedemo --script res://tests/run_slice5_scene_smoke.gd
 # 切片5 窗口截帧（真出图 → docs/phase3/slice5-wave.png；加 "-- split" 出减速态分屏帧）
 "$GODOT" --path D:/roguedemo --script res://tests/run_slice5_scene_smoke.gd
+# 🆕 2026-11-09 关卡实装闸门（11 个真帧脚本，子进程串行，约 20 s；默认回归已含）
+"$GODOT" --headless --path D:/roguedemo --script res://tests/run_tests.gd -- world
 ```
 
 对照检查项：
 
-- [ ] 退出码 **0**，且日志里九段汇总齐全：`通过 222 项`（切片1）/ `通过 2228 项`（切片2）/ `通过 142 项`（切片3）/ `通过 123 项`（切片4）/ `通过 302 项`（切片5）/ `通过 41 项`（切片6）/ `通过 31 项`（切片7）/ `通过 92 项`（切片8，含续3 可玩 MVP 胜负结算 21 项）/ `T1 仇恨 汇总：通过 56 项`（T1 塔死亡玩法批次，含仇恨激活 + 塔死亡 + 修复入口）
+- [ ] 退出码 **0**，且日志里九段汇总齐全：`通过 222 项`（切片1）/ `通过 2228 项`（切片2）/ `通过 142 项`（切片3）/ `通过 121 项`（切片4，2026-11-09 建筑卡商店口径）/ `通过 302 项`（切片5）/ `通过 41 项`（切片6）/ `通过 31 项`（切片7）/ `通过 92 项`（切片8，含续3 可玩 MVP 胜负结算 21 项）/ `T1 仇恨 汇总：通过 234 项`（T1 塔死亡玩法批次）/ `通过 115 项`（扩展包）/ `通过 138 项`（UI 样式）/ `通过 172 项`（卡包）/ `通过 148 项`（关卡推进）/ `通过 101 项`（波表）/ `world 结论：PASS`（11 套关卡实装）
 - [ ] 定稿判据链 16 条逐条对上（A 起飞 W8 / B 起飞 W12 / B÷A **0.458** / cross **16-4** / flips **1** /
       三阶段健康 A **2.4** / B **3.0** 单调上升）
 - [ ] MC：**A 48.7%（146/300）/ B 91.0%（273/300）**，中位起飞波 A W9.0 / B W15.0；〔🔴 2026-11-08 重签：有效 DPS = 伤害 × 攻速 口径，旧值 A 69.3%（208/300）· B 91.3%（274/300）· W8 / W13 作废；A 红线随之 60% → 40%（实测 −3.00 SE），见 `docs/phase3/qg-radial/a-side-balance-adjudication.md` §7〕
@@ -211,6 +219,8 @@ GODOT="/c/Users/junhewang/Downloads/Godot_v4.7.2-stable_win64.exe/Godot_v4.7.2-s
 - [ ] 🟢 切片8续3·可玩 MVP 胜负结算额外确认：核心 HP **单一数据源**（`player.core_hp`，`WaveDirector` 漏怪扣血写回 player / `ShopRuntime` 只读 / `grant_wave_result` 不再二次扣血，AC-S8-9）；**胜利** = 打完 W20（`MAX_WAVE=20`）且核心未归零 → `run_won` 信号 + `victory` 标志（🔴 变量名不能与 signal `run_won` 同名 → 用 `victory`；🔴 判胜放在 `last_result` 记录真实 kills/scrap **之后** → W20 逐位等价零扰动，AC-S8-10b）；**失败** = 核心归零 → `run_lost`（E-W3 实时，AC-S8-10a）；结算覆盖层 `result_overlay.gd`（CanvasLayer 150 纯展示 + 重开/退出）；HUD 终局状态行 + 核心 HP 条低血量告警红
 - [ ] 🔒 T1 塔死亡玩法批次额外确认：`wave_sim.gd` / `run_loop.gd` / `shop_ai.gd` **零修改**（仇恨走独立镜像 `wave_sim_aggro.gd` / `run_loop_aggro.gd`，金标本证据链纯净）；`tower_aggro_enabled` 默认 false → `aggro=false` 与金标本逐位等价（AC-T1-3/4）；**仇恨只改路径不改 DPS 分配**（DPS 分配口径不变，只改怪物态 + 塔损耗）；塔状态**单一数据源 = `player.towers`**（实时版与批处理镜像都改 `player.towers[i].hp/disabled` → `dps_only` 重算一致 → 逐位相同，AC-T1-9；曾踩"双份塔状态"坑已修）；Q-T2 塔 HP `HP0×h^0.6`（复用 `tower_stack_exp`）· Q-T3 机会型仇恨 `AGGRO_R=9.0`/`AGGRO_EXIT=10.8` 迟滞带 · Q-T4 Disabled 中间态（断输出不断链，仍占塔位供 `h_j`）；**修复入口 Q-T4/Q-T8**（`repair_tower` 修复 `ceil(0.30×累计投入)` 回满 HP 保留装配卡 · `salvage_disabled_tower` 被动拆除返还 0% · 放着不管 no-op · E-T4 永不死锁 · E-T2 `list_disabled_towers` 合并弹窗，AC-T1-10~12）；✅ **修复入口 UI 弹窗已落地（方案B 重决策面板入口）**：安全窗 `_heavy_panel` 加「处置受损塔 (N)」按钮（有受损塔才亮 + 红点计数，SR-R2 只标事实）→ `repair_requested` 信号（TimeDirector 信号总线）→ `ShopController._show_repair_dialog` 弹多塔处置弹窗 `disabled_tower_dialog.gd`（CanvasLayer 140 自定义 Control，每座一行三选一：修复/被动拆除/放着不管；修复按钮积分不足置灰 E-T4；处置后 `refresh` 重算剩余列表，空则自动关闭；数据源 `snapshot().slots[].disabled`，AC-T1-15 守护）；🔴 headless 闭包标量回写坑 → dps 用单元素 Array 可变容器（引用捕获）；✅ **V-1 ATTRITION=1.50 + WARMUP=2 起手保护已定稿**（300 局 MC 扫参，AC-T1-13）；✅ **V-2 起飞率 A 破线已诊断定稿**（`protect_core` 对照：A 无保护 0.393 / A 保主力塔 0.583 / B 0.883；根因 = 单核零冗余 × 全暴露位 × AI 不保塔三重结构性碰撞，非数值失衡；处置 = 承认单核高风险画像为设计预期，不动红线/金标本，AC-T1-14）；✅ **肉盾塔 Bulwark 玩法② 已诊断定稿（2026-10-07，涌现策略 + ①理想肉盾建模）**：肉盾塔 = 涌现策略（机制已存在：仇恨选最近未 Disabled 塔 → 暴露位塔先挨打、怪物锁定后停下不前进不漏怪 → 锁仇恨保后排；缺口"肉盾身份"HP/DPS 脱钩在涌现策略下**不新增卡种**，金标本零改动）；诊断参数 `bulwark` 贯穿 `wave_sim_aggro._relocate_carry_to_safe`/`run_loop_aggro`（默认 false 金标本零改动，AC-T1-16 守护重定位 + 零改动）；`tests/scan_bulwark.gd` 300 局：A 无保护 0.393 / A 隐身 0.583 / **A 理想肉盾 0.623（≥0.60 破线）** / B 0.883 → 保塔策略对单核流有效、肉盾塔玩法成立（玩家能救 A），真放安全位 DPS 代价有限（Δ+0.04）；**可读性 UI 已落地（R-T4）**：战斗态在正被仇恨锁定的塔上标橙环 `monster_layer.gd :: _draw_under_attack`（数据源 snapshot `state==AGGRO_TOWER`+`target_slot`；金标本口径零绘制）；V-4 定稿：暴露度惩罚不过重，定稿数值零改动）；✅ **⑤ Sapper 精英玩法⑤ 已定稿（2026-10-07，「锁定增伤流」）**：Sapper = Elite 波（每 5 波）里沿波次均匀铺开的精英怪 —— **出生即锁「全局最近的未 Disabled 塔」、无视 `AGGRO_R=9.0` 距离门槛、锁定后不因距离退出（committed）、对塔伤害 ×3（`SAPPER_DMG_MULT=3.0`）**；复用现有 `AGGRO_TOWER` 仇恨态**不新增移动代码**（三选一取「锁定增伤流」，最贴 GDD「或对塔伤害 ×3」分支）；🔴 金标本零改动：由 `elite_waves_enabled` 诊断开关控制（MVP 恒 false），Sapper 由 `is_elite_wave` 独立驱动（不依赖 MVP 恒 false 的 `elite`/`_elite_flags`）→ 实时版 `WaveDirector` 与批处理镜像 `WaveSimAggro` 逐位对齐（同一 `elite_indices` 算法，AC-T1-17 实时版 5 项 + AC-T1-18 批处理镜像 4 项守护）；`tests/scan_sapper.gd` 300 局四组对照：**A 无 0.393 / A 有 0.400（Δ=+0.007）· B 无 0.883 / B 有 0.857（Δ=−0.027）** → Sapper 惩罚温和（Δ 均在 MC 噪声内 ≈ 中性，远优于 −0.10 红线）→ ×3 增伤不过猛、玩法成立、定稿数值零改动；可读性靠 Elite 波预警 + 暴露度 UI（玩法①）→ 玩家预判保塔） **〔🔴 勘误 2026-10-12〕上列 `scan_sapper` 300 局 `ΔA=+0.007 / ΔB=−0.027` 读数失效**（来自 `snap/rest` 修复前 + 镜像保真度修复前；且为 **六槽 PATH** 口径）→ 权威口径 = 忠实镜头 `scan_sapper` N=300 **`ΔB=−0.077`（温和档）**、`×3` 不动；新旧读数**口径不同、不可相减**。详见 `docs/phase3/sapper-balance-review.md`（v2）**；✅ **③ 献祭 Salvage Rite 玩法③ 已定稿（2026-10-08，StackCap+ 增益 · 收益∝投入）**：献祭 = 安全窗拆塔第二出口（与回收二选一）—— 返还 **0%** + 卡全销毁 + 塔位释放，换 `player.stackcap_bonus += floor(投入/10)`（收益 ∝ 投入 = earned，刷塔要真花钱 → 天然防刷，无需额外计数闸）。StackCap+ 落 `damage_engine.dps_only` 加到每塔 `caps`，**层数最集中的主塔受益最多**（`pow_sc` 在 `lv>cap` 才衰减）→ 天然耦合单核流（卖副塔喂主塔上限）+ 补上"多塔→单核反向转型"正当出口。🔴 金标本零改动：AI 不献祭（`shop_ai` 不读不写 `stackcap_bonus`）→ bonus 恒 0 → `caps` 逐位不变 → DPS 零影响；实时路线 `shop_runtime.salvage_rite`/`preview_rite`（安全窗校验 + 卡销毁 + 返还 0% + bonus 累加）。📊 `tests/scan_rite.gd` 300 局扫 `stackcap_bonus ∈ {0,5,10,15,25}` × A/B [数字回填] → [定稿回填]。单测 AC-T1-19（7 项：preview/执行/收益∝投入/DPS 提升/金标本零改动）守护逻辑层）
 - [ ] 🔴 **玩家路线发牌池口径**（D-4/D-2，v1.3）：金标本 `CARD_NAMES` 是 **7 张**（AI 路线，含 RerollD，MC 来源，不动）；**玩家路线发牌池 = 7 − RerollD = 6 张**（`shop_runtime.player_card_names()` 由金标本派生，有放回抽 3，恒 3 位可重复）。⚠️ 别与**设计卡池 12 张**（card-system §7.3，13→12 移除 G2 `SupplyChain`）混淆——前者是金标本运行时实际抽的 6 张，后者是设计意图的 12 张，两个口径都对，只是作用层不同
+- [ ] 🆕 **2026-11-09 关卡实装**：默认回归必须出现 `world 结论：PASS`（11 套：建筑卡商店 / 商店覆盖层 / 商店交互 / 开局 / 准备阶段 / 卡面详情 / 放置射程 / 关卡实装 / 结构攻防 / 地形 / 镜头）；切片4 与扩展包/卡包/UI 的池与入口断言已同步到「建筑卡商店 + 无起手塔 + 30 废料」口径（切片4 现为 **121 项**、T1 为 **234 项**）
+- [ ] 🟡 **已知红（HEAD `7b3ffe4` 干净工作树复现，非本轮引入，待平衡拍板）**：`attrition8` 三条 —— `T-D′` 全程塔死 0.0（应 0.150）/ `T-A1` hit 0.0600（阈值 0.12）/ `T-A2` hit_fail 0.0845（阈值 0.30）。**未下调阈值**；处理方式见 `docs/phase6/stage-implementation.md` §验证
 - [ ] 完整输出存档到 `docs/phase3/sliceN-headless-run.log`
 
 ---
@@ -253,3 +263,6 @@ GODOT="/c/Users/junhewang/Downloads/Godot_v4.7.2-stable_win64.exe/Godot_v4.7.2-s
 | 切片4 拍板留档（设计侧） | `design/gdd/shop-reroll.md` §9.2（v1.3，D-1~D-7 拍板）· `design/gdd/card-system.md` A4/§7.3（v1.1.6，D-4 卡池 13→12） |
 | 口径 / 浮点决策记录 | `docs/architecture/adr-0001-kr-tier-vs-flat.md`、`adr-0002-float-portability.md` |
 | 引擎 | `scripts/engine/{damage_engine,wave_sim,shop_ai,run_loop,stats,softcap,mvp_config,player_state,sim_player,py_random,fp_pow,fp_sum,time_state_machine}.gd` |
+| 🆕 关卡实装（2026-11-09） | `docs/phase6/battlefield-redesign.md`（十关地形 + 镜头）· `docs/phase6/monster-structure-attacks.md`（怪物攻塔攻核）· `docs/phase6/stage-implementation.md`（玩家路线 / 战术战斗 / 准备阶段 / 门禁读数） |
+| 🆕 world 闸门 11 套 | `tests/run_building_only_shop_asserts.gd` · `run_shop_overlay_asserts.gd` · `run_shop_interaction_asserts.gd` · `run_battle_start_asserts.gd` · `run_preparation_asserts.gd` · `run_card_description_asserts.gd` · `run_placement_range_asserts.gd` · `run_stage_implementation_asserts.gd` · `run_structure_attacks_asserts.gd` · `run_battlefield_maps_asserts.gd` · `run_battlefield_navigation_asserts.gd`（`run_tests.gd :: WORLD_GATES`） |
+| 🟡 已知红（待拍板） | `tests/run_slice_attrition8.gd` 的 T-D′ / T-A1 / T-A2（HEAD `7b3ffe4` 复现，属数值再平衡后的镜像指标漂移） |

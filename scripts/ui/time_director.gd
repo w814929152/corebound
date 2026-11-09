@@ -154,11 +154,24 @@ func exit_placement(confirmed: bool, slot: int = -1) -> void:
 		emit_signal("placement_confirmed", slot)
 	else:
 		emit_signal("placement_cancelled")
+	finish_placement()
+
+
+## 已由世界坐标入口提交的放置，只退出模式，不再次提交/取消卡牌。
+func finish_placement() -> void:
 	if sm.exit_placement():
 		_apply_clock(false)
 
 
 ## 波次开始（WS-1）：n ← 0、预算 ← 20.0、发初始商店（pity 由下游做）
+## 开局准备不发 wave_started，刷怪器保持 IDLE。
+func prepare_run(first_wave: int = 1) -> void:
+	sm.wave = first_wave - 1
+	sm.budget_left = sm.budget_max
+	sm.wave_end(sm.wave)
+	_apply_clock(true)
+
+
 func wave_start(w: int) -> void:
 	sm.wave_start(w)
 	_apply_clock(true)
@@ -243,3 +256,11 @@ func snapshot() -> Dictionary:
 		"focus_index": focus_index,
 		"last_error": sm.last_error(),
 	}
+
+
+## Tab 是全局商店开关，先于 GUI 焦点导航处理，购买后按钮获焦也能关闭。
+func _input(event: InputEvent) -> void:
+	if event is InputEventKey and event.keycode == KEY_TAB and event.pressed and not event.echo:
+		if sm != null and sm.state != _TSM.State.PLACEMENT_MODE:
+			toggle_shop()
+			get_viewport().set_input_as_handled()

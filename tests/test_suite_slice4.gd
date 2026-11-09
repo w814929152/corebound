@@ -133,18 +133,15 @@ func _mk_runtime(seed_value: int, path: String = "B"):
 	return rt
 
 
-## 起手只有 Arrow（中性塔）→ 主塔无 Tag → P3 口径下 pity 不生效。
-## 建起 `ctype` 塔并升到 h=2 → 主塔变它 → pity 武装。
-func _arm_pity(rt, ctype: String = "Cannon") -> void:
-	rt.scrap = 400.0
+## 🔴 新口径（2026-11-09）：开局空场（无起手塔）。买一张建筑卡并落到指定格点。
+##   同格再落一次 = 升级。返回落子是否成功。
+func _place_tower(rt, ctype: String, cell: Vector2i) -> bool:
 	rt.offers = [ctype]
-	rt.buy(0)
-	rt.begin_placement(0)
-	rt.confirm_placement(1)          # 新建 @1 h=1
-	rt.offers = [ctype]
-	rt.buy(0)
-	rt.begin_placement(0)
-	rt.confirm_placement(1)          # 升级 → h=2 → 主塔 = ctype
+	if not rt.buy(0):
+		return false
+	if not rt.begin_placement(0):
+		return false
+	return rt.confirm_placement_at(_BuildGrid.cell(cell.x, cell.y))
 
 
 # ===========================================================================
@@ -152,46 +149,52 @@ func _arm_pity(rt, ctype: String = "Cannon") -> void:
 # ===========================================================================
 func _test_pity_initial_shop() -> void:
 	_log("")
-	_log("--- [1] pity 起飞保底：**仅每波初始商店**保底（GDD §2.8.1 · A1/P1/P3/P4）---")
+	_log("--- [1] 建筑卡商店：无起手塔 / 效果卡停用 / 无保底（2026-11-09 口径）---")
 
-	# ---- P3：起手只有中性塔 Arrow → 主塔无 Tag → 不保底 ----
+	# ---- P3：开局只有核心 + 起始废料，没有起手塔 ----
 	var rt0 = _mk_runtime(20260930)
-	_check_int("P3 起手塔数 = 1（Arrow@0）", rt0.player.towers.size(), 1)
-	_check_str("P3 主塔无 Tag → pity 不生效", rt0.pity_card_name(), "")
+	_check_int("P3 起手塔数 = 0（核心 + 起始废料）", rt0.player.towers.size(), 0)
+	_check("P3 起始废料 = PLAYER_STARTING_SCRAP", rt0.scrap, float(_Cfg.PLAYER_STARTING_SCRAP))
+	_check_str("P3 场上无塔 → pity 不生效", rt0.pity_card_name(), "")
 
 	# ---- P4：场上无塔 → 不保底 ----
 	rt0.player.towers = []
 	_check_str("P4 场上无塔 → pity 不生效", rt0.pity_card_name(), "")
 
-	# ---- P1：主塔 = Cannon(fire) → pity = FireUp，且**每次初始发牌必含** ----
+	# ---- P1：主塔有 Tag 也不保底（效果卡停用 → pity_force 恒 null）----
 	var rt = _mk_runtime(20260930)
-	_arm_pity(rt, "Cannon")
-	_check_int("P1 主塔塔位 = 1（Cannon h=2）", rt.core_tower_slot(), 1)
-	_check_str("P1 主塔有 Tag → pity = FireUp", rt.pity_card_name(), "FireUp")
+	_check_bool("P1 落 Cannon 到空场", _place_tower(rt, "Cannon", Vector2i(4, -2)), true)
+	_check_bool("P1 同格升级到 h=2", _place_tower(rt, "Cannon", Vector2i(4, -2)), true)
+	_check_int("P1 主塔层数 = 2", int(rt.player.towers[0].h), 2)
+	_check_str("P1 主塔有 Tag → 效果卡停用仍不保底", rt.pity_card_name(), "")
 
 	var miss := 0
+	var bad_kind := 0
 	var n_deals := 200
 	for i in n_deals:
 		rt.start_wave(2 + i)
-		if not rt.offers.has("FireUp"):
+		if rt.offers.has("FireUp"):
 			miss += 1
-	_tally("A1 每波初始商店必含 ≥1 张主塔同 Tag 卡（%d 次发牌，漏 %d 次）" % [n_deals, miss],
-		miss == 0)
+		for nm in rt.offers:
+			if _ShopRuntime._card_kind(String(nm)) != "tower":
+				bad_kind += 1
+	_tally("A1 %d 次初始发牌不含效果卡 FireUp（漏 %d 次）" % [n_deals, miss], miss == 0)
+	_check_int("A1 %d 次初始发牌全部是建筑卡" % n_deals, bad_kind, 0)
 
-	# ---- P1 的另一半：Frost 主塔 → pity = FrostUp ----
+	# ---- 另一条支线：Frost 主塔同样不保底 ----
 	var rt2 = _mk_runtime(20260930)
-	_arm_pity(rt2, "Frost")
-	_check_str("P1 Frost 主塔 → pity = FrostUp", rt2.pity_card_name(), "FrostUp")
+	_check_bool("P1 Frost 主塔可落地", _place_tower(rt2, "Frost", Vector2i(-4, 2)), true)
+	_check_str("P1 Frost 主塔 → 效果卡停用不保底", rt2.pity_card_name(), "")
 
-	# ---- 🟡 P2 登记：金标本未实现「主塔无 Tag 但全场有 Tag 投入 → 保 argmax_Tag」----
+	# ---- 🟡 登记：效果卡实现仍在（仅停用）；中性塔仍可接收任意 Tag 卡 ----
 	var rt3 = _mk_runtime(20260930)
+	_check_bool("[登记] 先落一座中性 Arrow", _place_tower(rt3, "Arrow", Vector2i(4, -2)), true)
 	rt3.offers = ["FireUp"]
 	rt3.scrap = 100.0
 	_check_bool("[登记] 中性塔能接收任意 Tag 卡（D-8①）→ 买 FireUp", rt3.buy(0), true)
-	_check_str("🟡 P2 金标本未实现：全场有 fire 投入但主塔是中性塔 → 仍不保底",
-		rt3.pity_card_name(), "")
-	_log("   [info] pity 卡由 `ShopAI.pity_card()` 产出（金标本 S2 判据），未改写；")
-	_log("          补 P2 会改变 MC 发牌序列 → 不许擅改，已写进回报")
+	_check_str("🟡 买到效果卡也不触发保底", rt3.pity_card_name(), "")
+	_log("   [info] 效果卡由 `EFFECT_CARDS_ENABLED=false` 暂停售卖（实现保留）；")
+	_log("          恢复时把该常量改 true，玩家池即回到 6 张混合池口径")
 
 
 # ===========================================================================
@@ -199,34 +202,31 @@ func _test_pity_initial_shop() -> void:
 # ===========================================================================
 func _test_reroll_is_pure_random() -> void:
 	_log("")
-	_log("--- [2] 手动 reroll 纯随机（不含任何保底逻辑，±3 个百分点）---")
+	_log("--- [2] 手动 reroll：纯随机（无保底）· 只出建筑卡 ---")
 	var rt = _mk_runtime(20260930)
-	_arm_pity(rt, "Cannon")
-	_check_str("[前置] pity 已武装（初始商店会保底 FireUp）", rt.pity_card_name(), "FireUp")
-
-	# 纯随机基线：P(3 次抽取中至少 1 张 FireUp) = 1 − (1 − w)^3
-	# 🔴 D-4（v1.3）：玩家路线卡池已移除 RerollD（0.095）→ 剩余 6 张权重**归一**
-	#   （`PyRandom.choices` 按 `total = Σw` 归一，control-manifest P3）
-	#   → w(FireUp) = 0.17 / (1 − 0.095) = 0.1878，基线由 0.4282 抬到 0.4643。
-	var p_fire := float(_ShopAI.WEIGHTS["FireUp"]) / _ShopRuntime.player_pool_total()
-	var base := 1.0 - pow(1.0 - p_fire, 3.0)
-	_log("   [info] 权重 FireUp = %.6f（玩家池归一后，总权重 %.6f）→ 纯随机基线 = %.6f"
-		% [p_fire, _ShopRuntime.player_pool_total(), base])
 
 	var n := 6000
-	var hits := 0
+	var bad := 0
+	var seen := {}
+	var slot_seen: Array = [{}, {}, {}]
 	for i in n:
-		rt.offers = ["Arrow", "Cannon", "Frost"]   # 3 位、不含 FireUp、无锁定
+		rt.offers = ["Arrow", "Cannon", "Frost"]
 		rt.lock_index = -1
 		rt.scrap = 1.0e9
-		rt.reroll()
-		if rt.offers.has("FireUp"):
-			hits += 1
-	var rate := float(hits) / float(n)
-	_log("   [info] 实测 %d 次 reroll，FireUp 出现率 = %.6f（基线 %.6f）" % [n, rate, base])
-	# ±3 个百分点 ≈ ±4.7σ（N=6000，σ≈0.0064）
-	_check("A2 reroll 目标 Tag 出现率 = 纯随机基线（±3pp）", rate, base, 0.07)
-	_tally("A2 reroll 绝非每刷必中（出现率 < 0.60）", rate < 0.60)
+		if not rt.reroll():
+			bad += 1
+			continue
+		for k in 3:
+			var s := String(rt.offers[k])
+			seen[s] = true
+			slot_seen[k][s] = true
+			if _ShopRuntime._card_kind(s) != "tower":
+				bad += 1
+	_check_int("A2 %d 次 reroll 全部成功且只出建筑卡（越界 %d）" % [n, bad], bad, 0)
+	_check_int("A2 刷新覆盖全部 3 张建筑卡", seen.size(), 3)
+	for k in 3:
+		_tally("A2 商品位 %d 出现过多种卡（非恒定发牌）" % k, slot_seen[k].size() >= 2)
+	_log("   [info] 池 = Arrow / Cannon / Frost（效果卡停用），刷新不保底、与原随机口径一致")
 
 
 # ===========================================================================
@@ -330,19 +330,17 @@ func _test_reroll_cost() -> void:
 
 
 # ===========================================================================
-# 5. 三类卡购买后分流路径（GDD §2.7）
+# 5. 建筑卡购买与落子（GDD §2.7 · 效果卡停用后的现行口径）
 # ===========================================================================
 func _test_three_way_routing() -> void:
 	_log("")
-	_log("--- [5] 三类卡分流：建筑卡→待放置队列 / 单塔效果卡→投主塔 / 全局卡→立即生效 ---")
+	_log("--- [5] 建筑卡分流：买 → 待放置队列 → 坐标落子（效果卡停用）---")
 	var rt = _mk_runtime(2024)
 	rt.scrap = 300.0
 
-	# ---- 价格（GDD §3.1 A1：12 / 9 / 10）----
-	rt.offers = ["Cannon", "FireUp", "ScrapUp"]
+	# ---- 价格（GDD §3.1 A1：建筑卡 12）----
+	rt.offers = ["Cannon"]
 	_check("建筑卡价格 = 12", rt.price_at(0), float(_Cfg.PRICE_STRUCTURE))
-	_check("单塔效果卡价格 = 9", rt.price_at(1), float(_Cfg.PRICE_TOWER_EFFECT))
-	_check("全局效果卡价格 = 10", rt.price_at(2), float(_Cfg.PRICE_GLOBAL_EFFECT))
 
 	# ---- ① 建筑卡 → 待放置队列（买 / 放解耦；不占塔位、不占强化槽）----
 	rt.offers = ["Cannon"]
@@ -351,53 +349,47 @@ func _test_three_way_routing() -> void:
 	_check("扣 12 分", rt.scrap, scrap0 - 12.0)
 	_check_int("① 入待放置队列", (rt.pending as Array).size(), 1)
 	_check_str("① 队列里是 Cannon", String(rt.pending[0]), "Cannon")
-	_check_int("① 买的时候**不落塔**（塔数仍为 1）", rt.player.towers.size(), 1)
-	_check_int("① 不占强化槽（仍只有 Arrow 一种卡）", rt.player.cards.size(), 1)
+	_check_int("① 买的时候**不落塔**（空场仍 0 座）", rt.player.towers.size(), 0)
+	_check_int("① 不占强化槽（cards 仍空）", rt.player.cards.size(), 0)
 
-	# ---- I-8 放置落子：空塔位 = 新建 ----
+	# ---- I-8 放置落子：空场首格 = 新建 ----
+	var p := _BuildGrid.cell(4, -2)
 	_check_bool("进入放置（队列下标 0）", rt.begin_placement(0), true)
-	_check_str("塔位 1 是新建", rt.placement_mode_for(1), "new")
-	_check_bool("落子塔位 1", rt.confirm_placement(1), true)
-	_check_int("落子后塔数 = 2", rt.player.towers.size(), 2)
+	_check_str("空场首格 = 新建", String(rt.placement_mode_at(p)["mode"]), "new")
+	_check_bool("落子成功", rt.confirm_placement_at(p), true)
+	_check_int("落子后塔数 = 1", rt.player.towers.size(), 1)
 	_check_int("队列清空", (rt.pending as Array).size(), 0)
-	_check_str("塔位 1 是 Cannon", String(rt.player.towers[1].ctype), "Cannon")
-	_check_int("新建层数 h = 1", int(rt.player.towers[1].h), 1)
+	_check_str("落下的塔是 Cannon", String(rt.player.towers[0].ctype), "Cannon")
+	_check_int("新建层数 h = 1", int(rt.player.towers[0].h), 1)
 
-	# ---- 再买一张 → 同塔位升级；异原型塔位非法（不落子、不退卡、不退款）----
+	# ---- 再买一张 → 同格升级；异原型同格非法（不落子、不退卡）----
 	rt.offers = ["Cannon"]
 	rt.buy(0)
 	rt.begin_placement(0)
-	_check_str("同原型塔位 = 升级", rt.placement_mode_for(1), "upgrade")
-	_check_str("异原型塔位 = 非法", rt.placement_mode_for(0), "invalid")
-	_check_bool("非法目标不落子", rt.confirm_placement(0), false)
+	_check_str("同格同原型 = 升级", String(rt.placement_mode_at(p)["mode"]), "upgrade")
+	_check_bool("升级落子", rt.confirm_placement_at(p), true)
+	_check_int("升级后 h = 2", int(rt.player.towers[0].h), 2)
+	_check_int("升级不新增塔（仍 1 座）", rt.player.towers.size(), 1)
+
+	rt.offers = ["Frost"]
+	rt.buy(0)
+	rt.begin_placement(0)
+	_check_str("同格异原型 = 非法", String(rt.placement_mode_at(p)["mode"]), "invalid")
+	_check_bool("非法目标不落子", rt.confirm_placement_at(p), false)
 	_check_int("非法落子后卡仍在队列", (rt.pending as Array).size(), 1)
-	_check_bool("升级落子", rt.confirm_placement(1), true)
-	_check_int("升级后 h = 2", int(rt.player.towers[1].h), 2)
-	_check_int("取消放置不退款、不退卡（队列保持）", (rt.pending as Array).size(), 0)
+	_check_bool("换一格可落（Frost@另一格）", rt.confirm_placement_at(_BuildGrid.cell(-4, 2)), true)
+	_check_int("落子后塔数 = 2", rt.player.towers.size(), 2)
+	rt.pending = []
+	rt.pending_cost = []
+	rt.cancel_placement()
 
-	# ---- ② 单塔效果卡 → 默认投主塔 ----
-	_check_int("主塔 = Cannon（塔位 1）", rt.core_tower_slot(), 1)
-	rt.offers = ["FireUp"]
-	_check_str("H8 有合法宿主（fire 卡投 fire 塔）", rt.legal_note(0), "")
-	_check_bool("买单塔效果卡 FireUp", rt.buy(0), true)
-	_check_bool("② 装配到主塔", rt.player.towers[1].attach.has("FireUp"), true)
-	_check_int("② 层数 = 1", int(rt.player.towers[1].attach["FireUp"]), 1)
-	_check_int("② 占 1 个强化槽（Arrow + FireUp = 2）", rt.player.cards.size(), 2)
-
-	# ---- D-8① / E9 ----
-	# 🟡 I-7（切片8）：主塔 fire 拒 FrostUp 但场上有中性 Arrow 可收 → D-TB-6 强制点选
-	#    （legal_note = "选择宿主塔"，1 步购买置灰，需先点选合法副塔再买）。
-	rt.offers = ["FrostUp"]
-	_check_str("D-8① 主塔 fire 拒 FrostUp 但有中性塔可收 → D-TB-6 强制点选", rt.legal_note(0), "选择宿主塔")
-	_check_bool("D-8① 1 步购买置灰（需先点选宿主）", rt.buy(0), false)
+	# ---- 效果卡停用：无处可投（手动塞进商店也置灰）----
 	var rt9 = _mk_runtime(2024)
-	rt9.player.towers = []
 	rt9.offers = ["FireUp"]
-	_check_str("E9 场上无塔 → 单塔效果卡置灰", rt9.legal_note(0), "需先建造一座塔")
+	_check_str("E9 效果卡停用 → 场上无塔时置灰", rt9.legal_note(0), "需先建造一座塔")
 
 	# ---- E1：塔数填满且无同原型 → 建筑卡无合法目标 ----
 	# 🆕 自由摆放：闸门是 `tower_cap`（塔数上限），**不是** `n_slots`（金标本槽位数）。
-	#   改造前两者是同一个数（6）；位置自由之后槽位数随便增长，塔数上限才是玩法旋钮。
 	#   这里把上限压到 3 便于构造，落子走**坐标**（`confirm_placement_at`）。
 	var rt1 = _mk_runtime(2024)
 	rt1.cfg["tower_cap"] = 3
@@ -408,9 +400,7 @@ func _test_three_way_routing() -> void:
 		rt1.offers = ["Arrow"]
 		rt1.buy(0)
 		rt1.begin_placement(0)
-		# 沿 +X 方向逐格撒：轴向 r = -q/2 时 y 恒等于 core.y，q 走偶数步就是「正右方相邻格」
-		# 🔴 不要写成"core + (6 + 2.5k, 0)"：六边形吸附会把任意偏移拉到最近格心，
-		#    间距 2.5 与列距 2.325 错开 → 两个 k 可能吸附到同一格（然后被当成升级，塔数填不满）。
+		# 沿 +X 方向逐格撒：六边形吸附会把任意偏移拉到最近格心，必须用轴向坐标取格心。
 		var gp: Vector2 = _BuildGrid.cell(4 + 2 * k, -2 - k)
 		rt1.confirm_placement_at(gp)
 		k += 1
@@ -420,16 +410,10 @@ func _test_three_way_routing() -> void:
 	_tally("E1 建筑卡无合法目标 → 置灰", rt1.legal_note(0) != "")
 	_check_bool("E1 买不了", rt1.buy(0), false)
 
-	# ---- ③ 全局效果卡 → 立即生效 ----
-	rt.offers = ["ScrapUp"]
-	var im0 := float(rt.player.income_mult)
-	_check_bool("买全局效果卡 ScrapUp", rt.buy(0), true)
-	_check("③ 立即生效：income_mult +0.20", float(rt.player.income_mult), im0 + 0.20)
-
 	# ---- ✅ D-4（shop-reroll §9.2 v1.3）：玩家路线发牌池**移除 RerollD**（空卡，买后 +0%）----
 	var pool := _ShopRuntime.player_card_names() as Array
 	_tally("D-4 RerollD **不在**玩家路线发牌池（%s）" % str(pool), not pool.has("RerollD"))
-	_check_int("D-4 玩家池 = 金标本 7 张 − RerollD = 6 张", pool.size(), 6)
+	_check_int("D-4 玩家池 = 3 张建筑卡（效果卡停用）", pool.size(), 3)
 	var n_deal := 2000
 	var n_rd := 0
 	var rtp = _mk_runtime(20260930)
@@ -444,49 +428,26 @@ func _test_three_way_routing() -> void:
 
 
 # ===========================================================================
-# 6. 5 槽 = 5 个卡种，不是 5 层（card-system §3.6 · 实现最易错处）
+# 6. 建筑卡不进强化槽（card-system §3.6：槽 = 卡种，不是层）
 # ===========================================================================
 func _test_slots_are_kinds_not_layers() -> void:
 	_log("")
-	_log("--- [6] 5 槽 = 5 个卡种，非 5 层（card-system §3.6）---")
+	_log("--- [6] 建筑卡不占强化槽（cards 恒 0；同格升级只加层）---")
 	var rt = _mk_runtime(555)
 	rt.scrap = 1.0e6
-	_arm_pity(rt, "Cannon")            # 主塔 Cannon(fire) → 可接收 FireUp
+	_check_bool("落一座 Cannon", _place_tower(rt, "Cannon", Vector2i(4, -2)), true)
+	_check_bool("同格再落一次 → 升级", _place_tower(rt, "Cannon", Vector2i(4, -2)), true)
+	_check_int("升级后层数 = 2", int(rt.player.towers[0].h), 2)
+	_check_int("建筑卡不占强化槽（cards 仍空）", rt.player.cards.size(), 0)
+	_check_int("升级不新增塔（仍 1 座）", rt.player.towers.size(), 1)
 
-	var kinds0 = rt.player.cards.size()
-	rt.offers = ["FireUp"]
-	rt.buy(0)
-	_check_int("买第 1 张 FireUp → 卡种 +1", rt.player.cards.size(), kinds0 + 1)
-	_check_int("第 1 张 FireUp 层数 = 1", int(rt.player.towers[1].attach["FireUp"]), 1)
-
-	rt.offers = ["FireUp"]
-	rt.buy(0)
-	_check_int("🔴 同卡再买 → 卡种数**不变**（不占新槽）", rt.player.cards.size(), kinds0 + 1)
-	_check_int("🔴 同卡再买 → 层数 +1", int(rt.player.towers[1].attach["FireUp"]), 2)
-
-	rt.offers = ["FireUp"]
-	rt.buy(0)
-	rt.offers = ["FireUp"]
-	rt.buy(0)
-	_check_int("连买 4 张 → 卡种数仍不变", rt.player.cards.size(), kinds0 + 1)
-	_check_int("连买 4 张 → 层数 = 4", int(rt.player.towers[1].attach["FireUp"]), 4)
-
-	# ---- 换一种卡 → 才占新槽 ----
-	var rt2 = _mk_runtime(555)
-	rt2.scrap = 1.0e6
-	_arm_pity(rt2, "Frost")            # 主塔 Frost(frost) → 可接收 FrostUp
-	var k0 = rt2.player.cards.size()
-	rt2.offers = ["FrostUp"]
-	rt2.buy(0)
-	_check_int("换一种卡（FrostUp）→ 卡种 +1（占新槽）", rt2.player.cards.size(), k0 + 1)
-	rt2.offers = ["FrostUp"]
-	rt2.buy(0)
-	_check_int("FrostUp 再买 → 卡种不变", rt2.player.cards.size(), k0 + 1)
-	_check_int("FrostUp 再买 → 层数 = 2", int(rt2.player.towers[1].attach["FrostUp"]), 2)
+	# ---- 换一种建筑卡 → 新塔 / 新槽，但强化槽仍空 ----
+	_check_bool("另一格落 Frost", _place_tower(rt, "Frost", Vector2i(-4, 2)), true)
+	_check_int("落不同建筑卡 → 塔数 = 2", rt.player.towers.size(), 2)
+	_check_int("落不同建筑卡 → 强化槽仍空", rt.player.cards.size(), 0)
 
 	_check_int("backpack（强化槽上限）= 5", int(rt.cfg["backpack"]), 5)
-	_tally("强化槽用量不超过 5",
-		rt.player.cards.size() <= 5 and rt2.player.cards.size() <= 5)
+	_tally("强化槽用量不超过 5", rt.player.cards.size() <= 5)
 
 
 # ===========================================================================
@@ -540,7 +501,9 @@ func _test_wave_wiring_and_criteria() -> void:
 	# ---- wave_end → 安全窗（时钟侧）；收入入账（玩法侧，M5）----
 	sm.wave_end(7)
 	_check_int("I-1 波末进 SafeWindow", sm.state, _TSM.State.SAFE_WINDOW)
-	# 裸构筑（只有起手 Arrow）在 W1 有击杀收入；同一个裸构筑在 W7 一个都打不死
+	# 🔴 新口径没有起手塔：先买一座 Arrow 落到空场，构成「裸构筑」再结算。
+	_check_bool("I-1 先落一座 Arrow（裸构筑）", _place_tower(rt, "Arrow", Vector2i(4, -2)), true)
+	# 裸构筑（一座 Arrow）在 W1 有击杀收入；同一构筑在 W7 一个都打不死
 	# （DPS 9.5 vs 单只 131 血）—— 这是金标本 `WaveSim` 的真实行为，不是接线错误。
 	var res1: Dictionary = rt.simulate_wave_result(1)
 	_log("   [info] W1 结算（裸构筑）：n=%d kills=%d leaked=%d scrap=%.1f dps=%.3f"

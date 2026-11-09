@@ -14,6 +14,11 @@ extends Control
 ##    对 `PRESET_CENTER_*` 会静默失效（见 `battle_shop.tscn` 顶部说明），故不依赖锚点预设。
 ##
 
+const _Battle := preload("res://scripts/ui/battle_theme.gd")
+const _Briefings := preload("res://scripts/data/stage_briefings.gd")
+const _CampaignData := preload("res://scripts/data/campaign_data.gd")
+var _box_wave: StyleBoxFlat
+
 const _ShopLayout := preload("res://scripts/ui/shop_layout.gd")
 const _TSM := preload("res://scripts/engine/time_state_machine.gd")
 const _MonsterData := preload("res://scripts/data/monster_data.gd")
@@ -34,17 +39,17 @@ const WAVE_BAR_H := 10.0
 const BANNER_MS := 1200
 
 ## 底部键位行（默认态）。⑤ 放置模式会临时换成放置专属提示 —— 见 `_refresh_hint()`。
-const HINT_DEFAULT := "Tab 商店 · Esc 关闭/取消 · R 刷新 · 1/2/3 选中即买 · Space 锁定焦点位 · F3 调试"
+const HINT_DEFAULT := "Tab 商店   ·   拖动地图   ·   滚轮缩放   ·   F 回到核心"
 
 ## 🆕 UI 优化轮：积分卡（L0 区）几何。
 ##   改造前左上角只有一个硬币 + 裸数字，**没有任何文字说明它是什么**；而引导文案里叫
 ##   「废料」、商店里叫「废料」、debug 层又写「积分」—— 三处术语不一致，新手读不懂。
 ##   现统一为「废料」（与引导 / 商店文案一致），并给 L0 数字加面板承托（§5.3）。
-const SCORE_BOX := Rect2(26.0, 12.0, 214.0, 86.0)
-const SCORE_ICON := Vector2(66.0, 57.0)
-const SCORE_ICON_R := 28.0
-const SCORE_CAP_POS := Vector2(104.0, 18.0)
-const SCORE_NUM_POS := Vector2(104.0, 34.0)
+const SCORE_BOX := Rect2(24.0, 22.0, 200.0, 78.0)
+const SCORE_ICON := Vector2(60.0, 61.0)
+const SCORE_ICON_R := 20.0
+const SCORE_CAP_POS := Vector2(96.0, 28.0)
+const SCORE_NUM_POS := Vector2(96.0, 43.0)
 
 var director: Node = null
 var controller: Node = null
@@ -52,7 +57,10 @@ var controller: Node = null
 var _score_label: Label
 var _score_caption: Label
 var _wave_label: Label
+var _stage_label: Label
+var _stage_hint: Label
 var _hint_label: Label
+var _shop_btn: Button
 var _start_wave_btn: Button
 var _banner: Label
 var _debug_panel: PanelContainer
@@ -108,31 +116,42 @@ func _refresh_size() -> void:
 
 ## 子控件绝对布局（视口尺寸变化时重算）。
 func _layout() -> void:
+	if _shop_btn != null and director != null and director.sm != null:
+		_shop_btn.visible = int(director.sm.clock()["drawer"]) == _TSM.Drawer.CLOSED and int(director.sm.state) != _TSM.State.PLACEMENT_MODE
 	var vp := get_viewport()
 	if vp == null:
 		return
 	var vs: Vector2 = vp.get_visible_rect().size
-	var vw := float(vs.x)
+	var vw := _ShopLayout.content_width(float(vs.x), director)
 	var vh := float(vs.y)
 	position = Vector2.ZERO
 	size = vs
 	if _score_label != null:
 		_score_label.position = SCORE_NUM_POS
-		_score_label.size = Vector2(300.0, 56.0)
+		_score_label.size = Vector2(130.0, 56.0)
 	if _score_caption != null:
 		_score_caption.position = SCORE_CAP_POS
 		_score_caption.size = Vector2(140.0, 20.0)
 	if _wave_label != null:
-		_wave_label.position = Vector2(vw * 0.5 - 200.0, 8.0)
-		_wave_label.size = Vector2(400.0, 54.0)
+		_wave_label.position = Vector2(vw * 0.5 - 140.0, 24.0)
+		_wave_label.size = Vector2(280.0, 46.0)
+	if _stage_label != null:
+		_stage_label.position = Vector2(24.0, 220.0)
+		_stage_label.size = Vector2(280.0, 28.0)
+	if _stage_hint != null:
+		_stage_hint.position = Vector2(24.0, 260.0)
+		_stage_hint.size = Vector2(264.0, 130.0)
 	if _start_wave_btn != null:
-		_start_wave_btn.position = Vector2(vw * 0.5 + WAVE_BAR_W * 0.5 + 26.0, 78.0)
+		_start_wave_btn.position = Vector2(vw - (174.0 if _shop_btn == null or not _shop_btn.visible else 340.0), 22.0)
 		_start_wave_btn.size = Vector2(150.0, 44.0)
+	if _shop_btn != null:
+		_shop_btn.position = Vector2(vw - 174.0, 22.0)
+		_shop_btn.size = Vector2(150.0, 44.0)
 	if _hint_label != null:
 		# 🆕 上移到核心血条之上：原 `vh - 44` 正好落在血条底槽带（1002–1044）里，
 		#    引导结束后露出键位行时会压住血条左端。
-		_hint_label.position = Vector2(24.0, vh - 232.0)
-		_hint_label.size = Vector2(1300.0, 26.0)
+		_hint_label.position = Vector2(24.0, vh - 230.0)
+		_hint_label.size = Vector2(maxf(0.0, vw - 48.0), 50.0)
 	if _debug_panel != null:
 		_debug_panel.position = Vector2(16.0, 108.0)
 		_debug_panel.size = Vector2(584.0, 460.0)
@@ -147,6 +166,7 @@ func bind_director(d: Node) -> void:
 	if d == null:
 		return
 	d.state_changed.connect(_on_state_changed)
+	d.drawer_mode_changed.connect(func(_mode: int) -> void: _layout())
 	d.budget_changed.connect(_on_budget_changed)
 	if d.has_signal("wave_started"):
 		d.wave_started.connect(_on_wave_started)
@@ -175,6 +195,7 @@ func set_hint_visible(v: bool) -> void:
 
 
 func _on_state_changed(_from: int, _to: int) -> void:
+	_layout()
 	_refresh_hint()
 	queue_redraw()
 
@@ -190,7 +211,7 @@ func _refresh_hint() -> void:
 	var placing := (director != null and director.sm != null
 		and int(director.sm.state) == _TSM.State.PLACEMENT_MODE)
 	if placing:
-		_hint_label.text = "放置模式：点地图上的格子落子（＋ 新建 · ↑ 升级）· Esc 取消（卡退回队列，不退款）"
+		_hint_label.text = "点格子放置 · 中键拖动地图 · 滚轮缩放 · Esc 取消"
 		_hint_label.add_theme_color_override("font_color", C_TEXT)
 	else:
 		_hint_label.text = HINT_DEFAULT
@@ -202,6 +223,9 @@ func _on_budget_changed(_left: float, _max_: float) -> void:
 
 
 func _on_run_changed() -> void:
+	if director != null and director.sm != null and int(director.sm.wave) == 0 and _banner != null:
+		_banner.visible = false
+		_banner_end_ms = 0
 	queue_redraw()
 
 
@@ -233,7 +257,8 @@ func _build() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 
 	# 🆕 L0 区缓存样式：积分卡面板 + 波次条轨道 / 填充（避免 `_draw` 每帧 new）
-	_box_score = _Style.panel(Color(C_ALLY.r, C_ALLY.g, C_ALLY.b, 0.28), 1, 0.0, 0.0)
+	_box_score = _Battle.panel(C_GOLD, 0.0)
+	_box_wave = _Battle.panel(C_ALLY, 0.0)
 	# 🔴 轨道不能直接复用 `_Style.inset()`：它的底色（#0E111B）比场地圆（#1E2C46）更暗，
 	#    叠在上面的结果就是「看不见轨道，只看见一条橙线」。改用半透明黑 + 细描边，深浅底都成立。
 	_box_bar_track = StyleBoxFlat.new()
@@ -253,7 +278,7 @@ func _build() -> void:
 	add_child(_score_caption)
 
 	_score_label = Label.new()
-	_score_label.add_theme_font_size_override("font_size", 44)
+	_score_label.add_theme_font_size_override("font_size", 36)
 	_score_label.add_theme_color_override("font_color", C_GOLD)
 	# §5.2「数字必须等宽」：积分 = 纯数字读数 → JetBrains Mono（滚动 / 脉冲时不再左右抖）
 	_Style.apply_font(_score_label, "num")
@@ -263,17 +288,32 @@ func _build() -> void:
 	# 波次（顶部中央 L0 白）
 	_wave_label = Label.new()
 	_wave_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_wave_label.add_theme_font_size_override("font_size", 42)
+	_wave_label.add_theme_font_size_override("font_size", 30)
 	_wave_label.add_theme_color_override("font_color", C_WHITE)
 	_Style.apply_font(_wave_label, "display")     # §5.4：L0 波次号 = Black 展示字重
 	_wave_label.text = "WAVE 1"
 	add_child(_wave_label)
+	_stage_label = _Style.label("", 18, C_ALLY)
+	_stage_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_stage_label)
+	_stage_hint = _Style.label("", 16, C_TEXT)
+	_stage_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_stage_hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_stage_hint)
+
+	_shop_btn = Button.new()
+	_shop_btn.text = "商店 · Tab"
+	_Battle.button(_shop_btn)
+	_shop_btn.pressed.connect(func() -> void:
+		if director != null:
+			director.open_shop())
+	add_child(_shop_btn)
 
 	# 开始下一波（波次条右端；仅 SafeWindow 可用 —— 保留按钮功能）
 	# 🆕 安全窗唯一的推进操作 → 用 primary（金描边）提升视觉重量，并走统一 hover/按下动效
 	_start_wave_btn = Button.new()
 	_start_wave_btn.text = "开始下一波"
-	_Style.button(_start_wave_btn, "primary")
+	_Battle.button(_start_wave_btn, true)
 	_start_wave_btn.pressed.connect(func() -> void:
 		if director != null:
 			director.start_next_wave())
@@ -291,10 +331,10 @@ func _build() -> void:
 	_banner = Label.new()
 	_banner.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_banner.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	_banner.add_theme_font_size_override("font_size", 96)
+	_banner.add_theme_font_size_override("font_size", 56)
 	_banner.add_theme_color_override("font_color", C_WHITE)
 	_Style.apply_font(_banner, "display")         # §5.4：波次横幅 = Black 展示字重
-	_banner.add_theme_constant_override("outline_size", 8)
+	_banner.add_theme_constant_override("outline_size", 3)
 	_banner.add_theme_color_override("font_outline_color", C_GOLD)
 	_banner.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_banner.visible = false
@@ -359,10 +399,12 @@ func _process(delta: float) -> void:
 	if director == null:
 		return
 	var s: Dictionary = director.snapshot()
-	_wave_label.text = "WAVE %d" % int(s["wave"])
+	_wave_label.text = "准备阶段" if int(s["wave"]) == 0 else "WAVE %d" % int(s["wave"])
+	_start_wave_btn.text = "开始战斗" if int(s["wave"]) == 0 else "开始下一波"
 	_refresh_score()
 	_refresh_wave_progress()
 	_start_wave_btn.disabled = (int(s["state"]) != _TSM.State.SAFE_WINDOW)
+	_start_wave_btn.visible = not _start_wave_btn.disabled
 	if _debug_visible:
 		_refresh_debug(s)
 	_refresh_banner()
@@ -439,6 +481,14 @@ func _refresh_wave_progress() -> void:
 	if controller == null or controller.wave_director == null:
 		return
 	var s: Dictionary = controller.wave_director.snapshot()
+	var sid := String(s.get("stage_id", ""))
+	var briefing := _Briefings.get_briefing(sid)
+	_stage_label.visible = not briefing.is_empty()
+	_stage_hint.visible = not briefing.is_empty() and director != null and int(director.sm.wave) == 0
+	if not briefing.is_empty():
+		_stage_label.text = "%s · %s" % [sid, String(_CampaignData.STAGES[sid]["name"])]
+		_stage_hint.text = "守住 %d 波\n%s" % [_CampaignData.wave_count(sid), String(briefing["hint"])]
+		_stage_label.tooltip_text = String(briefing["hint"])
 	var n := int(s.get("n", 0))
 	_wave_spawned = int(s.get("spawned", 0))
 	_wave_total = n
@@ -593,23 +643,13 @@ func _draw() -> void:
 	if vp == null:
 		return
 	var vs: Vector2 = vp.get_visible_rect().size
-	var cx := float(vs.x) * 0.5
-	# 🆕 HUD 仪表层（v2 贴图包）：四角角标先画（当骨架，被上面的承托板压住 = "板是装上去的"）
-	var t_corner := _ht("ui_hud_corner_v1.png")
-	if t_corner != null:
-		var cw := t_corner.get_width()
-		var ch := t_corner.get_height()
-		# 左上原图；其余三角靠 draw_set_transform 镜像（省三张资产，方向不出错）
-		_tex_flip(t_corner, Rect2(0.0, 0.0, cw, ch), false, false)
-		_tex_flip(t_corner, Rect2(vs.x - cw, 0.0, cw, ch), true, false)
-		_tex_flip(t_corner, Rect2(0.0, vs.y - ch, cw, ch), false, true)
-		_tex_flip(t_corner, Rect2(vs.x - cw, vs.y - ch, cw, ch), true, true)
-	# 🆕 积分卡：仪表承托板（232x104，按 SCORE_BOX 四周各让 8px 摆放）
-	var t_score := _ht("ui_hud_plate_score_v1.png")
-	if t_score != null:
-		draw_texture(t_score, SCORE_BOX.position - Vector2(8.0, 8.0))
-	elif _box_score != null:
-		draw_style_box(_box_score, SCORE_BOX)
+	var cx := _ShopLayout.content_width(float(vs.x), director) * 0.5
+	# 战斗仪表使用统一的深色悬浮底座。
+	draw_style_box(_box_score, SCORE_BOX)
+	var preparing: bool = director != null and director.sm.wave == 0
+	var plate := Rect2(cx - 170.0, 22.0, 340.0, 62.0 if preparing else 108.0)
+	draw_style_box(_box_wave, plate)
+	draw_line(Vector2(cx - 32.0, plate.end.y), Vector2(cx + 32.0, plate.end.y), C_ALLY, 2.0)
 	# 硬币图标（左上 L0）—— P1 增强：随积分脉冲轻微放大
 	var coin_k := 1.0 + 0.10 * _score_pulse
 	# 🔴 批次⑥：金币贴图（ic_coin，烘焙三层同心圆 @R28 比例），脉冲缩放保留运行时；缺失降级。
@@ -626,6 +666,9 @@ func _draw() -> void:
 		var p := clampf(float(pt["life"]) / float(pt["max"]), 0.0, 1.0)
 		draw_circle(pt["pos"], 1.0 + 4.0 * (1.0 - p),
 			Color(C_GOLD.r, C_GOLD.g, C_GOLD.b, (1.0 - p) * 0.9))
+	# 准备阶段没有刷怪进度，不绘制空仪表。
+	if director != null and director.sm.wave == 0:
+		return
 	# 波次进度条（顶部中央，波次数字之下）
 	# 🆕 加轨道底 + 圆角 + 右端读数；与 WAVE 文字之间留出 20px 呼吸（原仅 8px，视觉贴死）
 	var bx := cx - WAVE_BAR_W * 0.5
@@ -633,7 +676,7 @@ func _draw() -> void:
 	# 🆕 波次仪表导轨（348x36，槽位在纹理内 (28,23,300,12) → 画在 bx-28, by-23）
 	#    🔴 高度只到 by+13：`已出/总数` 读数的字顶在 by+14，导轨不得盖到读数上。
 	#    🔴 右端只外扩 20px：`_start_wave_btn` 起点在 bx+326，首版 392 宽会压到按钮。
-	var t_rail := _ht("ui_hud_plate_wave_v1.png")
+	var t_rail: Texture2D = null
 	if t_rail != null:
 		draw_texture(t_rail, Vector2(bx - 28.0, by - 23.0))
 	var t_track := _ht("ui_wave_track_v1.png")

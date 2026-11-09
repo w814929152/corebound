@@ -2,11 +2,18 @@ extends SceneTree
 ##
 ## 🟠 T-P6-07 VFX 永久回归守卫（headless）—— 两条 quality-lead 复核缺陷的锁定断言
 ##
-## ── [A] `VFX-C3-01` · C3 径向几何缓存「抽屉开合」cross-state ─────────────────────────
+## ── [A] `VFX-C3-01` · C3 径向几何缓存键 ──────────────────────────────────────────────
 ## 缺陷（`docs/phase6/vfx-verify.md` §`VFX-C3-01`）：C3 缓存键曾漏「几何中心 c」维 →
 ##   **1920×1080（高度受限）** 下抽屉开合 `sc` 逐位不变、仅 `c.x` 左移（−307.2px）→ 键不变 ⇒
 ##   `_radial_geo` 返回旧几何 ⇒ 地面几何（环×3 / 放射刻度 / 出生环 / 方位刻度）**错位整局**。
 ##   旧键 `Vector3(sc, vs.x, vs.y)`；修复后 `monster_layer._radial_geo` 键 = `(c.x, c.y, sc)`。
+##
+## 🔴 2026-11-09 布局口径变更：商店改为**覆盖在地图上的中部浮层**，`battlefield_width()`
+##   恒返回完整视口 → 开关商店**不再**改变 `sc` / `c`（旧的「抽屉占宽 → 战场变窄」场景已消失）。
+##   因此 [A] 改为钉两条现行契约：
+##     ① 商店开合不移动地图坐标（sc / c / 缓存键都不变，几何逐位稳定）；
+##     ② 缓存键**必须含中心**：直接断言 `_geo_sig == Vector3(c.x, c.y, sc)`（C3-01 的根因守卫）。
+##   旧场景（跨抽屉态 miss）由「跨视口尺寸」覆盖：两档尺寸的 c 不同 → 各自独立建几何。
 ##
 ## ── [B] `VFX-PATH-01` · PATH 清池守卫「判据 ≡ 动作」────────────────────────────────
 ## 缺陷：`vfx_layer._process` PATH 分支的守卫曾只测 5 个容器，但清理动作实清 7 个
@@ -14,8 +21,8 @@ extends SceneTree
 ##   由 `_on_monster_killed` 逐杀写入、却从不被清）。修复后守卫按同序 7 容器判定。
 ##
 ## ── 断言（两组均 cross-state / 逐项对照，非自证）────────────────────────────────────
-##  [A] 两档视口（1080=高度受限·复现条件；1920=宽度受限·对照）各 6 项：
-##      G0 场景有效性 / G1 中心跟随 / G2 缓存失效+几何跟随 / G3 命中不破（防每帧重建）
+##  [A] 两档视口各 6 项：G0 商店开合不改变缩放 / G1 不移动中心 / G2 缓存 hit + 几何跟随 /
+##      G2b 缓存键含中心（C3-01 根因）/ G3 命中不破（防每帧重建）
 ##  [B] 7 个容器逐个「仅它非空」注入 → 步进 `_process`(PATH) → 断言 7 容器全空（=0）
 ##
 ## 🔴 有效性自证（负向验证 · 见提交信息/报告）：把键/守卫临时退回旧式 → 本守卫必须 FAIL 且
@@ -68,10 +75,10 @@ func _process(_delta: float) -> bool:
 	print("=" .repeat(92))
 	print("VFX 永久守卫 · [A] VFX-C3-01（C3 缓存键「几何中心」）+ [B] VFX-PATH-01（PATH 清池判据≡动作）")
 	print("=" .repeat(92))
-	print("\n[A] VFX-C3-01 · C3 缓存键「几何中心」cross-state（SubViewport 钉尺寸）")
-	# 1080：高度受限 → sc 不随抽屉变（复现缺陷条件）；1920：宽度受限 → sc 随抽屉变（对照）。
-	_case(SM, ML, Vector2i(1920, 1080), true)
-	_case(SM, ML, Vector2i(1920, 1920), false)
+	print("\n[A] VFX-C3-01 · C3 缓存键「几何中心」+ 商店开合不影响地图坐标")
+	# 1080（高度受限）/ 1920×1920（宽度受限）：两档尺寸覆盖 xform 的两条分支。
+	_case(SM, ML, Vector2i(1920, 1080))
+	_case(SM, ML, Vector2i(1920, 1920))
 
 	# ================= [B] VFX-PATH-01：PATH 清池判据≡动作 =================
 	SM.mode = 0   # PATH（触发 vfx_layer._process 的 PATH 分支）
@@ -90,7 +97,7 @@ func _process(_delta: float) -> bool:
 # ---------------------------------------------------------------------------
 #  [A] VFX-C3-01
 # ---------------------------------------------------------------------------
-func _case(SM, ML, sz: Vector2i, expect_sc_equal: bool) -> void:
+func _case(SM, ML, sz: Vector2i) -> void:
 	var tag := "%dx%d" % [sz.x, sz.y]
 	print("\n---- [viewport %s] ----" % tag)
 	var sv := SubViewport.new()
@@ -100,7 +107,7 @@ func _case(SM, ML, sz: Vector2i, expect_sc_equal: bool) -> void:
 	sv.add_child(ml)
 	ml.visible = false   # 只测几何/缓存逻辑 → 隐藏节点以抑制 `_draw`（headless 亦会派发 _draw）
 
-	# ---- 抽屉收起（state 0）----
+	# ---- 商店收起（state 0）----
 	ml.time_director = StubTD.new(StubSM.new(0))
 	ml._geo_sig = Vector3(-1.0, -1.0, -1.0)   # 清缓存
 	var c0: Vector2 = ml._to_screen(SM.RADIAL_CORE)
@@ -109,7 +116,7 @@ func _case(SM, ML, sz: Vector2i, expect_sc_equal: bool) -> void:
 	var sig0: Vector3 = ml._geo_sig
 	var spoke0: Vector2 = g0["spokes"][0][0]
 
-	# ---- 抽屉展开（state 1 · cross-state）----
+	# ---- 商店展开（state 1 · cross-state）----
 	ml.time_director = StubTD.new(StubSM.new(1))
 	var c1: Vector2 = ml._to_screen(SM.RADIAL_CORE)
 	var sc1 := float(ml._xform()["sc"])
@@ -117,22 +124,22 @@ func _case(SM, ML, sz: Vector2i, expect_sc_equal: bool) -> void:
 	var sig1: Vector3 = ml._geo_sig
 	var spoke1: Vector2 = g1["spokes"][0][0]
 
-	print("   drawer0: sc=%.10f c=(%.4f,%.4f) sig=%s" % [sc0, c0.x, c0.y, str(sig0)])
-	print("   drawer1: sc=%.10f c=(%.4f,%.4f) sig=%s" % [sc1, c1.x, c1.y, str(sig1)])
-	print("   Δc.x=%.4f  sc逐位相等=%s  缓存miss(sig变)=%s  spokes跟c1=%s 停c0=%s"
-		% [c1.x - c0.x, str(sc0 == sc1), str(sig1 != sig0), str(spoke1 == c1), str(spoke1 == c0)])
+	print("   overlay0: sc=%.10f c=(%.4f,%.4f) sig=%s" % [sc0, c0.x, c0.y, str(sig0)])
+	print("   overlay1: sc=%.10f c=(%.4f,%.4f) sig=%s" % [sc1, c1.x, c1.y, str(sig1)])
+	print("   Δc=(%.4f,%.4f)  sc逐位相等=%s  sig相等=%s  spokes跟c1=%s"
+		% [c1.x - c0.x, c1.y - c0.y, str(sc0 == sc1), str(sig1 == sig0), str(spoke1 == c1)])
 
-	# [G0] 场景有效性：本档 sc 行为符合预期（防「该档没复现缺陷条件」的假绿）。
-	_ok("[%s] G0 场景有效：sc 随抽屉 %s（%s档）"
-		% [tag, "不变（复现缺陷条件）" if expect_sc_equal else "改变（对照）",
-		   "高度受限" if expect_sc_equal else "宽度受限"],
-		(sc0 == sc1) == expect_sc_equal)
-	# [G1] 几何中心 c.x 左移（抽屉占宽 → 战场变窄）
-	_ok("[%s] G1 抽屉开合 → 几何中心 c.x 左移    Δc.x=%.4f" % [tag, c1.x - c0.x], c1.x < c0.x - 1.0)
-	# [G2] 缓存 miss + 几何跟随新中心（缺陷核心：旧键在此会「miss=False / 停在 c0」）
-	_ok("[%s] G2 抽屉开合 → 缓存 miss（sig 变）" % tag, sig1 != sig0)
-	_ok("[%s] G2 几何跟随新中心（spokes 基点==c1，非停在 c0）" % tag,
-		spoke1 == c1 and spoke1 != c0)
+	# [G0] 商店开合不改变缩放（地图按完整视口绘制）。
+	_ok("[%s] G0 商店开合 → sc 逐位不变（覆盖式浮层）" % tag, sc0 == sc1)
+	# [G1] 坐标映射不变：中心不移动。
+	_ok("[%s] G1 商店开合 → 几何中心不变    Δc=(%.4f,%.4f)"
+		% [tag, c1.x - c0.x, c1.y - c0.y], c1 == c0)
+	# [G2] 同一几何 → 缓存命中（不因开关商店重建），几何基点仍是当前中心。
+	_ok("[%s] G2 商店开合 → 缓存 hit（sig 不变）" % tag, sig1 == sig0)
+	_ok("[%s] G2 几何基点 == 当前中心 c1" % tag, spoke1 == c1)
+	# [G2b] 🔴 C3-01 根因守卫：缓存键必须由 (c.x, c.y, sc) 组成 —— 漏中心维会在这里翻红。
+	_ok("[%s] G2b 缓存键 == Vector3(c.x, c.y, sc)（中心必须入键）" % tag,
+		sig1 == Vector3(c1.x, c1.y, sc1))
 	# [G3] 同状态重复调用 → hit（sig 不变）且几何逐位稳定
 	var g1b: Dictionary = ml._radial_geo(sc1, c1, SPAWN_RADIUS * sc1)
 	_ok("[%s] G3 同状态重复调用 → 缓存 hit（sig 不变）" % tag, ml._geo_sig == sig1)

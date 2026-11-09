@@ -55,7 +55,9 @@ const PANEL_W := 720.0
 const PANEL_H := 40.0
 ## 🆕 96 → 120：核心血条在 UI 优化轮里上移了（BOTTOM_MARGIN 28 → 46），
 ##    浮层底沿需同步抬升，避免与血条数字行贴死。
-const PANEL_BOTTOM_GAP := 120.0
+const PANEL_BOTTOM_GAP := 194.0
+const _Battle := preload("res://scripts/ui/battle_theme.gd")
+const _Layout := preload("res://scripts/ui/shop_layout.gd")
 const SKIP_W := 96.0
 ## 🔴 字号 ≥16px 无障碍下限（S1 定稿）；本浮层取 18。
 const FONT_SIZE := 18
@@ -66,8 +68,8 @@ const POLL_HZ := 10.0       # 判定节流 ≤10Hz（不每帧重算）
 const REPAIR_FALLBACK_WAVE := 8   # 规格 §7-A(a)：W8 结束仍无受损塔 → 自动 DONE
 
 const STEP_TEXT := {
-	Step.PLACE: "点「放置」→ 再点地图上任意一格落子",
-	Step.RUN: "Space 开始下一波 —— 守住核心",
+	Step.PLACE: "将背包中的建筑拖到战场",
+	Step.RUN: "点击右上方开始按钮，迎击敌人",
 	Step.REPAIR: "安全窗可修复受损塔（点塔位 → 修复 / 拆除）",
 }
 ## PLACE 步的「已进 ⑤」态文案：此刻抽屉已收起，战场铺开网格，任意格点都能落子。
@@ -78,7 +80,7 @@ const PLACE_TEXT_ARMED := "点地图上任意一格落子（＋ 新建 · ↑ �
 ## BUY 步按「买不买得起 + 商店开没开」分三态（🔴 实测口径，见文件头）：
 ##   开局 `scrap = 0`，而卡价 12 ⇒ 首波结束前商店里全是灰的。若一律提示"买一张卡"，
 ##   玩家照做会撞见买不起的货架，首局直接卡在第一步。
-const BUY_TEXT_POOR := "守住这一波 —— 击杀敌人换废料，波间才能建塔"
+const BUY_TEXT_POOR := "击杀敌人获取废料后购买建筑"
 const BUY_TEXT_TAB := "Tab 打开商店 · 1/2/3 买一张建筑卡"
 const BUY_TEXT_RICH := "1/2/3 买一张建筑卡"
 
@@ -130,6 +132,10 @@ func bind_controller(c: Node) -> void:
 
 func bind_director(d: Node) -> void:
 	director = d
+	if d != null:
+		d.state_changed.connect(func(_from: int, _to: int) -> void: _layout())
+		d.drawer_mode_changed.connect(func(_mode: int) -> void: _layout())
+	_layout()
 
 
 func bind_wave_director(wd: Node) -> void:
@@ -168,6 +174,9 @@ func _poll() -> void:
 	if director != null:
 		var ds: Dictionary = director.snapshot()
 		_drawer_open = int(ds.get("drawer", _TSM.Drawer.CLOSED)) != _TSM.Drawer.CLOSED
+		# 教学跟随已确认开战的波次，避免把准备期商店的 wave=1 当成战斗开始。
+		s["wave"] = int(ds.get("wave", 0))
+		w["w"] = int(ds.get("wave", 0))
 	advance_with(s, w)
 	_refresh_visual()
 
@@ -305,7 +314,7 @@ func _build() -> void:
 	#    压在暗战场上时边缘糊在一起。
 	sb.border_color = Color(0.243, 0.816, 0.910, 0.32)
 	sb.set_corner_radius_all(6)
-	_panel.add_theme_stylebox_override("panel", sb)
+	_panel.add_theme_stylebox_override("panel", _Battle.panel())
 	_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_panel)
 
@@ -344,13 +353,14 @@ func _layout() -> void:
 	size = vs
 	if _panel == null:
 		return
-	_panel.position = Vector2((float(vs.x) - PANEL_W) * 0.5, float(vs.y) - PANEL_BOTTOM_GAP - PANEL_H)
-	_panel.size = Vector2(PANEL_W, PANEL_H)
+	var panel_w := minf(PANEL_W, _Layout.content_width(vs.x, director) - 48.0)
+	_panel.position = Vector2((_Layout.content_width(vs.x, director) - panel_w) * 0.5, float(vs.y) - PANEL_BOTTOM_GAP - PANEL_H)
+	_panel.size = Vector2(panel_w, PANEL_H)
 	if _label != null:
 		_label.position = Vector2(16.0, 0.0)
-		_label.size = Vector2(PANEL_W - SKIP_W - 32.0, PANEL_H)
+		_label.size = Vector2(panel_w - SKIP_W - 32.0, PANEL_H)
 	if _skip_btn != null:
-		_skip_btn.position = Vector2(PANEL_W - SKIP_W - 8.0, 2.0)
+		_skip_btn.position = Vector2(panel_w - SKIP_W - 8.0, 2.0)
 		_skip_btn.size = Vector2(SKIP_W, PANEL_H - 4.0)
 
 

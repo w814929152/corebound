@@ -108,6 +108,12 @@ const OPEN_DEG: float = 320.0
 static var active_map_id: String = "tri-fissure"
 
 const _MapVariants := preload("res://scripts/data/map_variants.gd")
+const BattlefieldMaps := preload("res://scripts/data/battlefield_maps.gd")
+## 玩家路线的非圆形场景地面；默认关闭，基准模拟保留原有空间口径。
+static var terrain_enabled: bool = false
+
+static func uses_terrain() -> bool:
+	return terrain_enabled and mode == Mode.RADIAL and layout_enabled
 
 
 ## 设置活动地图（关卡系统在开局前注入；未知 id 自动回落 "tri-fissure"）。
@@ -254,4 +260,7 @@ static func polar_pos(theta: float, rho: float) -> Vector2:
 ## 由 (t_remain, m_spd, theta) 一步得到世界坐标（供 Monster.pos_radial 调用）。
 static func radial_pos_of_t(t_remain: float, m_spd: float, theta: float,
 		t_reach: float = T_REACH) -> Vector2:
-	return polar_pos(theta, rho_of_t(t_remain, m_spd, t_reach))
+	var rho := rho_of_t(t_remain, m_spd, t_reach)
+	if uses_terrain():
+		rho *= BattlefieldMaps.entry_radius(active_map_id, theta) / SPAWN_RADIUS
+	return polar_pos(theta, rho)

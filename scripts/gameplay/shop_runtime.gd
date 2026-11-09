@@ -62,6 +62,9 @@ const _TowerEffects := preload("res://scripts/engine/tower_effects.gd")
 ##   🔴 金标本 `ShopAI.CARD_NAMES` / `WEIGHTS` **一字不动**（AI 路线仍 7 张含 RerollD，MC 不变）；
 ##      玩家池是金标本卡池的**派生**（去掉 RerollD 后的 6 张），不在本层二次定义
 ##      （control-manifest §5：数值只在 `scripts/data/` 与金标本里定义一次）。
+## 暂停效果卡：玩家商店仅出售建筑；保留实现供后续恢复。
+const EFFECT_CARDS_ENABLED := false
+
 const PLAYER_EXCLUDED_CARDS: Array = ["RerollD"]
 
 ## 🆕 扩展包卡序（显式数组 → 抽卡池顺序确定、可测；不用 Dictionary 遍历顺序）。
@@ -175,7 +178,7 @@ static func _build_player_pool() -> void:
 		for pid in active_packs:
 			for nm in _Packs.cards_of(String(pid)):
 				var s := String(nm)
-				if _pool_names.has(s):
+				if (not EFFECT_CARDS_ENABLED and _card_kind(s) != "tower") or _pool_names.has(s):
 					continue
 				_pool_names.append(s)
 				_pool_weights.append(_Packs.card_weight(s))
@@ -183,7 +186,7 @@ static func _build_player_pool() -> void:
 		return
 	for nm in _ShopAI.CARD_NAMES:
 		var s := String(nm)
-		if PLAYER_EXCLUDED_CARDS.has(s):
+		if PLAYER_EXCLUDED_CARDS.has(s) or (not EFFECT_CARDS_ENABLED and _card_kind(s) != "tower"):
 			continue                          # 🔴 D-4：RerollD 不进玩家池
 		_pool_names.append(s)
 		_pool_weights.append(float(_ShopAI.WEIGHTS[s]))
@@ -193,6 +196,8 @@ static func _build_player_pool() -> void:
 	if extended_pack:
 		for nm in EXT_CARD_ORDER:
 			var s := String(nm)
+			if not EFFECT_CARDS_ENABLED and _card_kind(s) != "tower":
+				continue
 			_pool_names.append(s)
 			_pool_weights.append(float(_TD.EXT_WEIGHTS[s]))
 	_pool_total = _FpSum.sum_py(_pool_weights)
@@ -254,27 +259,17 @@ func setup(p_path: String, seed_value: int, overrides: Dictionary = {}) -> void:
 	cfg["stacking_frost_enabled"] = true
 	for k in overrides:
 		cfg[k] = overrides[k]
-	# 🆕 自由摆放：几何从**空槽位表**起步 —— 没有预置塔位，位置由玩家点选后追加。
-	#   🔴 起手塔（`SimPlayer.new_player` 送的 Arrow@slot0）随后补一个格点坐标，
-	#      否则 `geo.slots[0]` 不存在 → `damage_engine` / `_tower_world` 越界。
+	# 玩家开局只有核心；几何槽位随购买后的手动放置生成。
 	if free_placement:
 		geo = _Geo.new([])
 	else:
 		geo = _Geo6.build_by_slots(int(cfg["n_slots"]))
 	player = _SimPlayer.new_player(p_path, cfg, geo)
-	if free_placement and player != null and not player.towers.is_empty():
-		# 起手位置沿用改造前的 S0 坐标（吸附到格点）→ 老玩家的手感不变。
-		# 🆕 阵地化（RADIAL + 布局开启）：S0 (6,33) 落在圆盘内但**不属于任何阵地** ——
-		#    起手塔会站在不可建的地上（点它升级 / 拆塔都还正常，但读起来是 bug）。
-		#    改落 P1 南台的锚点格：玩家开局就有一座塔在南面主口，正好对上「主口」叙事。
-		#    PATH 模式 `sites_active()` 恒 false → 逐位不变。
-		if _BuildGrid.sites_active():
-			geo.add_slot(_BuildGrid.site_anchor("P1"))
-		else:
-			geo.add_slot(_BuildGrid.snap(_Geo6.SLOTS6[0]))
+	player.towers.clear()
+	player.cards.clear()
 	rng = _PyRandom.new(seed_value)
 	wave = 0
-	scrap = 0.0
+	scrap = float(cfg.get("starting_scrap", _Cfg.PLAYER_STARTING_SCRAP))
 	# 🔴 切片8续3：核心 HP 初值由 SimPlayer.new_player 按（可能被 overrides 覆盖的）
 	#   cfg.core_hp 设定 → 这里不再重复赋值，只确保与 cfg 一致（幂等）。
 	if player != null:
@@ -355,6 +350,17 @@ func deal_initial_shop() -> Array:
 	var force = pity_force()
 	var out := _draw_offers_player(shop_slot_count())
 	_apply_pity(out, force)
+	# 空场开局至少提供一张建筑，避免旧混合卡池全出强化卡。
+	if wave == 1 and player.towers.is_empty():
+		var has_building := false
+		for nm in out:
+			if _card_kind(String(nm)) == "tower":
+				has_building = true
+		if not has_building:
+			for nm in player_card_names():
+				if _card_kind(String(nm)) == "tower":
+					out[0] = String(nm)
+					break
 	return out
 
 
@@ -365,7 +371,7 @@ func deal_initial_shop() -> Array:
 ##   · 🟡 P2（主塔无 Tag 但全场有 Tag 投入 → 出 argmax_Tag 的卡）**金标本未实现**，
 ##     本文件照金标本走（= P2 与 P3 合并为"不保底"），未擅自补逻辑（补了会改 MC）。
 func pity_force():
-	if not bool(cfg.get("pity", false)):
+	if not EFFECT_CARDS_ENABLED or not bool(cfg.get("pity", false)):
 		return null
 	return _ShopAI.pity_card(player)
 
@@ -707,6 +713,18 @@ func buy(slot: int) -> bool:
 				_ShopAI.apply_action(player, ["econ", nm, null, null], cfg)
 	scrap -= cost
 	counts[nm] = int(counts.get(nm, 0)) + 1
+	# 买下的商品已离店：只补这个商品位，不收刷新费，也不增加刷新次数。
+	var candidates: Array = []
+	var weights: Array = []
+	var names := player_card_names()
+	var pool_weights := player_card_weights()
+	for i in names.size():
+		if String(names[i]) != nm:
+			candidates.append(names[i])
+			weights.append(pool_weights[i])
+	offers[slot] = String(rng.choices(candidates, weights, 1)[0]) if not candidates.is_empty() else nm
+	if lock_index == slot:
+		lock_index = -1
 	last_error = ""
 	return true
 
@@ -892,6 +910,13 @@ func begin_placement(pending_index: int) -> bool:
 func cancel_placement() -> void:
 	# 🔴 取消**不退款**（GDD §2.1 / Q-S3-A 同口径）；卡留在队列里
 	_placing_index = -1
+
+
+## 当前待放置建筑，供只读预览使用；不依赖背包第一张卡。
+func placing_card_name() -> String:
+	if _placing_index < 0 or _placing_index >= pending.size():
+		return ""
+	return String(pending[_placing_index])
 
 
 ## 落子：空塔位 = 新建（build）· 同原型 = 升级（up）· 其余 = Invalid（不落子、不退卡）
