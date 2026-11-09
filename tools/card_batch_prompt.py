@@ -1,10 +1,18 @@
 # -*- coding: utf-8 -*-
 """批量生成用的提示词拼装器（v4 中密度）。
 
-把"冻结锚点"和"单卡三段式描述"拼成一条完整 prompt，并把整批 prompt 落盘留档，
-保证 80 张卡的生成可以按同一份文件复现。
+🔴 **已废弃 / DEPRECATED（2026-11-09 标记）** —— 本文件的 ANCHOR 是「正面微仰视立面 +
+中密度蓝钢灰」的 v4/v4b/v4c 口径，与现行卡面标准**冲突**。
+现行唯一标准是 `design/art/card-art-generation-standard-v1.md` **v1.8**
+（3/4 视角图生图 + 包色即整机主色调），80 张卡面已按该标准全部收官。
+**不要运行本脚本生成新卡提示词**；`card-prompts-batch1/2.json` 仅为沿革留档。
+`card-prompt-bank-v2.json` 仍作为「对象 / 特征 / 主色」数据源被现行产线使用，
+但其中的锚点段不再被引用。详见标准文档 §3.1 / 头部「与旧文档的关系」。
 
-用法：
+历史用途：把"冻结锚点"和"单卡三段式描述"拼成一条完整 prompt，并把整批 prompt
+落盘留档，保证 80 张卡的生成可以按同一份文件复现。
+
+历史用法（仅供查阅，勿执行）：
   py -3.9 tools/card_batch_prompt.py --pack core --out design/art/card-prompts-batch1.json
   py -3.9 tools/card_batch_prompt.py --card Arrow          # 只打印一张
 """

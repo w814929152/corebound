@@ -6,6 +6,34 @@
  "naming": "art-bible §10.2 snake_case",
  "assets": [
   {
+   "file": "cards/card_arc_v1_460.png",
+   "size": [
+    460,
+    460
+   ]
+  },
+  {
+   "file": "cards/card_arc_v1_t.png",
+   "size": [
+    1024,
+    1024
+   ]
+  },
+  {
+   "file": "cards/card_arcane_v1_460.png",
+   "size": [
+    460,
+    460
+   ]
+  },
+  {
+   "file": "cards/card_arcane_v1_t.png",
+   "size": [
+    1024,
+    1024
+   ]
+  },
+  {
    "file": "cards/card_arrow_v1_460.png",
    "size": [
     460,
@@ -14,6 +42,118 @@
   },
   {
    "file": "cards/card_arrow_v1_t.png",
+   "size": [
+    1024,
+    1024
+   ]
+  },
+  {
+   "file": "cards/card_ashen_v1_460.png",
+   "size": [
+    460,
+    460
+   ]
+  },
+  {
+   "file": "cards/card_ashen_v1_t.png",
+   "size": [
+    1024,
+    1024
+   ]
+  },
+  {
+   "file": "cards/card_avalanche_v1_460.png",
+   "size": [
+    460,
+    460
+   ]
+  },
+  {
+   "file": "cards/card_avalanche_v1_t.png",
+   "size": [
+    1024,
+    1024
+   ]
+  },
+  {
+   "file": "cards/card_ballista_v1_460.png",
+   "size": [
+    460,
+    460
+   ]
+  },
+  {
+   "file": "cards/card_ballista_v1_t.png",
+   "size": [
+    1024,
+    1024
+   ]
+  },
+  {
+   "file": "cards/card_bastion_v1_460.png",
+   "size": [
+    460,
+    460
+   ]
+  },
+  {
+   "file": "cards/card_bastion_v1_t.png",
+   "size": [
+    1024,
+    1024
+   ]
+  },
+  {
+   "file": "cards/card_blaze_v1_460.png",
+   "size": [
+    460,
+    460
+   ]
+  },
+  {
+   "file": "cards/card_blaze_v1_t.png",
+   "size": [
+    1024,
+    1024
+   ]
+  },
+  {
+   "file": "cards/card_blight_v1_460.png",
+   "size": [
+    460,
+    460
+   ]
+  },
+  {
+   "file": "cards/card_blight_v1_t.png",
+   "size": [
+    1024,
+    1024
+   ]
+  },
+  {
+   "file": "cards/card_bolt_v1_460.png",
+   "size": [
+    460,
+    460
+   ]
+  },
+  {
+   "file": "cards/card_bolt_v1_t.png",
+   "size": [
+    1024,
+    1024
+   ]
+  },
+  {
+   "file": "cards/card_breaker_v1_460.png",
+   "size": [
+    460,
+    460
+   ]
+  },
+  {
+   "file": "cards/card_breaker_v1_t.png",
    "size": [
     1024,
     1024
@@ -48,6 +188,160 @@
    ]
   },
   {
+   "file": "cards/card_cinder_v1_460.png",
+   "size": [
+    460,
+    460
+   ]
+  },
+  {
+   "file": "cards/card_cinder_v1_t.png",
+   "size": [
+    1024,
+    1024
+   ]
+  },
+  {
+   "file": "cards/card_circuit_v1_460.png",
+   "size": [
+    460,
+    460
+   ]
+  },
+  {
+   "file": "cards/card_circuit_v1_t.png",
+   "size": [
+    1024,
+    1024
+   ]
+  },
+  {
+   "file": "cards/card_coil_v1_460.png",
+   "size": [
+    460,
+    460
+   ]
+  },
+  {
+   "file": "cards/card_coil_v1_t.png",
+   "size": [
+    1024,
+    1024
+   ]
+  },
+  {
+   "file": "cards/card_crusher_v1_460.png",
+   "size": [
+    460,
+    460
+   ]
+  },
+  {
+   "file": "cards/card_crusher_v1_t.png",
+   "size": [
+    1024,
+    1024
+   ]
+  },
+  {
+   "file": "cards/card_curse_v1_460.png",
+   "size": [
+    460,
+    460
+   ]
+  },
+  {
+   "file": "cards/card_curse_v1_t.png",
+   "size": [
+    1024,
+    1024
+   ]
+  },
+  {
+   "file": "cards/card_drillmaster_v1_460.png",
+   "size": [
+    460,
+    460
+   ]
+  },
+  {
+   "file": "cards/card_drillmaster_v1_t.png",
+   "size": [
+    1024,
+    1024
+   ]
+  },
+  {
+   "file": "cards/card_drummer_v1_460.png",
+   "size": [
+    460,
+    460
+   ]
+  },
+  {
+   "file": "cards/card_drummer_v1_t.png",
+   "size": [
+    1024,
+    1024
+   ]
+  },
+  {
+   "file": "cards/card_ember_v1_460.png",
+   "size": [
+    460,
+    460
+   ]
+  },
+  {
+   "file": "cards/card_ember_v1_t.png",
+   "size": [
+    1024,
+    1024
+   ]
+  },
+  {
+   "file": "cards/card_eraser_v1_460.png",
+   "size": [
+    460,
+    460
+   ]
+  },
+  {
+   "file": "cards/card_eraser_v1_t.png",
+   "size": [
+    1024,
+    1024
+   ]
+  },
+  {
+   "file": "cards/card_executioner_v1_460.png",
+   "size": [
+    460,
+    460
+   ]
+  },
+  {
+   "file": "cards/card_executioner_v1_t.png",
+   "size": [
+    1024,
+    1024
+   ]
+  },
+  {
+   "file": "cards/card_exile_v1_460.png",
+   "size": [
+    460,
+    460
+   ]
+  },
+  {
+   "file": "cards/card_exile_v1_t.png",
+   "size": [
+    1024,
+    1024
+   ]
+  },
+  {
    "file": "cards/card_foundry_v1_460.png",
    "size": [
     460,
@@ -76,6 +370,48 @@
    ]
   },
   {
+   "file": "cards/card_furnace_v1_460.png",
+   "size": [
+    460,
+    460
+   ]
+  },
+  {
+   "file": "cards/card_furnace_v1_t.png",
+   "size": [
+    1024,
+    1024
+   ]
+  },
+  {
+   "file": "cards/card_glacier_v1_460.png",
+   "size": [
+    460,
+    460
+   ]
+  },
+  {
+   "file": "cards/card_glacier_v1_t.png",
+   "size": [
+    1024,
+    1024
+   ]
+  },
+  {
+   "file": "cards/card_hail_v1_460.png",
+   "size": [
+    460,
+    460
+   ]
+  },
+  {
+   "file": "cards/card_hail_v1_t.png",
+   "size": [
+    1024,
+    1024
+   ]
+  },
+  {
    "file": "cards/card_harrier_v1_460.png",
    "size": [
     460,
@@ -84,6 +420,104 @@
   },
   {
    "file": "cards/card_harrier_v1_t.png",
+   "size": [
+    1024,
+    1024
+   ]
+  },
+  {
+   "file": "cards/card_hellfire_v1_460.png",
+   "size": [
+    460,
+    460
+   ]
+  },
+  {
+   "file": "cards/card_hellfire_v1_t.png",
+   "size": [
+    1024,
+    1024
+   ]
+  },
+  {
+   "file": "cards/card_hemorrhage_v1_460.png",
+   "size": [
+    460,
+    460
+   ]
+  },
+  {
+   "file": "cards/card_hemorrhage_v1_t.png",
+   "size": [
+    1024,
+    1024
+   ]
+  },
+  {
+   "file": "cards/card_hex_v1_460.png",
+   "size": [
+    460,
+    460
+   ]
+  },
+  {
+   "file": "cards/card_hex_v1_t.png",
+   "size": [
+    1024,
+    1024
+   ]
+  },
+  {
+   "file": "cards/card_hexer_v1_460.png",
+   "size": [
+    460,
+    460
+   ]
+  },
+  {
+   "file": "cards/card_hexer_v1_t.png",
+   "size": [
+    1024,
+    1024
+   ]
+  },
+  {
+   "file": "cards/card_icicle_v1_460.png",
+   "size": [
+    460,
+    460
+   ]
+  },
+  {
+   "file": "cards/card_icicle_v1_t.png",
+   "size": [
+    1024,
+    1024
+   ]
+  },
+  {
+   "file": "cards/card_impaler_v1_460.png",
+   "size": [
+    460,
+    460
+   ]
+  },
+  {
+   "file": "cards/card_impaler_v1_t.png",
+   "size": [
+    1024,
+    1024
+   ]
+  },
+  {
+   "file": "cards/card_javelin_v1_460.png",
+   "size": [
+    460,
+    460
+   ]
+  },
+  {
+   "file": "cards/card_javelin_v1_t.png",
    "size": [
     1024,
     1024
@@ -104,6 +538,244 @@
    ]
   },
   {
+   "file": "cards/card_lance_v1_460.png",
+   "size": [
+    460,
+    460
+   ]
+  },
+  {
+   "file": "cards/card_lance_v1_t.png",
+   "size": [
+    1024,
+    1024
+   ]
+  },
+  {
+   "file": "cards/card_longbow_v1_460.png",
+   "size": [
+    460,
+    460
+   ]
+  },
+  {
+   "file": "cards/card_longbow_v1_t.png",
+   "size": [
+    1024,
+    1024
+   ]
+  },
+  {
+   "file": "cards/card_malison_v1_460.png",
+   "size": [
+    460,
+    460
+   ]
+  },
+  {
+   "file": "cards/card_malison_v1_t.png",
+   "size": [
+    1024,
+    1024
+   ]
+  },
+  {
+   "file": "cards/card_martyr_v1_460.png",
+   "size": [
+    460,
+    460
+   ]
+  },
+  {
+   "file": "cards/card_martyr_v1_t.png",
+   "size": [
+    1024,
+    1024
+   ]
+  },
+  {
+   "file": "cards/card_maul_v1_460.png",
+   "size": [
+    460,
+    460
+   ]
+  },
+  {
+   "file": "cards/card_maul_v1_t.png",
+   "size": [
+    1024,
+    1024
+   ]
+  },
+  {
+   "file": "cards/card_necro_v1_460.png",
+   "size": [
+    460,
+    460
+   ]
+  },
+  {
+   "file": "cards/card_necro_v1_t.png",
+   "size": [
+    1024,
+    1024
+   ]
+  },
+  {
+   "file": "cards/card_needle_v1_460.png",
+   "size": [
+    460,
+    460
+   ]
+  },
+  {
+   "file": "cards/card_needle_v1_t.png",
+   "size": [
+    1024,
+    1024
+   ]
+  },
+  {
+   "file": "cards/card_null_v1_460.png",
+   "size": [
+    460,
+    460
+   ]
+  },
+  {
+   "file": "cards/card_null_v1_t.png",
+   "size": [
+    1024,
+    1024
+   ]
+  },
+  {
+   "file": "cards/card_obliterator_v1_460.png",
+   "size": [
+    460,
+    460
+   ]
+  },
+  {
+   "file": "cards/card_obliterator_v1_t.png",
+   "size": [
+    1024,
+    1024
+   ]
+  },
+  {
+   "file": "cards/card_oblivion_v1_460.png",
+   "size": [
+    460,
+    460
+   ]
+  },
+  {
+   "file": "cards/card_oblivion_v1_t.png",
+   "size": [
+    1024,
+    1024
+   ]
+  },
+  {
+   "file": "cards/card_omen_v1_460.png",
+   "size": [
+    460,
+    460
+   ]
+  },
+  {
+   "file": "cards/card_omen_v1_t.png",
+   "size": [
+    1024,
+    1024
+   ]
+  },
+  {
+   "file": "cards/card_overcharge_v1_460.png",
+   "size": [
+    460,
+    460
+   ]
+  },
+  {
+   "file": "cards/card_overcharge_v1_t.png",
+   "size": [
+    1024,
+    1024
+   ]
+  },
+  {
+   "file": "cards/card_permafrost_v1_460.png",
+   "size": [
+    460,
+    460
+   ]
+  },
+  {
+   "file": "cards/card_permafrost_v1_t.png",
+   "size": [
+    1024,
+    1024
+   ]
+  },
+  {
+   "file": "cards/card_plague_v1_460.png",
+   "size": [
+    460,
+    460
+   ]
+  },
+  {
+   "file": "cards/card_plague_v1_t.png",
+   "size": [
+    1024,
+    1024
+   ]
+  },
+  {
+   "file": "cards/card_purity_v1_460.png",
+   "size": [
+    460,
+    460
+   ]
+  },
+  {
+   "file": "cards/card_purity_v1_t.png",
+   "size": [
+    1024,
+    1024
+   ]
+  },
+  {
+   "file": "cards/card_pyre_v1_460.png",
+   "size": [
+    460,
+    460
+   ]
+  },
+  {
+   "file": "cards/card_pyre_v1_t.png",
+   "size": [
+    1024,
+    1024
+   ]
+  },
+  {
+   "file": "cards/card_quake_v1_460.png",
+   "size": [
+    460,
+    460
+   ]
+  },
+  {
+   "file": "cards/card_quake_v1_t.png",
+   "size": [
+    1024,
+    1024
+   ]
+  },
+  {
    "file": "cards/card_ranger_v1_460.png",
    "size": [
     460,
@@ -112,6 +784,62 @@
   },
   {
    "file": "cards/card_ranger_v1_t.png",
+   "size": [
+    1024,
+    1024
+   ]
+  },
+  {
+   "file": "cards/card_rend_v1_460.png",
+   "size": [
+    460,
+    460
+   ]
+  },
+  {
+   "file": "cards/card_rend_v1_t.png",
+   "size": [
+    1024,
+    1024
+   ]
+  },
+  {
+   "file": "cards/card_rift_v1_460.png",
+   "size": [
+    460,
+    460
+   ]
+  },
+  {
+   "file": "cards/card_rift_v1_t.png",
+   "size": [
+    1024,
+    1024
+   ]
+  },
+  {
+   "file": "cards/card_ruin_v1_460.png",
+   "size": [
+    460,
+    460
+   ]
+  },
+  {
+   "file": "cards/card_ruin_v1_t.png",
+   "size": [
+    1024,
+    1024
+   ]
+  },
+  {
+   "file": "cards/card_rune_v1_460.png",
+   "size": [
+    460,
+    460
+   ]
+  },
+  {
+   "file": "cards/card_rune_v1_t.png",
    "size": [
     1024,
     1024
@@ -140,6 +868,258 @@
   },
   {
    "file": "cards/card_sentry_v1_t.png",
+   "size": [
+    1024,
+    1024
+   ]
+  },
+  {
+   "file": "cards/card_shard_v1_460.png",
+   "size": [
+    460,
+    460
+   ]
+  },
+  {
+   "file": "cards/card_shard_v1_t.png",
+   "size": [
+    1024,
+    1024
+   ]
+  },
+  {
+   "file": "cards/card_shatter_v1_460.png",
+   "size": [
+    460,
+    460
+   ]
+  },
+  {
+   "file": "cards/card_shatter_v1_t.png",
+   "size": [
+    1024,
+    1024
+   ]
+  },
+  {
+   "file": "cards/card_siege_v1_460.png",
+   "size": [
+    460,
+    460
+   ]
+  },
+  {
+   "file": "cards/card_siege_v1_t.png",
+   "size": [
+    1024,
+    1024
+   ]
+  },
+  {
+   "file": "cards/card_sniper_v1_460.png",
+   "size": [
+    460,
+    460
+   ]
+  },
+  {
+   "file": "cards/card_sniper_v1_t.png",
+   "size": [
+    1024,
+    1024
+   ]
+  },
+  {
+   "file": "cards/card_snowfall_v1_460.png",
+   "size": [
+    460,
+    460
+   ]
+  },
+  {
+   "file": "cards/card_snowfall_v1_t.png",
+   "size": [
+    1024,
+    1024
+   ]
+  },
+  {
+   "file": "cards/card_soulpiercer_v1_460.png",
+   "size": [
+    460,
+    460
+   ]
+  },
+  {
+   "file": "cards/card_soulpiercer_v1_t.png",
+   "size": [
+    1024,
+    1024
+   ]
+  },
+  {
+   "file": "cards/card_spark_v1_460.png",
+   "size": [
+    460,
+    460
+   ]
+  },
+  {
+   "file": "cards/card_spark_v1_t.png",
+   "size": [
+    1024,
+    1024
+   ]
+  },
+  {
+   "file": "cards/card_storm_v1_460.png",
+   "size": [
+    460,
+    460
+   ]
+  },
+  {
+   "file": "cards/card_storm_v1_t.png",
+   "size": [
+    1024,
+    1024
+   ]
+  },
+  {
+   "file": "cards/card_sunder_v1_460.png",
+   "size": [
+    460,
+    460
+   ]
+  },
+  {
+   "file": "cards/card_sunder_v1_t.png",
+   "size": [
+    1024,
+    1024
+   ]
+  },
+  {
+   "file": "cards/card_tesla_v1_460.png",
+   "size": [
+    460,
+    460
+   ]
+  },
+  {
+   "file": "cards/card_tesla_v1_t.png",
+   "size": [
+    1024,
+    1024
+   ]
+  },
+  {
+   "file": "cards/card_thunder_v1_460.png",
+   "size": [
+    460,
+    460
+   ]
+  },
+  {
+   "file": "cards/card_thunder_v1_t.png",
+   "size": [
+    1024,
+    1024
+   ]
+  },
+  {
+   "file": "cards/card_thunderhead_v1_460.png",
+   "size": [
+    460,
+    460
+   ]
+  },
+  {
+   "file": "cards/card_thunderhead_v1_t.png",
+   "size": [
+    1024,
+    1024
+   ]
+  },
+  {
+   "file": "cards/card_vanguard_v1_460.png",
+   "size": [
+    460,
+    460
+   ]
+  },
+  {
+   "file": "cards/card_vanguard_v1_t.png",
+   "size": [
+    1024,
+    1024
+   ]
+  },
+  {
+   "file": "cards/card_void_v1_460.png",
+   "size": [
+    460,
+    460
+   ]
+  },
+  {
+   "file": "cards/card_void_v1_t.png",
+   "size": [
+    1024,
+    1024
+   ]
+  },
+  {
+   "file": "cards/card_whiteout_v1_460.png",
+   "size": [
+    460,
+    460
+   ]
+  },
+  {
+   "file": "cards/card_whiteout_v1_t.png",
+   "size": [
+    1024,
+    1024
+   ]
+  },
+  {
+   "file": "cards/card_wildfire_v1_460.png",
+   "size": [
+    460,
+    460
+   ]
+  },
+  {
+   "file": "cards/card_wildfire_v1_t.png",
+   "size": [
+    1024,
+    1024
+   ]
+  },
+  {
+   "file": "cards/card_wither_v1_460.png",
+   "size": [
+    460,
+    460
+   ]
+  },
+  {
+   "file": "cards/card_wither_v1_t.png",
+   "size": [
+    1024,
+    1024
+   ]
+  },
+  {
+   "file": "cards/card_wraith_v1_460.png",
+   "size": [
+    460,
+    460
+   ]
+  },
+  {
+   "file": "cards/card_wraith_v1_t.png",
    "size": [
     1024,
     1024
@@ -853,6 +1833,13 @@
    ]
   },
   {
+   "file": "ui/keyart_stage_bg_v1.png",
+   "size": [
+    1920,
+    1080
+   ]
+  },
+  {
    "file": "ui/ui_btn_danger_v1.png",
    "size": [
     240,
@@ -1009,6 +1996,27 @@
    ]
   },
   {
+   "file": "ui/ui_cursor_default_v1.png",
+   "size": [
+    48,
+    48
+   ]
+  },
+  {
+   "file": "ui/ui_cursor_deny_v1.png",
+   "size": [
+    48,
+    48
+   ]
+  },
+  {
+   "file": "ui/ui_cursor_place_v1.png",
+   "size": [
+    48,
+    48
+   ]
+  },
+  {
    "file": "ui/ui_hud_corner_v1.png",
    "size": [
     72,
@@ -1027,6 +2035,20 @@
    "size": [
     348,
     36
+   ]
+  },
+  {
+   "file": "ui/ui_lib_block_v1.png",
+   "size": [
+    48,
+    48
+   ]
+  },
+  {
+   "file": "ui/ui_lib_head_bar_v1.png",
+   "size": [
+    640,
+    40
    ]
   },
   {
@@ -1106,6 +2128,41 @@
    ]
   },
   {
+   "file": "ui/ui_result_lost_banner_v1.png",
+   "size": [
+    960,
+    96
+   ]
+  },
+  {
+   "file": "ui/ui_result_lost_bg_v1.png",
+   "size": [
+    1920,
+    1080
+   ]
+  },
+  {
+   "file": "ui/ui_result_won_banner_v1.png",
+   "size": [
+    960,
+    96
+   ]
+  },
+  {
+   "file": "ui/ui_result_won_bg_v1.png",
+   "size": [
+    1920,
+    1080
+   ]
+  },
+  {
+   "file": "ui/ui_shop_slot_plate_v1.png",
+   "size": [
+    48,
+    48
+   ]
+  },
+  {
    "file": "ui/ui_wave_cap_v1.png",
    "size": [
     8,
@@ -1131,90 +2188,6 @@
    "size": [
     300,
     10
-   ]
-  },
-  {
-   "file": "ui/keyart_stage_bg_v1.png",
-   "size": [
-    1920,
-    1080
-   ]
-  },
-  {
-   "file": "ui/ui_result_won_bg_v1.png",
-   "size": [
-    1920,
-    1080
-   ]
-  },
-  {
-   "file": "ui/ui_result_lost_bg_v1.png",
-   "size": [
-    1920,
-    1080
-   ]
-  },
-  {
-   "file": "ui/ui_result_won_banner_v1.png",
-   "size": [
-    960,
-    96
-   ]
-  },
-  {
-   "file": "ui/ui_result_lost_banner_v1.png",
-   "size": [
-    960,
-    96
-   ]
-  },
-  {
-   "file": "ui/ui_cursor_default_v1.png",
-   "size": [
-    48,
-    48
-   ]
-  },
-  {
-   "file": "ui/ui_cursor_place_v1.png",
-   "size": [
-    48,
-    48
-   ]
-  },
-  {
-   "file": "ui/ui_cursor_deny_v1.png",
-   "size": [
-    48,
-    48
-   ]
-  },
-  {
-   "file": "ui/ui_lib_block_v1.png",
-   "size": [
-    48,
-    48
-   ]
-  },
-  {
-   "file": "ui/ui_lib_head_bar_v1.png",
-   "size": [
-    640,
-    40
-   ]
-  },
-  {
-   "file": "cards/card_vanguard_v1_460.png",
-   "size": [
-    460,
-    460
-   ]
-  },
-  {
-   "file": "cards/card_vanguard_v1_t.png",
-   "size": [
-    1024,
-    1024
    ]
   }
  ]
