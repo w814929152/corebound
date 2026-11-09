@@ -85,7 +85,7 @@ PanelContainer  (card_blueprint: 稀有度边框 + padding，保持不变)
 
 | 件 | 判定 | 理由 |
 |---|---|---|
-| `ui_card_frame_common/uncommon/rare/epic/legendary_v1.png` (5) | ⚪ **留档，不接入** | 512×716 整卡蓝图网格 + 自带稀有度角标；现有卡位是商店 168×424 竖条、图鉴 278×126 横条，比例差约 1.8×，拉伸必变形；且自带角标会与 `card_blueprint()` 的稀有度边框 / `▲` pips 形成第三重语义。**仅用于 `card_mock_card.py` 生成样张**，定位是评审工具素材，不是运行时资产。 |
+| `ui_card_frame_common/uncommon/rare/epic/legendary_v1.png` (5) | ⚪ **留档，不接入** | 512×716 整卡蓝图网格 + 自带稀有度角标；现有卡位是商店 168×424 竖条、图鉴 278×126 横条（v1.9 起 320×126），比例差约 1.8×，拉伸必变形；且自带角标会与 `card_blueprint()` 的稀有度边框 / `▲` pips 形成第三重语义。**仅用于 `card_mock_card.py` 生成样张**，定位是评审工具素材，不是运行时资产。 |
 | `ui_btn_ghost_v1.png` (1) | ⚪ **生成器冗余** | `_btn_tex("ghost")` 第一行就 `return null`，明确走 `StyleBoxFlat` 全透明路径；贴图永不会被加载。保留供未来换口径，不删。 |
 | `keyart_hero_v1.png` (1) | ⚪ **源图留档** | 派生链上游（`keyart_menu_bg` / `keyart_menu_hero` / `keyart_stage_bg` 都从它派生），不是 UI 层贴图。4K 升频时作为底稿。 |
 | `keyart_menu_hero_v1.png` (1) | ⚪ **备用派生** | 用户 11-08 拍板主菜单换回 `menu` 档后留作备用；`main_menu_overlay.gd` 注释已标明。选关仍用 `keyart_stage_bg_v1`。 |

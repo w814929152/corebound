@@ -19,6 +19,7 @@
   py -3.9 tools/card_batch3_process.py --batch batch9 --dominant --lift-pack    # 暗板占比高的中明度包
   py -3.9 tools/card_batch3_process.py --batch batch10 --dominant --lift-pack   # v1.6 低明度深青（复用同档）
   py -3.9 tools/card_batch3_process.py --batch batch11 --dominant --lift-pack   # v1.7 真红收官（第三次复用，80/80）
+  py -3.9 tools/card_batch3_process.py --batch batch12 --dominant               # v1.9 第 81 卡位（cinder 默认档）
 
 --dominant 做三件事：色阶拉伸透传 --protect-mode remap（整机高饱和不再被当成小点缀
 跳过重映射）、包色覆盖率门槛 2%→40%、p50 门槛 90-160→80-185（主色靠色相对比）。
