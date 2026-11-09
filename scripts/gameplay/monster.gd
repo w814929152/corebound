@@ -36,6 +36,15 @@ var index: int = 0          # 本波出生序号（0-based；= 分配排序的�
 var proto: String = "Swarm" # Rush / Swarm / Tank
 var elite: bool = false     # 🔒 D-W1=B 词缀版 Elite（AI 不变，只放大 HP）
 
+## 火焰附加状态：各来源共享层数；满层引爆或持续时间结束时清空。
+var burn_stacks: int = 0
+var burn_remaining: float = 0.0
+
+## 冰冻层数不会在十层前自然消退；完全冻结结束后统一清空。
+var frost_stacks: int = 0
+var frozen_remaining: float = 0.0
+var death_recorded: bool = false
+
 var hp: float = 0.0
 var hp_max: float = 0.0
 var m_spd: float = 1.0      # 速度乘数（× v₀ = 10.10）
@@ -61,6 +70,11 @@ var sapper: bool = false
 func setup(p_index: int, p_proto: String, p_elite: bool, p_hp: float, p_m_spd: float, p_t_remain: float) -> void:
 	index = p_index
 	proto = p_proto
+	frost_stacks = 0
+	frozen_remaining = 0.0
+	death_recorded = false
+	burn_stacks = 0
+	burn_remaining = 0.0
 	elite = p_elite
 	hp = float(p_hp)
 	hp_max = float(p_hp)

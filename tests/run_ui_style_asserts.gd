@@ -427,8 +427,8 @@ func _test_i_card_text() -> void:
 	# 溅射 / 减速 / 标记分别落在第 1 / 3 行（第 2 行只放伤害·攻速，否则超 9 汉字必然二次换行）
 	_check("Cannon 描述写明「溅射」（aoe=true）",
 		_CardText.describe("Cannon").find("溅射") >= 0)
-	_check("Frost 描述写明「减速 30%」（slow=0.30）",
-		_CardText.describe("Frost").find("减速 30%") >= 0)
+	_check("Frost 描述写明每层减速 10% 与十层冻结",
+		_CardText.describe("Frost").find("减速 10%") >= 0 and _CardText.describe("Frost").find("十层冻结") >= 0)
 	_check("Tesla 描述写明「减速」（slow=0.10）",
 		_CardText.describe("Tesla").find("减速") >= 0)
 	_check("Arrow 描述**不含**「溅射」（aoe=false）",
@@ -750,16 +750,16 @@ func _test_l_main_menu() -> void:
 	_check("【图鉴】点击入口后切到图鉴页", menu.current_page() == _MainMenu.PAGE_LIBRARY)
 	_check_int("【图鉴】卡包块数 = PACKS 数", menu._pack_blocks.size(), _Packs.PACKS.size())
 
-	var want_slots := _Packs.PACKS.size() * _Packs.CARDS_PER_PACK
-	_check_int("【图鉴】卡位数 = 8 包 × 每包 10 张", menu._card_entries.size(), want_slots)
+	var want_slots := _Packs.all_cards().size()
+	_check_int("【图鉴】卡位数 = 实际卡牌总数", menu._card_entries.size(), want_slots)
 
 	# Every package block must expose all ten cards without truncation.
 	var bad_block: Array = []
 	for blk in menu._pack_blocks:
 		var n := ((blk as Dictionary)["cards"] as Array).size()
-		if n != _Packs.CARDS_PER_PACK:
+		if n != _Packs.cards_of(String((blk as Dictionary)["id"])).size():
 			bad_block.append("%s=%d" % [String((blk as Dictionary)["id"]), n])
-	_check("【图鉴】每包块恰好 %d 张卡%s" % [_Packs.CARDS_PER_PACK,
+	_check("【图鉴】每包完整显示（基础 %d 张）%s" % [_Packs.CARDS_PER_PACK,
 		"" if bad_block.is_empty() else " → " + str(bad_block)], bad_block.is_empty())
 
 	# 覆盖全部玩家卡 + 每张卡有说明

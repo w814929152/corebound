@@ -9,6 +9,9 @@ extends RefCounted
 ##   依据 `design/gdd/campaign-progression.md` §3「失败也是产出」——
 ##   打不过也要有推进，否则「解锁 → 可选包变多」这条件永远在通关之后才生效，
 ##   而首次通关前的内容玩家一辈子看不见（除非他运气好）。
+##   🆕 v2 地区口径（2026-11-08）：`card_packs.unlock_by_region` 打开后，解锁改由
+##   「已守地区」驱动，本类的 `best_wave` **不再参与解锁判定**（只作为战绩与存档字段保留）。
+##   `next_unlock_wave()` 在该口径下返回 -1。存档结构不变 → 关掉开关即可完全回滚。
 ##
 ## 🔴 存档是本次唯一新增的基础设施：`user://card_packs.json`（一个 dict）。
 ##   · 只存局外事实（最佳波次 / 局数 / 胜场 / 上次选包），**不存局内状态**；
@@ -171,6 +174,9 @@ static func reset_progress() -> void:
 ## 下一包还差多少波（UI 用；全部解锁 → -1）。
 static func next_unlock_wave() -> int:
 	_ensure_loaded()
+	# 🔴 v2 地区口径：解锁不再由波次驱动 → 没有「下一个解锁波次」（-1 = UI 别说波次）。
+	if _Packs.unlock_by_region:
+		return -1
 	# 🔴 全部卡包开放时没有「下一个解锁」→ -1（UI 据此显示「全部开放」而不是编个波次）。
 	if _Packs.all_packs_open:
 		return -1

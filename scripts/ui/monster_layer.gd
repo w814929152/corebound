@@ -20,6 +20,7 @@
 ## ⚠️ G6：headless 无 global_script_class_cache → 不写 class_name。
 ##
 
+const _FireParams := preload("res://scripts/data/building_card_params.gd")
 const _PathGeometry := preload("res://scripts/geo/path_geometry.gd")
 const _Geo6 := preload("res://scripts/geo/geo6.gd")
 const _ShopLayout := preload("res://scripts/ui/shop_layout.gd")
@@ -307,7 +308,7 @@ func _recompute_slot_rows() -> void:
 	if _SpaceModel.is_radial():
 		_slot_rows = _PathGeometry.slot_exposure_radial(
 			slots, _MonsterData.AGGRO_R, _SpaceModel.core_pos(),
-			_PathGeometry.EXPO_SAFE_MAX)
+			_PathGeometry.expo_safe_max_for(_BuildGrid.sites_active()))
 	else:
 		_slot_rows = _PathGeometry.slot_exposure(slots, _MonsterData.AGGRO_R)
 
@@ -603,12 +604,76 @@ func _draw_towers(sc: float) -> void:
 				maxf(1.0, sc * 0.10), true)
 		# 🔒 V-8 塔底「重启充能」点亮（K 未用 = 亮 / 用尽 = 灭）。🔴 零数字、零文本。
 		_draw_revive_charge(sp, slot, rad, sc)
+		_draw_fire_charge(sp, slot, rad, sc)
 		# 层数刻度（h 个白点，沿塔身底部排开）
 		var n := mini(h, 8)
 		for k in range(n):
 			var ang := PI * (0.25 + 0.5 * float(k) / float(maxi(1, n - 1)))
 			var dot := Vector2(sp.x + cos(ang) * rad * 0.5, sp.y + sin(ang) * rad * 0.5)
 			draw_circle(dot, maxf(1.2, sc * 0.14), Color(1.0, 1.0, 1.0, 0.9))
+
+
+## 只读战斗快照：橙色分段环显示充能，爆发环与实际半径一致。
+func _draw_fire_charge(center: Vector2, slot: int, radius: float, sc: float) -> void:
+	for tw in _snap.get("towers", []):
+		if int(tw.get("slot", -1)) != slot or int(tw.get("fire_capacity", 0)) <= 0:
+			continue
+		var capacity := int(tw["fire_capacity"])
+		var charge := int(tw.get("fire_charge", 0))
+		for i in range(capacity):
+			var angle := -PI * 0.5 + TAU * float(i) / float(capacity)
+			var color := Color(1.0, 0.38, 0.12, 1.0) if i < charge else Color(0.45, 0.28, 0.20, 0.65)
+			draw_arc(center, radius + 0.9 * sc, angle, angle + TAU * 0.7 / float(capacity), 5, color, maxf(2.0, sc * 0.2), true)
+
+
+## 火焰层数用十段橙色环表达；只读快照，不在形状层添加文本。
+func _draw_fire_stacks(sc: float) -> void:
+	var capacity := int(_FireParams.FIRE_EFFECT["max_stacks"])
+	for m in _snap.get("monsters", []):
+		var stacks := int(m.get("burn_stacks", 0))
+		if stacks <= 0 or float(m.get("hp", 0.0)) <= 0.0:
+			continue
+		var center := _to_screen(m["pos"])
+		var r := maxf(8.0, sc * 2.0)
+		for i in range(capacity):
+			var angle := -PI * 0.5 + TAU * float(i) / float(capacity)
+			var col := Color(1.0, 0.42, 0.08, 0.95) if i < stacks else Color(0.45, 0.25, 0.12, 0.35)
+			draw_arc(center, r, angle, angle + TAU * 0.65 / float(capacity), 4, col, maxf(1.5, sc * 0.16), true)
+
+
+## 冰冻：蓝色分段环 = 层数；完整冰晶轮廓 = 完全冻结。
+func _draw_frost_states(sc: float) -> void:
+	var capacity := int(_FireParams.FROST_EFFECT["max_stacks"])
+	for m in _snap.get("monsters", []):
+		var stacks := int(m.get("frost_stacks", 0))
+		if stacks <= 0 or float(m.get("hp", 0.0)) <= 0.0:
+			continue
+		var center := _to_screen(m["pos"])
+		var radius := maxf(9.0, sc * 2.4)
+		if bool(m.get("frozen", false)):
+			var crystal := _ngon(center, radius, 6, PI / 6.0)
+			draw_colored_polygon(crystal, Color(0.35, 0.8, 1.0, 0.22))
+			draw_polyline(_closed(crystal), Color(0.55, 0.9, 1.0, 0.95), maxf(1.5, sc * 0.18), true)
+		else:
+			for i in range(capacity):
+				var angle := -PI * 0.5 + TAU * float(i) / float(capacity)
+				var col := Color(0.4, 0.8, 1.0, 0.95) if i < stacks else Color(0.2, 0.4, 0.6, 0.35)
+				draw_arc(center, radius, angle, angle + TAU * 0.65 / float(capacity), 4, col, maxf(1.5, sc * 0.16), true)
+	for storm in _snap.get("ice_storms", []):
+		var center := _to_screen(storm["pos"])
+		var phase := 1.0 - float(storm["ttl"]) / 0.6
+		var radius := float(storm["radius"]) * sc * clampf(phase * 2.0, 0.05, 1.0)
+		draw_circle(center, radius, Color(0.4, 0.8, 1.0, (1.0 - phase) * 0.16))
+		draw_arc(center, radius, 0.0, TAU, 48, Color(0.55, 0.9, 1.0, 1.0 - phase), maxf(2.0, sc * 0.28), true)
+
+
+func _draw_fire_blasts(sc: float) -> void:
+	for blast in _snap.get("fire_blasts", []):
+		var center := _to_screen(blast["pos"])
+		var phase := 1.0 - float(blast["ttl"]) / 0.6
+		var r := float(blast["radius"]) * sc * clampf(phase * 2.0, 0.05, 1.0)
+		draw_circle(center, r, Color(1.0, 0.30, 0.05, (1.0 - phase) * 0.12))
+		draw_arc(center, r, 0.0, TAU, 80, Color(1.0, 0.55, 0.12, 1.0 - phase), maxf(2.0, sc * 0.35), true)
 
 
 ## 🔒 V-8 塔底「重启充能」点亮 —— 回答「这座塔**还能不能再爬一次**」。
@@ -798,8 +863,14 @@ func _draw() -> void:
 	# 🔴 双模分派：RADIAL 走 P0 分层绘制；PATH 走旧口径（逐位不变）。
 	if _SpaceModel.mode == _SpaceModel.Mode.RADIAL:
 		_draw_radial(sc)
+		_draw_frost_states(sc)
+		_draw_fire_stacks(sc)
+		_draw_fire_blasts(sc)
 		return
 	_draw_legacy(sc)
+	_draw_frost_states(sc)
+	_draw_fire_stacks(sc)
+	_draw_fire_blasts(sc)
 
 
 ## PATH 模式渲染 —— 🔴 与改前**逐位等价**（含路径/核心/塔位/暴露图标/被攻击环/塔/怪，一行未改）。
@@ -897,7 +968,7 @@ func _draw_radial(sc: float) -> void:
 	_draw_revive_flash(sc)        # 层9：爬起扩散环（沿用既有）
 	# 🟠 T-P6-07 A 档 VFX（弹流/伤害数字/击杀反馈）由**兄弟节点** `VfxLayer` 绘制
 	#   （见 `scripts/ui/vfx_layer.gd` 与 `battle_shop.tscn`）——🔴 本文件保持**零文本**
-	#   （T-E1③ 源码级守：AC-T1-24「渲染层代码行无 draw_string/Label/progress」）。
+	#   （T-E1③ 源码级守：AC-T1-24「渲染层代码行无 draw_string/Label/phase」）。
 
 
 # ---- 纯函数工具（spec §A.9；无状态、无随机、帧间稳定）----
@@ -1544,6 +1615,7 @@ func _draw_radial_towers(sc: float) -> void:
 			draw_circle(c, R, Color(0.06, 0.07, 0.09, 0.62))
 			draw_arc(c, R, 0.0, TAU, 28, Color(0.55, 0.57, 0.62, 0.55), maxf(1.0, 0.10 * sc), true)
 		_draw_revive_charge(c, slot, R, sc)
+		_draw_fire_charge(c, slot, R, sc)
 		# 🔴 P0 增强：升级「形态」递进（h 越高越醒目；**取代**原"层数白点"）。
 		_draw_tower_form(c, R, int(tw.get("h", 1)), sc)
 		# 🔴 P0 增强：塔受击一瞬白闪（本地计时器；仅对可见塔）。
@@ -1569,6 +1641,8 @@ func _draw_radial_tower_glyph(c: Vector2, R: float, ctype: String, sc: float) ->
 	var n := 3
 	var rot := -PI * 0.5          # 三角：顶点朝上
 	match ctype:
+		"Pyroclasm":
+			n = 12
 		"Cannon":
 			n = 4
 			rot = PI * 0.25       # 菱形
@@ -1644,7 +1718,7 @@ func _tower_glyph_color(ctype: String) -> Color:
 			return P_GOLD                       # 辉金（电族）
 		"Hex", "Rune":
 			return Color(0.706, 0.361, 1.000)   # 幽紫 #B45CFF（咒术族，RARITY epic 同源）
-		"Ember":
+		"Ember", "Pyroclasm":
 			return P_ENEMY                      # 熔橙（火族 · 内芯小面积点缀）
 		"Oblivion":
 			return P_ALLY_2                     # 星紫（湮灭）
@@ -1660,6 +1734,11 @@ func _draw_glyph_mark(c: Vector2, r: float, ctype: String, sc: float) -> void:
 	var w := maxf(1.2, 0.10 * sc)
 	var col := P_TOWER_EDGE
 	match ctype:
+		"Pyroclasm": # 蓄能核心：中心圆 + 四向辐射
+			draw_circle(c, r * 0.22, col)
+			for i in range(4):
+				var axis := Vector2.from_angle(TAU * float(i) / 4.0)
+				draw_line(c + axis * r * 0.4, c + axis * r * 0.7, col, w, true)
 		"Arrow":      # 上箭头 ∧
 			draw_polyline(PackedVector2Array([c + Vector2(-r * 0.5, r * 0.3), c + Vector2(0, -r * 0.45), c + Vector2(r * 0.5, r * 0.3)]), col, w, true)
 		"Cannon":     # 中心圆点

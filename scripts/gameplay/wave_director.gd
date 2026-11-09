@@ -53,8 +53,12 @@ const _Cfg := preload("res://scripts/engine/mvp_config.gd")
 const _DE := preload("res://scripts/engine/damage_engine.gd")
 const _WaveSim := preload("res://scripts/engine/wave_sim.gd")
 const _PathGeometry := preload("res://scripts/geo/path_geometry.gd")
+const _BuildGrid := preload("res://scripts/geo/build_grid.gd")
 const _SpaceModel := preload("res://scripts/geo/space_model.gd")
 const _MonsterData := preload("res://scripts/data/monster_data.gd")
+## 🆕 关卡波表（stage-waves.md）：每波「只数 / 单只 HP / 三原型构成 / 精英只数」的 SSOT。
+##   🔴 只在 `stage_waves_enabled` 时被读（默认 false → 一次都不调）→ 金标本逐位不变。
+const _StageWaves := preload("res://scripts/data/stage_waves.gd")
 const _Monster := preload("res://scripts/gameplay/monster.gd")
 ## 🆕 战斗类型系统 —— 只在 combat_types_enabled 时按抗性分池结算（默认关 → 逐位不变）。
 const _CombatTypes := preload("res://scripts/data/combat_types.gd")
@@ -124,6 +128,21 @@ var warmup_waves: int = _MonsterData.WARMUP
 var prototype_split_enabled: bool = false
 ## 🟡 S5-D1：GDD §2.5.4 词缀版 Elite 波。MVP 恒 false。
 var elite_waves_enabled: bool = false
+## 🆕 关卡波表（`scripts/data/stage_waves.gd` · `design/gdd/stage-waves.md`）。
+##   🔴 **默认 false**。这是本项目所有新机制的入场条件：默认路径与改前**逐位相同**。
+##   打开后：`start_wave()` 用波表覆盖本波 `n` / `hp_unit`，`_build_spawn_table()` 用波表的
+##   三原型构成（后者仍需 `prototype_split_enabled` 才真正生效，见 §8.3 分层纪律）。
+##   🔴 neutral 波（0-1）恒不覆盖 —— 它是与金标本逐位对齐的回归锚点。
+var stage_waves_enabled: bool = false
+## 🆕 当前关卡 id（`stage_waves.gd` 的键，如 "3-1"）。"" = 无波表 → 走基准曲线。
+var stage_id: String = ""
+## 🆕 难度加压档位 `S` = 已守地区数（campaign 注入）。
+##   只做两件事：把最早的 k=floor(S/3) 个「试探」波升级为「潮涌」波；处刑波精英 +k。
+##   🔴 **不加波数**：`hp` 是 16×1.42^(w−1)，+1 波末波就贵 42%，那是断崖不是斜坡。
+var escalation: int = 0
+## 🆕 本波波表结果（`start_wave` 内算一次，供 `_build_spawn_table` / `_elite_count_wave` 消费）。
+##   {} = 无波表或越界；{"neutral": true} = 中性波 → 一切按金标本。
+var cur_spec: Dictionary = {}
 ## 🆕 战斗类型系统（物理/魔法 × 物抗/魔抗）。🔴 默认 false = 旧聚合池口径逐位不变。
 ##   打开后：塔按攻击类型拆分 DPS 池，怪物按原型抗性分别结算（见 `_substep` ②）。
 var combat_types_enabled: bool = false
@@ -162,6 +181,16 @@ var monsters: Array = []
 ##   每项 = {pos: Vector2, ttl: float, dps: float, speed: float}；🔴 只在实时战斗里存在，
 ##   批处理镜像不生成 → 金标本 / MC 零扰动。
 var minions: Array = []
+
+# 焚星塔的波内状态；按塔位分别计数，开波清空。
+var _fire_charge: Dictionary = {}
+var _fire_attack_clock: Dictionary = {}
+var _fire_blasts: Array = []
+var _frost_attack_clock: Dictionary = {}
+var _ice_storms: Array = []
+var _ice_storm_queue: Array = []
+var _resolving_ice_storms: bool = false
+const _ChargePow := preload("res://scripts/engine/fp_pow.gd")
 var kills: int = 0
 var leaked_count: int = 0
 var scrap_earned: float = 0.0
@@ -209,6 +238,19 @@ func set_max_wave(w: int) -> bool:
 		return false
 	_max_wave = w
 	return true
+
+
+## 🆕 注入「本局打的是哪一关 + 加压档位」。
+##   · 波数**由波表长度决定**（不读 `CampaignData.STAGES[..].wave_count`）：
+##     表长才是闭合力，两处不一致时以表为准，`StageWaves.validate()` 的 V-2 会红。
+##   · 🔴 `stage_waves_enabled=false` 时只记录、不改 `_max_wave` → 完全惰性。
+##   返回是否成功接管波数控制。
+func set_stage(p_stage_id: String, p_escalation: int = 0) -> bool:
+	stage_id = p_stage_id
+	escalation = maxi(0, p_escalation)
+	if not stage_waves_enabled or not _StageWaves.has_stage(p_stage_id):
+		return false
+	return set_max_wave(_StageWaves.wave_count(p_stage_id))
 
 
 func _ready() -> void:
@@ -284,6 +326,16 @@ func start_wave(p_w: int) -> void:
 	var ms := _WaveSim.monster_stats(w, cfg)
 	hp_unit = float(ms["hp"])
 	n = int(ms["n"])
+	# 🆕 关卡波表：只重排「这一波长什么样」，**不改任何常量**（hp_growth / num_growth / wave_dur /
+	#   spawn_window / t_reach / leak_damage 一个都不碰）。整关总血量守恒由 `stage_waves.gd` 保证。
+	#   🔴 默认 stage_waves_enabled=false → cur_spec 恒 {} → 下面几行恒不执行 → 金标本逐位不变。
+	#   🔴 `neutral` 波（0-1）**必须**跳过：它是「实时 == 金标本」的回归锚点（V-5）。
+	cur_spec = {}
+	if stage_waves_enabled and stage_id != "":
+		cur_spec = _StageWaves.wave_spec(stage_id, w, cfg, escalation)
+		if not cur_spec.is_empty() and not bool(cur_spec.get("neutral", false)):
+			n = int(cur_spec["n"])
+			hp_unit = float(cur_spec["hp"])
 	spk = float(ms["scrap_per_kill"])
 	t_reach = float(ms["t_reach"])
 	var D := float(ms["D"])
@@ -323,6 +375,13 @@ func start_wave(p_w: int) -> void:
 	leaked_count = 0
 	scrap_earned = 0.0
 	monsters = []
+	_fire_charge.clear()
+	_fire_attack_clock.clear()
+	_fire_blasts.clear()
+	_frost_attack_clock.clear()
+	_ice_storms.clear()
+	_ice_storm_queue.clear()
+	_resolving_ice_storms = false
 	last_result_w = -1
 	_build_spawn_table()
 	# 🔒 T1（Q-T2 = ①）：仇恨开启时，波首把未 Disabled 的塔重置为满血。
@@ -381,6 +440,12 @@ func _build_spawn_table() -> void:
 	_elite_flags = []
 	_hp_mults = []
 	_spd_mults = []
+	# 🆕 波表的三原型构成（{} = 无波表 / 中性波 → 走 `MonsterData` 基准构成）。
+	#   🔴 分层纪律：`n/hp` 覆盖只需 `stage_waves_enabled`，`comp` 还要 `prototype_split_enabled`
+	#      —— 因为三原型分化会破「实时↔批处理等价」(S5-D1)，只能在玩家路线开。
+	var comp: Dictionary = {}
+	if not cur_spec.is_empty() and not bool(cur_spec.get("neutral", false)):
+		comp = cur_spec.get("comp", {})
 	if not prototype_split_enabled:
 		# 🔴 金标本口径：单一基准怪（m_hp = 1.00、m_spd = 1.00）
 		for i in range(n):
@@ -389,20 +454,45 @@ func _build_spawn_table() -> void:
 			_hp_mults.append(1.0)
 			_spd_mults.append(1.0)
 		return
-	_proto_seq = _MonsterData.spawn_sequence(n)
-	var n_e := _MonsterData.elite_count(w, n) if elite_waves_enabled else 0
+	_proto_seq = _MonsterData.spawn_sequence(n) if comp.is_empty() else _StageWaves.spawn_sequence(n, comp)
+	var n_e := _elite_count_wave()
 	var c := _MonsterData.elite_conserve(n, n_e)
 	var eidx := _MonsterData.elite_indices(n, n_e)
+	# 单只乘数：基准构成时 `proto_mult` 短路返回 `MonsterData` 原值 → 与改前逐位一致。
+	var pm: Dictionary = {"hp": _MonsterData.M_HP, "spd": _MonsterData.M_SPD} if comp.is_empty() else _StageWaves.proto_mult(comp)
 	for i in range(n):
 		var p := String(_proto_seq[i])
 		var e := eidx.has(i)
 		_elite_flags.append(e)
-		_hp_mults.append(_MonsterData.hp_mult(p, e, c))
-		_spd_mults.append(_MonsterData.spd_mult(p))
+		_hp_mults.append(_MonsterData.ELITE_HP_MULT if e else float(pm["hp"][p]) * c)
+		_spd_mults.append(float(pm["spd"][p]))
+
+
+## 🆕 本波精英只数 —— **防漂移的单一入口**（`_build_spawn_table` / `_spawn_one` / `is_elite_wave` 共用）。
+##   · 无波表 → `MonsterData.elite_count(w, n)`（金标本 w%5 周期，逐位不变）；
+##   · 有波表 → 波表说了算（含 `S` 加压的 +k），且 **必须**仍满足
+##     `elite_conserve(n, n_e)` 的合法性（n_e < n/2.5），由 `StageWaves.elite_for` 夹紧。
+func _elite_count_wave() -> int:
+	if not elite_waves_enabled:
+		return 0
+	if not cur_spec.is_empty() and not bool(cur_spec.get("neutral", false)):
+		return int(cur_spec.get("elite", 0))
+	return _MonsterData.elite_count(w, n)
+
+
+## 🆕 任意波 `pw` 是否精英波（当前波 / 下一波预告共用同一判定，避免两处口径漂移）。
+func _is_elite_wave_at(pw: int) -> bool:
+	if not elite_waves_enabled:
+		return false
+	if stage_waves_enabled and stage_id != "":
+		var sp := _StageWaves.wave_spec(stage_id, pw, cfg, escalation)
+		if not sp.is_empty() and not bool(sp.get("neutral", false)):
+			return int(sp.get("elite", 0)) > 0
+	return _MonsterData.is_elite_wave(pw)
 
 
 func is_elite_wave() -> bool:
-	return elite_waves_enabled and _MonsterData.is_elite_wave(w)
+	return _is_elite_wave_at(w)
 
 
 # ---------------------------------------------------------------------------
@@ -457,6 +547,8 @@ func _substep() -> void:
 
 	# ---- ② 集火（W-A1 聚合池 / W-A2 距核心最近优先 / W-A3 溢出结转 / W-A4 不判射程）----
 	_stable_sort_by_remain()
+	_tick_frost_effects(_WaveSim.DT)
+	_tick_fire_effects(_WaveSim.DT)
 	if combat_types_enabled:
 		# 🆕 类型分池：物攻池 / 魔攻池 / 真实池各自独立集火，每只怪按原型抗性减免；
 		#   真实伤害无视抗性。🔴 与 `WaveSim._apply_pool` 语义同构（同 SSOT → 逐位等价）。
@@ -469,16 +561,14 @@ func _substep() -> void:
 	else:
 		var dmg := dps * _WaveSim.DT
 		for m in monsters:
+			if float(m.hp) <= 0.0:
+				continue
 			if dmg <= 0.0:
 				break
 			if float(m.hp) <= dmg:
 				dmg -= float(m.hp)
 				m.hp = 0.0
-				kills += 1
-				scrap_earned += spk
-				emit_signal("monster_killed", m)
-				# 🆕 击杀升级：任意击杀都让 on_kill_lv 的塔 +1 级（封顶 8）
-				_TowerEffects.on_kill(player)
+				_record_monster_kill(m)
 			else:
 				m.hp = float(m.hp) - dmg
 				dmg = 0.0
@@ -495,17 +585,21 @@ func _substep() -> void:
 
 	# ---- ③ 前进：判死 / 漏怪（原地压缩，保持相对顺序）----
 	#   🔒 T1：AggroTower 态怪物**停下**（t_remain 冻结，不前进、不漏怪）。
+	var frozen_this_step: Array = []
 	var wpos := 0
 	var leak_dmg := float(cfg.get("leak_damage", 50.0))
 	for m2 in monsters:
 		if float(m2.hp) <= 0.0:
 			continue
+		if float(m2.frozen_remaining) > 0.0:
+			frozen_this_step.append(m2)
 		if tower_aggro_enabled and m2.state == MState.AGGRO_TOWER:
 			# 停下攻塔：冻结 t_remain，仍留在队列（不漏怪、不前进）
 			monsters[wpos] = m2
 			wpos += 1
 			continue
-		m2.t_remain = float(m2.t_remain) - _WaveSim.DT
+		var move_dt := _frost_move_dt(m2, _WaveSim.DT)
+		m2.t_remain = float(m2.t_remain) - move_dt
 		if float(m2.t_remain) <= 0.0:
 			m2.state = MState.LEAKED
 			leaked_count += 1
@@ -537,10 +631,277 @@ func _substep() -> void:
 	#   🔴 与批处理镜像同序（都在④仇恨之后）→ 死亡当子步就开始累计 `revive_t_disabled`。
 	#   🔴 `repair_on_disable < 9`（默认 0）→ 函数首行 return，off 路径逐位不变。
 	_tick_revive()
+	_advance_frozen_timers(_WaveSim.DT, frozen_this_step)
 
 
 
-## 🆕 召唤小兵（2026-11-07）：向最近活怪移动，进入 1.5 单位内持续攻击（无视抗性）。
+## 叠层冰冻入口：来源共享层数，完全冻结期间不刷新冻结计时或积攒下轮层数。
+func apply_frost_effect(target, stacks: int = 1) -> void:
+	if player == null or target == null or stacks <= 0 or not monsters.has(target):
+		return
+	if state != State.SPAWNING and state != State.FIGHTING:
+		return
+	if float(target.hp) <= 0.0 or int(target.state) == MState.LEAKED or float(target.frozen_remaining) > 0.0:
+		return
+	target.frost_stacks = mini(int(_TD.FROST_EFFECT["max_stacks"]), int(target.frost_stacks) + stacks)
+	if int(target.frost_stacks) >= int(_TD.FROST_EFFECT["max_stacks"]):
+		target.frozen_remaining = float(_TD.FROST_EFFECT["freeze_duration"])
+
+
+## 在子步末尾计时：本子步已经完整执行冻结，恰好冻结 2 秒而非少一 tick。
+func _advance_frozen_timers(dt: float, targets: Array) -> void:
+	for m in targets:
+		if float(m.hp) <= 0.0 or float(m.frozen_remaining) <= 0.0:
+			continue
+		m.frozen_remaining = maxf(0.0, float(m.frozen_remaining) - dt)
+		if float(m.frozen_remaining) <= 1e-9:
+			m.frozen_remaining = 0.0
+			m.frost_stacks = 0
+
+
+func _frost_move_dt(m, dt: float) -> float:
+	if float(m.frozen_remaining) > 0.0:
+		return 0.0
+	if int(m.frost_stacks) <= 0:
+		return dt
+	return dt * maxf(0.0, 1.0 - float(m.frost_stacks) * float(_TD.FROST_EFFECT["slow_per_stack"]))
+
+
+func _tick_frost_effects(dt: float) -> void:
+	for storm in _ice_storms:
+		storm["ttl"] = float(storm["ttl"]) - dt
+	_ice_storms = _ice_storms.filter(func(b): return float(b["ttl"]) > 0.0)
+	if player == null or not bool(cfg.get("stacking_frost_enabled", false)):
+		return
+	var aspd := 0.0
+	for t in player.towers:
+		if not bool(t.disabled):
+			aspd += _TD.tower_buff_aspd(String(t.ctype))
+	for source in player.towers:
+		var name := String(source.ctype)
+		var slot := int(source.slot)
+		# 原来具备减速的任何来源，统一改为每次附加一层 10% 冰冻。
+		if bool(source.disabled) or _TD.tower_slow(name) <= 0.0 or _TD.tower_dps(name) <= 0.0:
+			_frost_attack_clock.erase(slot)
+			continue
+		var targets: Array = []
+		for m in monsters:
+			if float(m.hp) > 0.0 and int(m.state) != MState.LEAKED and _tower_pos(source).distance_to(m.pos(v0_)) <= _TD.tower_rng(name):
+				targets.append(m)
+		if targets.is_empty():
+			_frost_attack_clock.erase(slot)
+			continue
+		var period := 1.0 / (_TD.tower_attack_speed(name) * (1.0 + aspd))
+		var elapsed := float(_frost_attack_clock.get(slot, 0.0)) + dt
+		while elapsed + 1e-9 >= period:
+			elapsed -= period
+			var front = targets[0]
+			for target in targets:
+				if target != front and (not bool(_TD._tower_def(name).get("aoe", false)) or target.pos(v0_).distance_to(front.pos(v0_)) > 6.0):
+					continue
+				apply_frost_effect(target)
+		_frost_attack_clock[slot] = maxf(0.0, elapsed)
+
+
+## 所有死亡入口统一记账；冻结死亡的冰暴通过队列处理，避免连锁爆炸递归。
+func _record_monster_kill(m) -> void:
+	if bool(m.death_recorded) or float(m.hp) > 0.0:
+		return
+	m.death_recorded = true
+	var shatter := float(m.frozen_remaining) > 0.0
+	if shatter:
+		_ice_storm_queue.append(m.pos(v0_))
+		m.frozen_remaining = 0.0
+		m.frost_stacks = 0
+	kills += 1
+	scrap_earned += spk
+	emit_signal("monster_killed", m)
+	_TowerEffects.on_kill(player)
+	if _resolving_ice_storms or not shatter:
+		return
+	_resolving_ice_storms = true
+	var cursor := 0
+	while cursor < _ice_storm_queue.size():
+		var center: Vector2 = _ice_storm_queue[cursor]
+		cursor += 1
+		_release_ice_storm(center)
+	_ice_storm_queue.clear()
+	_resolving_ice_storms = false
+
+
+func _release_ice_storm(center: Vector2) -> void:
+	var radius := float(_TD.FROST_EFFECT["storm_radius"])
+	var damage := float(_TD.FROST_EFFECT["storm_damage"])
+	_ice_storms.append({"pos": center, "radius": radius, "ttl": 0.6})
+	for m in monsters:
+		if float(m.hp) <= 0.0 or int(m.state) == MState.LEAKED or center.distance_squared_to(m.pos(v0_)) > radius * radius + 1e-6:
+			continue
+		# 先附两层再结算伤害；若因此满十层且被击杀，也会产生一次冰暴。
+		apply_frost_effect(m, int(_TD.FROST_EFFECT["storm_stacks"]))
+		var factor := 1.0
+		if combat_types_enabled:
+			factor -= clampf(_CombatTypes.effective_resist(String(m.proto), _CombatTypes.MAGIC, _magic_reduct), 0.0, 1.0)
+		m.hp = maxf(0.0, float(m.hp) - damage * factor)
+		if float(m.hp) <= 0.0:
+			_record_monster_kill(m)
+
+
+## 火系塔按攻速施加火焰。群攻以首个射程内目标为中心溅射；每个目标各计一次。
+## 这是状态事件，不额外添加普攻伤害，也不把 DoT 每跳当作一次附加。
+func _tick_fire_effects(dt: float) -> void:
+	for blast in _fire_blasts:
+		blast["ttl"] = float(blast["ttl"]) - dt
+	_fire_blasts = _fire_blasts.filter(func(b): return float(b["ttl"]) > 0.0)
+	for m in monsters:
+		m.burn_remaining = maxf(0.0, float(m.burn_remaining) - dt)
+		if float(m.burn_remaining) <= 0.0:
+			m.burn_stacks = 0
+	if player == null:
+		return
+	var aspd := 0.0
+	for t in player.towers:
+		if not bool(t.disabled):
+			aspd += _TD.tower_buff_aspd(String(t.ctype))
+	for source in player.towers:
+		var name := String(source.ctype)
+		if bool(source.disabled) or _TD.tower_tag(name) != "fire" or _TD.tower_dps(name) <= 0.0:
+			_fire_attack_clock.erase(int(source.slot))
+			continue
+		var center := _tower_pos(source)
+		var targets: Array = []
+		for m in monsters:
+			if float(m.hp) > 0.0 and center.distance_to(m.pos(v0_)) <= _TD.tower_rng(name):
+				targets.append(m)
+		if targets.is_empty():
+			_fire_attack_clock.erase(int(source.slot))
+			continue
+		var period := 1.0 / (_TD.tower_attack_speed(name) * (1.0 + aspd))
+		var elapsed := float(_fire_attack_clock.get(int(source.slot), 0.0)) + dt
+		while elapsed + 1e-9 >= period:
+			elapsed -= period
+			var front = null
+			for candidate in targets:
+				if float(candidate.hp) > 0.0:
+					front = candidate
+					break
+			if front == null:
+				break
+			var hit_pos: Vector2 = front.pos(v0_)
+			for target in targets:
+				if target != front and (not bool(_TD._tower_def(name).get("aoe", false)) or target.pos(v0_).distance_to(hit_pos) > 6.0):
+					continue
+				apply_fire_effect(target)
+		_fire_attack_clock[int(source.slot)] = maxf(0.0, elapsed)
+
+
+## 唯一火焰附加入口：同一敌人重复附加也充能；死亡、漏出、非战斗事件不计。
+func apply_fire_effect(target) -> void:
+	if player == null or target == null or not monsters.has(target):
+		return
+	if state != State.SPAWNING and state != State.FIGHTING:
+		return
+	if float(target.hp) <= 0.0 or int(target.state) == MState.LEAKED:
+		return
+	target.burn_remaining = float(_TD.FIRE_EFFECT["duration"])
+	target.burn_stacks = int(target.burn_stacks) + 1
+	var ignite := int(target.burn_stacks) >= int(_TD.FIRE_EFFECT["max_stacks"])
+	var ignite_pos: Vector2 = target.pos(v0_)
+	if ignite:
+		target.burn_stacks = 0
+		target.burn_remaining = 0.0
+	var ready: Array = []
+	# 先给所有塔结算同一次事件，再释放爆发，避免击杀/升级改变计数顺序。
+	for tower in player.towers:
+		var params := _TD.tower_fire_charge(String(tower.ctype))
+		if bool(tower.disabled) or params.is_empty():
+			continue
+		var slot := int(tower.slot)
+		var charge := int(_fire_charge.get(slot, 0)) + 1
+		if charge >= int(params["capacity"]):
+			_fire_charge[slot] = 0
+			ready.append({"tower": tower, "params": params})
+		else:
+			_fire_charge[slot] = charge
+	# 附加本身先给所有焚星塔充能，再处理这次附加触发的满层引爆。
+	if ignite:
+		_apply_fire_area_damage(ignite_pos, float(_TD.FIRE_EFFECT["blast_radius"]),
+			float(_TD.FIRE_EFFECT["blast_damage"]), "ignition")
+	for entry in ready:
+		_release_fire_blast(entry["tower"], entry["params"])
+
+
+## 全场寻优：枚举敌人位置及两敌人等半径圆的交点，找到覆盖活敌最多的爆心。
+## 最优覆盖圆总可移动到一个敌人处或两个敌人的边界交点，不能只枚举敌人中心。
+## 数量相同时保留先发现的位置（怪物稳定顺序），不引入随机抖动。
+func _fire_blast_center(radius: float) -> Dictionary:
+	var points := PackedVector2Array()
+	for m in monsters:
+		if float(m.hp) > 0.0 and int(m.state) != MState.LEAKED:
+			points.append(m.pos(v0_))
+	if points.is_empty():
+		return {}
+	var radius_sq := radius * radius
+	var best := points[0]
+	var best_count := 0
+	for point in points:
+		var count := _fire_coverage(point, points, radius_sq)
+		if count > best_count:
+			best = point
+			best_count = count
+		if best_count == points.size():
+			return {"pos": best}
+	for i in range(points.size()):
+		for j in range(i + 1, points.size()):
+			var delta := points[j] - points[i]
+			var distance_sq := delta.length_squared()
+			if distance_sq <= 1e-12 or distance_sq > 4.0 * radius_sq + 1e-6:
+				continue
+			var middle := (points[i] + points[j]) * 0.5
+			var offset := Vector2(-delta.y, delta.x) / sqrt(distance_sq) * sqrt(maxf(0.0, radius_sq - distance_sq * 0.25))
+			for candidate in [middle + offset, middle - offset]:
+				var count := _fire_coverage(candidate, points, radius_sq)
+				if count > best_count:
+					best = candidate
+					best_count = count
+				if best_count == points.size():
+					return {"pos": best}
+	return {"pos": best}
+
+
+func _fire_coverage(center: Vector2, points: PackedVector2Array, radius_sq: float) -> int:
+	var count := 0
+	for point in points:
+		if center.distance_squared_to(point) <= radius_sq + 1e-6:
+			count += 1
+	return count
+
+
+func _release_fire_blast(tower, params: Dictionary) -> void:
+	var radius := float(params["radius"])
+	var aim := _fire_blast_center(radius)
+	if aim.is_empty():
+		return
+	var center: Vector2 = aim["pos"]
+	var damage := float(params["damage"]) * _ChargePow.pow_py(float(tower.h), float(cfg.get("tower_stack_exp", 0.6)))
+	damage *= 1.0 + _TowerEffects.atk_bonus(player)
+	_apply_fire_area_damage(center, radius, damage, "pyroclasm")
+
+
+## 两种火焰爆炸共享魔抗、击杀奖励与演出；爆炸不会再次附加火焰。
+func _apply_fire_area_damage(center: Vector2, radius: float, damage: float, kind: String) -> void:
+	_fire_blasts.append({"pos": center, "radius": radius, "ttl": 0.6, "kind": kind})
+	for m in monsters:
+		if float(m.hp) <= 0.0 or int(m.state) == MState.LEAKED or center.distance_squared_to(m.pos(v0_)) > radius * radius + 1e-6:
+			continue
+		var factor := 1.0
+		if combat_types_enabled:
+			factor -= clampf(_CombatTypes.effective_resist(String(m.proto), _CombatTypes.MAGIC, _magic_reduct), 0.0, 1.0)
+		m.hp = maxf(0.0, float(m.hp) - damage * factor)
+		if float(m.hp) <= 0.0:
+			_record_monster_kill(m)
+
+
+## 🆕 召唤小兵（2026-11-07）：移动 + 攻击最近敌人。
 ##   🔴 只有玩家路线会召唤（金标本 / 批处理不生成 minions）→ 零扰动。
 func _update_minions(dt: float) -> void:
 	if minions.is_empty():
@@ -561,6 +922,8 @@ func _update_minions(dt: float) -> void:
 		var best = null
 		var best_d := INF
 		for m in alive:
+			if float(m.hp) <= 0.0:
+				continue
 			var d: float = (m.pos(v0_) as Vector2).distance_to(mp)
 			if d < best_d:
 				best_d = d
@@ -573,10 +936,7 @@ func _update_minions(dt: float) -> void:
 		else:
 			best.hp = maxf(0.0, float(best.hp) - float(mn["dps"]) * dt)
 			if float(best.hp) <= 0.0:
-				kills += 1
-				scrap_earned += spk
-				emit_signal("monster_killed", best)
-				_TowerEffects.on_kill(player)
+				_record_monster_kill(best)
 ## 🔒 T1（Q-T3 = ① 机会型仇恨）：每子步的仇恨判定（GDD §2.6 状态机）。
 ##   · Marching 怪：当前位置与某座 **未 Disabled** 塔的距离 ≤ AGGRO_R → 转 AggroTower，
 ##     目标 = 最近的塔（迟滞带内锁定）。
@@ -591,7 +951,7 @@ func _apply_aggro() -> void:
 	# 🟠 P2-Sapper（路线 A · 波级预计算贯穿）：同一 `w`、同一 SSOT 函数 → 与批处理镜像逐位等价。
 	var sapper_mult := _MonsterData.sapper_dmg_mult(w)
 	for m in monsters:
-		if m == null or float(m.hp) <= 0.0:
+		if m == null or float(m.hp) <= 0.0 or float(m.frozen_remaining) > 0.0:
 			continue
 		match m.state:
 			MState.MARCHING:
@@ -669,6 +1029,8 @@ func _aggro_target_valid(m, v0x: float) -> bool:
 ## AggroTower 怪对目标塔造成伤害；塔归零 → Disabled 中间态。
 ## 🟠 P2-Sapper：`sapper_mult` = 本波的 `sapper_dmg_mult(w)`（由 `_apply_aggro` 贯穿）。
 func _damage_tower(m, sapper_mult: float) -> void:
+	if float(m.hp) <= 0.0 or float(m.frozen_remaining) > 0.0:
+		return
 	var t = _tower_by_slot(m.target_slot)
 	if t == null or bool(t.disabled):
 		return
@@ -835,7 +1197,7 @@ func _death_snapshot(t) -> void:
 		if _SpaceModel.is_radial():
 			rows = _PathGeometry.slot_exposure_radial(
 				slots, _MonsterData.AGGRO_R, _SpaceModel.core_pos(),
-				_PathGeometry.EXPO_SAFE_MAX)
+				_PathGeometry.expo_safe_max_for(_BuildGrid.sites_active()))
 		else:
 			rows = _PathGeometry.slot_exposure(slots, _MonsterData.AGGRO_R)
 		for r in rows:
@@ -900,8 +1262,8 @@ func _spawn_one(idx: int) -> void:
 	#   🔴 金标本零改动：elite_waves_enabled=false → 不标记任何 sapper。
 	#   🔴 不依赖 `elite`（_elite_flags 在 MVP prototype_split_enabled=false 下恒 false）——
 	#      Sapper 由 elite_waves_enabled 独立驱动，与批处理镜像同口径（直接判 is_elite_wave）。
-	if elite_waves_enabled and _MonsterData.is_elite_wave(w):
-		var n_e := _MonsterData.elite_count(w, n)
+	if _is_elite_wave_at(w):
+		var n_e := _elite_count_wave()
 		var eidx: Array = _MonsterData.elite_indices(n, n_e)
 		for e in eidx:
 			if int(e) == idx:
@@ -951,10 +1313,7 @@ func _death_explode(t) -> void:
 				continue
 		m.hp = maxf(0.0, float(m.hp) - blast)
 		if float(m.hp) <= 0.0:
-			kills += 1
-			scrap_earned += spk
-			emit_signal("monster_killed", m)
-			_TowerEffects.on_kill(player)
+			_record_monster_kill(m)
 
 ##   每只怪按**有效抗性**（静态抗性 − 破甲量）减免，溢出结转；击杀走 `monster_killed` 信号。
 func _apply_pool_live(dmg: float, dmg_type: String, reduction: float = 0.0) -> void:
@@ -973,11 +1332,7 @@ func _apply_pool_live(dmg: float, dmg_type: String, reduction: float = 0.0) -> v
 		if float(m.hp) <= eff:
 			dmg -= float(m.hp) / factor
 			m.hp = 0.0
-			kills += 1
-			scrap_earned += spk
-			emit_signal("monster_killed", m)
-			# 🆕 击杀升级：任意击杀都让 on_kill_lv 的塔 +1 级（封顶 8）
-			_TowerEffects.on_kill(player)
+			_record_monster_kill(m)
 		else:
 			m.hp = float(m.hp) - eff
 			dmg = 0.0
@@ -1078,6 +1433,11 @@ func snapshot() -> Dictionary:
 			"elite": bool(m.elite),
 			"hp": float(m.hp),
 			"hp_max": float(m.hp_max),
+			"burning": int(m.burn_stacks) > 0 and float(m.burn_remaining) > 0.0,
+			"burn_stacks": int(m.burn_stacks),
+			"frost_stacks": int(m.frost_stacks),
+			"frozen": float(m.frozen_remaining) > 0.0,
+			"slow_ratio": minf(1.0, float(m.frost_stacks) * float(_TD.FROST_EFFECT["slow_per_stack"])),
 			"t_remain": float(m.t_remain),
 			"s": m.arc_s(v0_),
 			"pos": m.pos(v0_),
@@ -1099,6 +1459,8 @@ func snapshot() -> Dictionary:
 				"hp_max": float(t.hp_max),
 				"disabled": bool(t.disabled),
 				"revive_charged": bool(int(t.revive_used_w) < k_max),
+				"fire_charge": int(_fire_charge.get(int(t.slot), 0)),
+				"fire_capacity": int(_TD.tower_fire_charge(String(t.ctype)).get("capacity", 0)),
 			})
 	return {
 		"w": w,
@@ -1122,6 +1484,8 @@ func snapshot() -> Dictionary:
 		"monsters": live,
 		# 🆕 召唤小兵（只读、additive）：渲染层据此画游魂；无召唤物时为空数组。
 		"minions": _snapshot_minions(),
+		"fire_blasts": _fire_blasts.duplicate(true),
+		"ice_storms": _ice_storms.duplicate(true),
 		"towers": towers,
 		"towers_disabled": _count_disabled_towers(),
 		# 🔒 V-8 渲染层总闸（**布尔**）：只有「仇恨开 + 复活档位开」时渲染层才画
@@ -1137,7 +1501,7 @@ func snapshot() -> Dictionary:
 		#                供渲染层门控"停机压暗"（塔因仇恨倒下就该看见它倒下）。
 		#   `next_is_elite_wave` = **下一波**是否精英波（供 HUD 安全窗"预告"，区别于"当前波"）。
 		"aggro_ui": tower_aggro_enabled,
-		"next_is_elite_wave": elite_waves_enabled and _MonsterData.is_elite_wave(w + 1),
+		"next_is_elite_wave": _is_elite_wave_at(w + 1),
 	}
 
 

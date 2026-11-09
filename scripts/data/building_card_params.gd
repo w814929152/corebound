@@ -1,6 +1,13 @@
 extends RefCounted
 ## 建筑卡参数唯一来源。调整塔属性时只需修改本文件。
 
+## 火焰状态：重复附加刷新持续时间；满层清空并在目标位置引爆。
+## 实时冰冻统一按层减速；旧塔 slow 字段仅保留作来源标记和历史数值模拟。
+const FROST_EFFECT := {"slow_per_stack": 0.10, "max_stacks": 10, "freeze_duration": 2.0,
+	"storm_damage": 40.0, "storm_radius": 6.0, "storm_stacks": 2}
+
+const FIRE_EFFECT := {"duration": 2.0, "max_stacks": 10, "blast_damage": 40.0, "blast_radius": 6.0}
+
 const TOWERS := {
 	"Arrow":  {"dps": 10.0, "attack_speed": 0.80, "tag": "",      "aoe": false, "slow": 0.00, "rng": 22.0},
 	"Cannon": {"dps": 7.0,  "attack_speed": 0.70, "tag": "fire",  "aoe": true,  "slow": 0.00, "rng": 18.0},
@@ -28,6 +35,9 @@ const TOWERS := {
 ##      与**贴身轴**（Tesla：最近最弱，换 aoe + 微减速）。
 ##      新塔各带**独立 tag** ⇒ 天然形成新构筑流派，而不是旧卡的上位替代。
 const TOWERS_EXT := {
+	# 焚星塔：只由全场火焰附加事件充能，不参与自动攻击。
+	"Pyroclasm": {"dps": 0.0, "tag": "fire", "aoe": true, "slow": 0.0, "rng": 28.0,
+		"fire_charge": 12, "charge_blast": 120.0, "charge_radius": 28.0},
 	# 远程狙击：rng 26 > Arrow 22，dps 11 > Arrow 10。
 	# 代价 = 独立 tag "pierce" ⇒ 不与 fire / frost 共享 tag 投资，κ 只能靠自己堆。
 	"Lance": {"dps": 11.0, "tag": "pierce", "aoe": false, "slow": 0.00, "rng": 26.0, "pierce": 2},

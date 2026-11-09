@@ -13,6 +13,8 @@ extends SceneTree
 ##   A 数据表结构：8 包 × 10 张，无 RerollD、每张都能查到权重、卡池无漏卡、
 ##     每包至少 1 塔、包内强化卡的 tag 有对应塔；泛用卡（Arrow/ScrapUp）允许跨包共享
 ##   B 解锁口径：最佳波次 → 已解锁包数 → 必须选几包（≤3 全带，>3 才需要选）
+##   B2 🆕 地区口径（`unlock_by_region`）：守住地区才入手该地区科技；本关地区包**借用**可用；
+##      开局只有 core（1 包 → 必须选 1）；守满 3 区回到"必须选 3"；关闭开关后老口径立刻复活
 ##   C 选择规整：未知 / 未解锁 / 重复 / 超量 一律被剔除，顺序按包序
 ##   D 卡池派生：所选包并集 = 卡池（顺序、权重、总和都对得上）；骨架卡 = 塔+强化
 ##   E 老口径不破：`set_active_packs([])` 时仍是 6 张 / 0.905，扩展包开关仍是 16 张 / 1.740
@@ -173,7 +175,7 @@ func _test_a_table() -> void:
 			else:
 				seen_pack[s] = String(p["id"])
 	_ok("A6c 一张卡只属于一个包%s" % ("" if dup.is_empty() else " → " + str(dup)), dup.is_empty())
-	_eq_int("A6d 卡位总数 = 8 包 × 10 张", seen_pack.size(), 80)
+	_eq_int("A6d 卡位总数 = 81 张", seen_pack.size(), 81)
 	_ok("A7 不含 RerollD", not all.has("RerollD"))
 	# 塔与强化成对（每个包内至少有一座塔）
 	var bad_pairs: Array = []
@@ -241,6 +243,50 @@ func _test_b_unlock() -> void:
 	_eq_int("B17 胜场累计", _RunMeta.wins(), 1)
 	_eq_int("B18 全开下不再有「新解锁卡包」", fresh.size(), 0)
 
+	# ④ 🆕 v2 地区口径（2026-11-08 · `campaign-v2-overseer.md` §9 第 4 项）
+	#    「守住地区 → 入手该地区科技」；本关地区包**借用**可用（用该地区科技守该地区）。
+	_log("")
+	_log("--- [B2] 地区口径：守住地区 → 入手该地区科技（借用 / 永久）---")
+	_Packs.unlock_by_region = true
+	_Packs.set_region_progress([], "")
+	_eq_arr("B19 一开局：只有中枢起点科技 core", _Packs.unlocked_ids(0), ["core"])
+	_eq_int("B20 一开局「必须选」= 1（不足 3 包全带）", _Packs.required_picks(0), 1)
+	_ok("B21 一开局不用选（只有 1 包）", not _Packs.needs_selection(0))
+	_eq_int("B22 地区口径下没有「下一个解锁波次」", _RunMeta.next_unlock_wave(), -1)
+	_ok("B23 锁定态文案说「地区」不说「波次」（给了 W30 也一样）",
+		_Packs.lock_hint("cinder", 30) == "守住 灰烬熔炉",
+		_Packs.lock_hint("cinder", 30))
+
+	# 借用：进 1-1（cinder）时该包可用，但**不算入手**
+	_Packs.set_region_progress([], "cinder")
+	_eq_arr("B24 借用 + 1-1：core + cinder", _Packs.unlocked_ids(0), ["core", "cinder"])
+	_ok("B25 借用包被标为「本关借用」", _Packs.is_borrowed("cinder"))
+	_ok("B26 借用提示非空", _Packs.borrow_hint("cinder") != "")
+	_ok("B27 借用 ≠ 入手（owned 仍为空）", _Packs.owned_regions.is_empty())
+	_eq_int("B28 借用后「必须选」= 2（仍不足 3）", _Packs.required_picks(0), 2)
+
+	# 守住后永久入手，且不再"借用"
+	_Packs.set_region_progress(["cinder"], "cinder")
+	_eq_arr("B29 守住 cinder：core + cinder", _Packs.unlocked_ids(0), ["core", "cinder"])
+	_ok("B30 已入手就不算借用", not _Packs.is_borrowed("cinder"))
+	_ok("B31 已入手 → 锁定文案为空", _Packs.lock_hint("cinder", 0) == "")
+
+	# 已解锁 ≥3 包 → 恢复"必须选满 3"
+	_Packs.set_region_progress(["cinder", "rime", "pierce"], "")
+	_eq_int("B32 守 3 区 = core + 3 区包 = 4 包可用", _Packs.unlocked_ids(0).size(), 4)
+	_eq_int("B33 4 包 → 必须选 3（回到满额）", _Packs.required_picks(0), 3)
+	_ok("B34 4 包时开始需要选择", _Packs.needs_selection(0))
+	_ok("B35 没守的地区不在池内（true 包仍锁）", not _Packs.unlocked_ids(0).has("true"))
+	# 乱序 / 未知 id 注入必须被规整成 REGION_ORDER 序（否则卡池顺序会随调用方漂移）
+	_Packs.set_region_progress(["true", "nope", "cinder"], "")
+	_eq_arr("B36 注入态按地区序规整（true 在最后）", _Packs.unlocked_ids(0),
+		["core", "cinder", "true"])
+
+	# 收尾：注入态是**静态**的，不清会污染后面的套件（幽灵解锁）
+	_Packs.set_region_progress([], "")
+	_Packs.unlock_by_region = false
+	_eq_int("B37 回滚：老口径重新生效（8 包全开）", _Packs.unlocked_ids(0).size(), 8)
+
 
 # ---------------------------------------------------------------------------
 #  C 选择规整
@@ -280,9 +326,9 @@ func _test_d_pool() -> void:
 	_eq_arr("D1 卡池顺序 = 包序 → 包内序（一卡一包，无需去重）",
 		names,
 		["Foundry", "Arrow", "Cannon", "Frost", "Scout", "Kinetic", "Ranger", "Sentry", "Catapult", "Harrier",
-		 "Vanguard", "Ember", "Blaze", "Cinder", "Pyre", "Maul", "Furnace", "Wildfire", "Ashen", "Hellfire",
+		 "Vanguard", "Ember", "Blaze", "Cinder", "Pyre", "Maul", "Furnace", "Wildfire", "Ashen", "Hellfire", "Pyroclasm",
 		 "Thunder", "Tesla", "Bolt", "Storm", "Arc", "Spark", "Coil", "Overcharge", "Thunderhead", "Circuit"])
-	_eq_int("D2 卡池张数 = 3 包 × 10 张 = 30", names.size(), 30)
+	_eq_int("D2 含熔炉包时卡池张数 = 31", names.size(), 31)
 	# 权重和 = 各卡权重之和（现查，不硬编码）
 	var want := 0.0
 	for nm in names:

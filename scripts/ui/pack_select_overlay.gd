@@ -233,6 +233,10 @@ func _make_tile(pack: Dictionary, seq: int) -> Button:
 
 	var status := _Style.label("", 16, _Style.C_TEXT_DIM)
 	status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	# 🔴 换行而不是裁字：瓦片可用宽只有 156px（180 − 左右各 12 的 margin），
+	#    16px 字号放得下约 9 个汉字 —— 地区口径的「守住 永冻科考站」正好在边上，
+	#    再长一个字就会被 `clip` 掉后半截。让它在 spacer 里折成两行更安全。
+	status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	status.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	v.add_child(status)
 
@@ -275,9 +279,21 @@ func _refresh() -> void:
 
 	# 🆕 2026-11-07：卡包只收建筑卡 → 同类塔会跨包共享，池子是**并集去重**后的张数，
 	#   不能再直接拿「包数 × 6」当卡池读数（那会把重复的塔算两遍）。
-	_head.text = "本局卡池 = 所选卡包的并集（每包 %d 张建筑卡，跨包重复的塔只算一张）" % \
+	_head.text = "本局卡池 = 所选卡包的并集（每包 %d 张建筑卡，熔炉包额外含焚星塔，跨包重复的塔只算一张）" % \
 		_Packs.CARDS_PER_PACK
-	if nxt > 0:
+	if _Packs.unlock_by_region:
+		# 🆕 v2 地区口径（2026-11-08）：解锁靠「守住地区」，不靠波次 ——
+		#    这里若还说「到达 W6 解锁」，等于把玩家骗去刷波次。
+		#   🔴 文案说「可用」而不是「已入手」：借用包此刻能选，但守住之前不算你的。
+		var borrow_n := 0
+		for pid0 in unlocked:
+			if _Packs.is_borrowed(String(pid0)):
+				borrow_n += 1
+		var tag := "" if borrow_n == 0 else "（含 %d 借用）" % borrow_n
+		_head.text += "\n已守 %d / %d 地区 · 可用 %d 包%s · 本局任选 %d 包" % [
+			_Packs.owned_regions.size(), _Packs.REGION_ORDER.size(),
+			unlocked.size(), tag, req]
+	elif nxt > 0:
 		_head.text += "\n最佳波次 W%d · 到达 W%d 解锁下一个卡包" % [best, nxt]
 	elif nxt < 0:
 		_head.text += "\n全部 %d 个卡包开放 · 本局任选 %d 包" % [unlocked.size(), req]
@@ -290,22 +306,25 @@ func _refresh() -> void:
 		var st: Label = t["status"]
 		var locked := not unlocked.has(pid)
 		var on := _sel.has(pid)
+		var borrowed := _Packs.is_borrowed(pid)
 		b.disabled = locked
 		if locked:
 			_Style.button(b, "unavail")
 			b.modulate = Color(1, 1, 1, 0.72)
-			st.text = "到达 W%d 解锁" % _Packs.unlock_wave(pid)
+			st.text = _Packs.lock_hint(pid, best)
 			st.add_theme_color_override("font_color", _Style.C_TEXT_DIM)
 		else:
 			b.modulate = Color(1, 1, 1, 1)
 			if on:
 				_Style.button(b, "primary")
-				st.text = "✓ 已选入本局"
+				st.text = "✓ 已选入本局（本关借用）" if borrowed else "✓ 已选入本局"
 				st.add_theme_color_override("font_color", _Style.C_GOLD)
 			else:
 				_Style.button(b, "normal")
-				st.text = "点击选入"
-				st.add_theme_color_override("font_color", _Style.C_TEXT_DIM)
+				# 🆕 借用包：本关能带，但守住之前不算"你的" —— 用金色区分于普通可选。
+				st.text = "本关借用 · 点击选入" if borrowed else "点击选入"
+				st.add_theme_color_override("font_color",
+					_Style.C_GOLD if borrowed else _Style.C_TEXT_DIM)
 		# 卡名：锁定态压暗（只用透明度档位，不改色相 —— 不改动信息本身）
 		#   🔴 主信息（C_TEXT）/ 辅信息分档着色；角色定位已移出瓦片（见 _make_tile 网格注释）
 		for l in (t["cards"] as Array):
@@ -316,7 +335,9 @@ func _refresh() -> void:
 	_count_pool.text = "%d" % _pool_size(_sel)
 	_start.disabled = _sel.size() != req
 	if _start.disabled:
-		_hint.text = "选满 %d 个卡包后才能开始（已解锁 %d 个）" % [req, unlocked.size()]
+		# 🆕 「可用」而不是「已解锁」：region 口径下有"借用的"和"到手的"两种，
+		#    说「已解锁」会和瓦片上「本关借用」的文案打架。
+		_hint.text = "选满 %d 个卡包后才能开始（可用 %d 个）" % [req, unlocked.size()]
 		_hint.add_theme_color_override("font_color", _Style.C_TEXT_DIM)
 	else:
 		_hint.text = "未选的卡包本局不会出现在商店里 —— 卡池越窄，越容易刷到想要的卡"

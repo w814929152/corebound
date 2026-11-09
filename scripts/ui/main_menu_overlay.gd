@@ -87,6 +87,7 @@ func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	_build()
 	visible = false
+	_Style.set_cursor("default")               # 🆕 v4：全局默认光标（蓝图箭头；资产缺失自动保持系统箭头）
 
 
 # ---------------------------------------------------------------------------
@@ -300,6 +301,9 @@ func _build_library() -> Control:
 
 func _make_pack_block(pack: Dictionary, seq: int) -> Control:
 	var pid := String(pack["id"])
+	# 🆕 v5 分组底板（asset-pack-v5-lib）：PanelContainer 9-slice 暗面板把分组从
+	#    keyart 背景上托出来（卡缝不再穿透蜂巢）；标题条白烘焙 → modulate 染
+	#    包主题色（ui_style.pack_color）。贴图缺失 → 回裸 VBox 原样（判空降级）。
 	var block := VBoxContainer.new()
 	block.add_theme_constant_override("separation", 8)
 	block.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -308,7 +312,6 @@ func _make_pack_block(pack: Dictionary, seq: int) -> Control:
 	var head := HBoxContainer.new()
 	head.add_theme_constant_override("separation", 10)
 	head.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	block.add_child(head)
 
 	var idx := _Style.label("%02d" % (seq + 1), 16, _Style.C_STEEL)
 	_Style.apply_font(idx, "num")
@@ -343,7 +346,32 @@ func _make_pack_block(pack: Dictionary, seq: int) -> Control:
 	status.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	head.add_child(status)
 
-	block.add_child(_Style.hline())
+	# 🆕 v5 组装：head → 染色标题条（缺失→裸 head+hline 原样）；最后 block → 9-slice 底板。
+	var bar_tex := _Style.lib_tex("bar")
+	if bar_tex != null:
+		var bar := PanelContainer.new()
+		var bsb := StyleBoxTexture.new()
+		bsb.texture = bar_tex
+		bsb.texture_margin_left = 10.0
+		bsb.texture_margin_right = 10.0
+		bsb.texture_margin_top = 8.0
+		bsb.texture_margin_bottom = 8.0
+		bar.add_theme_stylebox_override("panel", bsb)
+		bar.modulate = _Style.pack_color(pid)
+		bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var hmg := MarginContainer.new()
+		hmg.add_theme_constant_override("margin_left", 20)
+		hmg.add_theme_constant_override("margin_right", 12)
+		hmg.add_theme_constant_override("margin_top", 4)
+		hmg.add_theme_constant_override("margin_bottom", 6)
+		hmg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		bar.add_child(hmg)
+		hmg.add_child(head)
+		block.add_child(bar)
+	else:
+		block.add_child(head)
+		block.add_child(_Style.hline())     # 无标题条时保留原分隔线
 
 	var row := GridContainer.new()
 	row.columns = 5
@@ -359,7 +387,29 @@ func _make_pack_block(pack: Dictionary, seq: int) -> Control:
 		cards.append(pc)
 
 	_pack_blocks.append({"id": pid, "status": status, "cards": cards})
-	return block
+	# 🆕 v5 底板收口：block（标题条 + 卡网格）包进 9-slice 暗面板；缺失 → 裸 block。
+	var block_tex := _Style.lib_tex("block")
+	if block_tex == null:
+		return block
+	var plate := PanelContainer.new()
+	var sb := StyleBoxTexture.new()
+	sb.texture = block_tex
+	sb.texture_margin_left = 12.0
+	sb.texture_margin_right = 12.0
+	sb.texture_margin_top = 12.0
+	sb.texture_margin_bottom = 12.0
+	plate.add_theme_stylebox_override("panel", sb)
+	plate.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	plate.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var mg := MarginContainer.new()
+	mg.add_theme_constant_override("margin_left", 14)
+	mg.add_theme_constant_override("margin_right", 14)
+	mg.add_theme_constant_override("margin_top", 8)
+	mg.add_theme_constant_override("margin_bottom", 10)
+	mg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	plate.add_child(mg)
+	mg.add_child(block)
+	return plate
 
 
 func _make_card(pack_id: String, nm: String) -> Control:
@@ -475,17 +525,26 @@ func _refresh_dynamic() -> void:
 	var best := _RunMeta.best_wave()
 	var unlocked := _Packs.unlocked_ids(best)
 	if _status != null:
-		_status.text = "最佳波次 W%d · 已解锁 %d / %d 包" % [
-			best, unlocked.size(), _Packs.PACKS.size()]
+		# 🆕 v2 地区口径：状态行读「守住几个地区」而不是「最佳波次」——
+		#    后者在 region 口径下已经不驱动任何解锁，摆在主界面上等于假进度条。
+		if _Packs.unlock_by_region:
+			_status.text = "已守 %d / %d 地区 · 已入手 %d / %d 科技包" % [
+				_Packs.owned_regions.size(), _Packs.REGION_ORDER.size(),
+				unlocked.size(), _Packs.PACKS.size()]
+		else:
+			_status.text = "最佳波次 W%d · 已解锁 %d / %d 包" % [
+				best, unlocked.size(), _Packs.PACKS.size()]
 	if _lib_head != null:
-		_lib_head.text = "共 %d 张卡 · %d 个卡包 × 每包 %d 张（%d 个卡位）· 未解锁包压暗显示" % [
+		_lib_head.text = "共 %d 张卡 · %d 个卡包 · 基础每包 %d 张（实际 %d 个卡位）· 未解锁包压暗显示" % [
 			_Packs.all_cards().size(), _Packs.PACKS.size(), _Packs.CARDS_PER_PACK,
-			_Packs.PACKS.size() * _Packs.CARDS_PER_PACK]
+			_Packs.all_cards().size()]
 	for blk in _pack_blocks:
 		var pid := String((blk as Dictionary)["id"])
 		var st: Label = (blk as Dictionary)["status"]
 		var on := unlocked.has(pid)
-		st.text = "已解锁 · 可带入本局" if on else "最佳波次 W%d 解锁" % _Packs.unlock_wave(pid)
+		# 🆕 锁定文案由 `card_packs.lock_hint()` 统一给：region 口径说「守住某地区解锁」，
+		#    老口径说「到达 WN 解锁」。两处各写一份必然漂移。
+		st.text = "已解锁 · 可带入本局" if on else _Packs.lock_hint(pid, best)
 		st.add_theme_color_override("font_color", _Style.C_GOLD if on else _Style.C_TEXT_DIM)
 		# 未解锁：整块压暗（明度档位，不改色相 —— 信息仍可读，不是隐藏内容）
 		for c in (blk as Dictionary)["cards"]:

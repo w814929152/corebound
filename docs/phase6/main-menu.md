@@ -130,6 +130,7 @@ godot --path . --write-movie shots_lib/frame.png --quit-after 90 -- --open-libra
 
 - 局内（战斗中）打开图鉴：未做。目前只能从主界面进 —— 安全窗内再开一层会与
   商店抽屉抢焦点，需要先定 "Esc 的层级语义"。
-- 卡牌插画：图鉴卡面目前是**纯文字蓝图卡**。`design/art/card-illustration-style-v1.md`
-  的插画资产落地后，可在 `_make_card()` 里加一层 TextureRect（不改结构）。
+- 卡牌插画：✅ **已接入**（2026-11-08）。图鉴卡条改为「左 96×96 插画 + 右文字」，
+  由 `ui_style.card_art()` 懒加载 `art/2d/cards/card_<name>_v1_460.png`，缺图自动回落为纯文字卡条；
+  商店商品位同步加了 72px 插画带。生成与后处理标准见 `design/art/card-art-generation-standard-v1.md`。
 - 图鉴筛选 / 搜索：15 座塔、8 包，一屏半可滚完，暂不需要。

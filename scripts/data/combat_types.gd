@@ -78,7 +78,7 @@ const TOWER_DMG_TYPE := {
 	"Kinetic": PHYSICAL, "Arcane": PHYSICAL, "Purity": PHYSICAL,
 	# Card pack expansion: classify new towers by their attack archetype.
 	"Ranger": PHYSICAL, "Sentry": PHYSICAL, "Catapult": PHYSICAL, "Harrier": PHYSICAL,
-	"Furnace": PHYSICAL, "Wildfire": PHYSICAL, "Ashen": PHYSICAL, "Hellfire": PHYSICAL,
+	"Pyroclasm": MAGIC, "Furnace": PHYSICAL, "Wildfire": PHYSICAL, "Ashen": PHYSICAL, "Hellfire": PHYSICAL,
 	"Snowfall": MAGIC, "Shard": MAGIC, "Whiteout": MAGIC, "Avalanche": MAGIC,
 	"Longbow": PHYSICAL, "Needle": PHYSICAL, "Hemorrhage": PHYSICAL, "Impaler": PHYSICAL,
 	"Coil": MAGIC, "Overcharge": MAGIC, "Thunderhead": MAGIC, "Circuit": MAGIC,

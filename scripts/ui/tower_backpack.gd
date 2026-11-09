@@ -93,6 +93,7 @@ func _input(event: InputEvent) -> void:
 			if index >= 0 and controller != null and controller.request_placement(index):
 				_drag_index = index
 				_drag_name = String(_pending[index])
+				_Style.set_cursor("place")     # 🆕 v4：拖起 → 放置准星
 				queue_redraw()
 				get_viewport().set_input_as_handled()
 		elif not mb.pressed and _drag_index >= 0:
@@ -100,6 +101,21 @@ func _input(event: InputEvent) -> void:
 			get_viewport().set_input_as_handled()
 	elif _drag_index >= 0 and event is InputEventMouseMotion:
 		queue_redraw()
+
+## 🆕 v4 拖动中的光标态：复用 _drop_at 同款判定（placement_mode_at）。
+##    🔴 只在 _draw（motion 驱动）里调，避免每帧多余查询。
+func _drag_cursor_update() -> void:
+	var g := get_global_mouse_position()
+	if _bar_rect().has_point(g) or world_layer == null or controller == null:
+		_Style.set_cursor("default")
+		return
+	var world: Vector2 = _BuildGrid.snap(world_layer.screen_to_world_position(g))
+	var placement: Dictionary = controller.runtime.placement_mode_at(world)
+	if String(placement.get("mode", "invalid")) in ["new", "upgrade"]:
+		_Style.set_cursor("place")
+	else:
+		_Style.set_cursor("deny")
+
 
 func _card_at(local_pos: Vector2) -> int:
 	var slots := _visible_count()
@@ -114,6 +130,7 @@ func _card_at(local_pos: Vector2) -> int:
 func _drop_at(screen_pos: Vector2) -> void:
 	_drag_index = -1
 	_drag_name = ""
+	_Style.set_cursor("default")               # 🆕 v4：无论落点合法与否，松手即回默认箭头
 	if director == null:
 		queue_redraw()
 		return
@@ -153,3 +170,6 @@ func _draw() -> void:
 		var mouse := get_local_mouse_position()
 		draw_circle(mouse, 18.0, Color(C_ACTIVE.r, C_ACTIVE.g, C_ACTIVE.b, 0.45))
 		draw_string(font, mouse + Vector2(24.0, 5.0), _drag_name.left(12), HORIZONTAL_ALIGNMENT_LEFT, -1, 16, C_TEXT)
+		# 🆕 v4 光标三态：拖动中逐帧判定落点合法性（motion 每帧 redraw 驱动）
+		#    落点非法 → deny 禁止光标；合法 → place 准星；拖回背包条 → default。
+		_drag_cursor_update()

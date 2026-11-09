@@ -39,6 +39,7 @@ const _PathGeometry = preload("res://scripts/geo/path_geometry.gd")
 const _SpaceModel = preload("res://scripts/geo/space_model.gd")
 const _BuildGrid = preload("res://scripts/geo/build_grid.gd")
 const _MonsterData = preload("res://scripts/data/monster_data.gd")
+const _Geo8 = preload("res://scripts/geo/geo8.gd")
 const _Monster = preload("res://scripts/gameplay/monster.gd")
 const _WaveDirector = preload("res://scripts/gameplay/wave_director.gd")
 const _WaveSimAggro = preload("res://scripts/engine/wave_sim_aggro.gd")
@@ -101,6 +102,7 @@ func run_all() -> bool:
 	_test_map_layout()
 	_test_batch_mirror_alignment()
 	_test_equivalence_vs_golden()
+	_test_site_exposure_dispatch()
 
 	_log("")
 	_log("-".repeat(78))
@@ -466,6 +468,44 @@ func _test_equivalence_vs_golden() -> void:
 	_tally("★ [E-R1·B] 非平凡 DPS 扫描 %d 档全逐位等价" % sweep_cases, sweep_ok)
 	_log("   其中非平凡档（0<kills<N）共 %d / %d —— 探针真正落在有杀有漏区间"
 		% [sweep_nontrivial, sweep_cases])
+
+
+## 🆕 阵地化（17 格）暴露位分派 —— 2026-11-09
+##   为什么必须门禁：`is_exposed` 是「战斗内复活」的资格闸门（`death_valid ∧ is_exposed ∧ ¬is_carry`）。
+##   17 格阵地的 `expo_frac` 全挤在 0.073–0.159，用 8 槽的 0.15 判只剩 **1/17** 格算暴露位
+##   → 实机 94% 格子永远不可复活（`revive_fired=0`），6-1 W14 十塔全灭、核心 1000→0。
+##   本组三条：① 两套口径常量都不许漂；② 阵地口径下内圈暴露、孤台安全；③ 8 槽口径一字不动。
+func _test_site_exposure_dispatch() -> void:
+	_log("")
+	_log("[阵地暴露位] · 阈值分派与 17 格二值化")
+	_tally("E-S1 8 槽阈值冻结 0.15", absf(_PathGeometry.EXPO_SAFE_MAX - 0.15) <= TOL_EQ)
+	_tally("E-S2 阵地阈值 0.085（落在内圈 0.099 与孤台 0.073 之间）",
+		absf(_PathGeometry.EXPO_SAFE_MAX_SITES - 0.085) <= TOL_EQ)
+	_tally("E-S3 分派：阵地开 → 0.085 / 阵地关 → 0.15",
+		absf(_PathGeometry.expo_safe_max_for(true) - _PathGeometry.EXPO_SAFE_MAX_SITES) <= TOL_EQ
+		and absf(_PathGeometry.expo_safe_max_for(false) - _PathGeometry.EXPO_SAFE_MAX) <= TOL_EQ)
+	var pts: Array = _BuildGrid.site_points()
+	var rows: Array = _PathGeometry.slot_exposure_radial(pts, _MonsterData.AGGRO_R,
+		_SpaceModel.core_pos(), _PathGeometry.expo_safe_max_for(true))
+	var n_exp := 0
+	var n_safe_outer := 0
+	for r in rows:
+		var p: Vector2 = r["pos"]
+		var d: float = _PathGeometry.dist_to_core(p, _SpaceModel.core_pos())
+		if bool(r["is_exposed"]):
+			n_exp += 1
+		elif d >= 39.0:
+			n_safe_outer += 1          # 孤台（N1–N3 · r≈39.6/41.7）应恰好是安全位
+	_tally("E-S4 17 格阵地 → 暴露 14 / 安全 3", n_exp == 14 and rows.size() == 17)
+	_tally("E-S5 安全位全是孤台（r ≥ 39）· 内圈三台无一被漏判", n_safe_outer == 3)
+	# 8 槽口径回归：必须仍是 4 暴露 / 4 安全（AC-S6-3 红线）
+	var rows8: Array = _PathGeometry.slot_exposure_radial(_Geo8.SLOTS8, _MonsterData.AGGRO_R,
+		_SpaceModel.core_pos(), _PathGeometry.expo_safe_max_for(false))
+	var e8 := 0
+	for r8 in rows8:
+		if bool(r8["is_exposed"]):
+			e8 += 1
+	_tally("E-S6 8 槽口径仍 4 暴露 / 4 安全（AC-S6-3 · 阵地阈值不得外溢）", e8 == 4)
 
 
 func _mk_director(w: int = 1):

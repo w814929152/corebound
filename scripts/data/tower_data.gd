@@ -9,6 +9,8 @@ extends RefCounted
 ##
 
 const _BuildingParams := preload("res://scripts/data/building_card_params.gd")
+const FROST_EFFECT: Dictionary = _BuildingParams.FROST_EFFECT
+const FIRE_EFFECT: Dictionary = _BuildingParams.FIRE_EFFECT
 const TOWERS: Dictionary = _BuildingParams.TOWERS
 const TOWERS_EXT: Dictionary = _BuildingParams.TOWERS_EXT
 const REINF := {
@@ -127,6 +129,7 @@ const EXT_WEIGHTS := {
 
 ## Card-pack-only building weights; kept out of `EXT_WEIGHTS` so the legacy extended pack stays fixed.
 const CARD_PACK_WEIGHTS := {
+	"Pyroclasm": 0.07,
 	"Ranger": 0.09, "Sentry": 0.08, "Catapult": 0.08, "Harrier": 0.09,
 	"Furnace": 0.09, "Wildfire": 0.08, "Ashen": 0.09, "Hellfire": 0.07,
 	"Snowfall": 0.09, "Shard": 0.09, "Whiteout": 0.07, "Avalanche": 0.08,
@@ -144,6 +147,15 @@ static func _tower_def(ctype: String) -> Dictionary:
 	if TOWERS.has(ctype):
 		return TOWERS[ctype]
 	return TOWERS_EXT[ctype]
+
+
+## 火焰充能建筑参数；非充能建筑返回空字典。
+static func tower_fire_charge(ctype: String) -> Dictionary:
+	var d := _tower_def(ctype)
+	if int(d.get("fire_charge", 0)) <= 0:
+		return {}
+	return {"capacity": int(d["fire_charge"]), "damage": float(d["charge_blast"]),
+		"radius": float(d["charge_radius"])}
 
 
 static func tower_dps(ctype: String) -> float:

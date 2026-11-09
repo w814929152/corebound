@@ -3,23 +3,31 @@ extends RefCounted
 ## 关卡数据表 `CampaignData` —— 关卡推进系统的**唯一登记处**（SSOT）
 ##
 ## 🔴 定位（control-manifest §5）：`scripts/data/` = SSOT。工程层禁止就地写关卡字面量，
-##    一律 `CampaignData.*` 读取。本文件只登记「三章 × 3 关 + 终局」的结构与进度口径，
+##    一律 `CampaignData.*` 读取。本文件只登记「世界主线 × 十关」的结构与进度口径，
 ##    不新增任何伤害/经济数值（那些仍由 `mvp_config` / 金标本定义）。
 ##
-## 🔴 来源：`design/gdd/campaign-progression.md`（v0.1 草案 · 推荐形状）
-##   · 关卡 = 一张地图 × 一套难度参数（波次构成）+ 一个通关条件；
-##   · 卡组解锁 = 通关指定关卡后「可选」启用，不是「更强」；
-##   · 地图变体 = 换 `SITES`/`RIDGES`/`SPAWN_ARCS` 数据表（scene-map §5），不换引擎。
+## 🔴 来源：`design/gdd/campaign-v2-overseer.md`（世界主线重做 · 2026-11-08）
+##   世界观：世界被**统序**（智械）侵略；玩家作为**守核者**逐地区守卫中继站，
+##   守住即获得该地区科技（= 卡包），统序随玩家战果变强，最终在 9-1 击退。
 ##
-## 🔴 与卡包系统的分工（见 `docs/phase6/card-packs.md` §3）：
+##   · 结构 = 「中枢 1 + 外环 3 + 中环 4 + 内环 2」，共 10 关；
+##   · 解锁 = **图**，不是链：外环三区任选起点，中环四区各有两条来路（选错顺序不会卡死）；
+##   · 门槛：已守 ≥5 区 → 8-1（主脑外围）；集齐 7 区 **且** 通关 8-1 → 9-1（主脑核心）；
+##   · 7 个地区 ↔ 7 个卡包一一对应（`core` 是中枢的起点科技，不占地区名额）。
+##
+## 🔴 难度自变量 `S` = **已守地区数**（`regions_cleared()`）。它只做两件事：
+##    ① 把该关最早的 `k = floor(S/3)` 个「试探」波升级为「潮涌」波；
+##    ② 处刑波精英 `+k`。
+##    🔴 **不加波数**：`hp = 16 × 1.42^(w−1)`，+1 波末波就贵 42%，那是断崖不是斜坡
+##       （详见 `design/gdd/stage-waves.md` §5）。波数 = 波表长度，**固定且封顶 20**。
+##
+## 🔴 与卡包系统的分工（`docs/phase6/card-packs.md` §3）：
 ##   本文件是「关卡推进」那一半（`campaign.gd` / `campaign_data.gd`），与「卡包」那一半
-##   （`card_packs.gd` / `run_meta.gd`）**当前不合并**。两者的收敛点在「解锁判据」一个函数
-##   （`RunMeta.unlocked_ids()`）：等关卡系统接进 `boot.gd` 后，把 `unlock_wave` 换成
-##   「已通关关卡」即可，卡包表与 UI 不用动。
+##   （`card_packs.gd` / `run_meta.gd`）**存档不合并**。两者的收敛点仍是「解锁判据」：
+##   `unlock_deck` 字段登记了每个地区守住后该给哪个包，何时把它当成解锁判据由 boot 决定。
 ##
 ## 🔴 金标本零扰动：本文件**只被玩家路线的关卡系统读取**；金标本引擎
 ##   （`run_loop` / `wave_sim` / `shop_ai` + 300 局 MC）从不引用本文件 → 逐位不变。
-##   · 第 0 关（默认态）= 混编 + 空地图 + 基础池，可逐位复现金标本。
 ##
 ## ⚠️ Godot 坑
 ##   G6 headless 无 global_script_class_cache → 不写 `class_name`，一律 preload。
@@ -27,46 +35,124 @@ extends RefCounted
 ##
 
 # ---------------------------------------------------------------------------
-#  章节 / 关卡结构（推荐形状：三章 × 3 关 + 终局）
+#  关卡结构（中枢 1 · 外环 3 · 中环 4 · 内环 2）
 # ---------------------------------------------------------------------------
 ## 关卡 ID 的稳定序（Array 保证顺序确定，可测；不用 Dictionary 遍历顺序）。
+##   🔴 顺序 = **展示序 / 航图螺旋序**，不是解锁序（解锁是图，见 `prereq`）。
 const STAGE_ORDER: Array = [
-	"1-1", "1-2", "1-3",
-	"2-1", "2-2", "2-3",
-	"3-1", "3-2", "3-3",
-	"4-1",
+	"0-1",
+	"1-1", "2-1", "3-1",
+	"4-1", "5-1", "6-1", "7-1",
+	"8-1", "9-1",
 ]
 
-## 每关的静态定义。🔴 全部数值为 `[PLACEHOLDER]`（campaign-progression §4），
-##   仅结构与「哪些字段必须存在」是定稿。字段：
-##   · chapter      章节号（1..4，4 = 终局）
-##   · name         关卡名（世界观占位）
-##   · map_id       绑定的地图变体（scene-map 数据表 id；"tri-fissure" = 现有三裂环）
-##   · wave_count   通关所需波数（1-x 短、3-x 长、终局更长）
-##   · wave_tag     本章主导的波次构成（复用 faction-decks §5.2 的 Swarm/Armor/Trickle）
-##   · unlock_deck  通关后解锁的卡组（"": 无；卡组内容等 faction-decks 定稿回填）
+## 每关的静态定义。字段：
+##   · chapter       环（1 中枢 / 2 外环 / 3 中环 / 4 内环）—— 航图按它分环
+##   · name          关卡名（= 地区名 + 守备点）
+##   · map_id        绑定的战场（`scripts/data/map_variants.gd` 的键）
+##   · wave_count    通关所需波数。🔴 必须 == `StageWaves.wave_count(id)`（表长为准，
+##                   不一致由 `tests/run_campaign_asserts.gd` 直接判红）
+##   · region        地区 id（"" = 中枢，不占 7 区名额）；`S` 只数它
+##   · unlock_deck   守住该地区后入手的科技包（"" = 无）
+##   · prereq        解锁前置（**任一**通关即解锁；空 = 无前置）
+##   · need_regions  解锁门槛：已守地区数 ≥ N（0 = 无门槛）
+##   · need_cleared  解锁门槛：某关必须已通关（"" = 无）
 const STAGES: Dictionary = {
-	"1-1": {"chapter": 1, "name": "余烬·初燃", "map_id": "tri-fissure", "wave_count": 10, "wave_tag": "Swarm", "unlock_deck": ""},
-	"1-2": {"chapter": 1, "name": "余烬·蔓延", "map_id": "variant-a", "wave_count": 12, "wave_tag": "Swarm", "unlock_deck": ""},
-	"1-3": {"chapter": 1, "name": "余烬·成塔", "map_id": "variant-b", "wave_count": 15, "wave_tag": "Swarm", "unlock_deck": "cinder-adv"},
-	"2-1": {"chapter": 2, "name": "霜线·初凝", "map_id": "variant-c", "wave_count": 12, "wave_tag": "Armor", "unlock_deck": ""},
-	"2-2": {"chapter": 2, "name": "霜线·封冻", "map_id": "variant-d", "wave_count": 15, "wave_tag": "Armor", "unlock_deck": ""},
-	"2-3": {"chapter": 2, "name": "霜线·永冬", "map_id": "variant-e", "wave_count": 18, "wave_tag": "Armor", "unlock_deck": "rime-adv"},
-	"3-1": {"chapter": 3, "name": "晶格·初织", "map_id": "variant-f", "wave_count": 15, "wave_tag": "Trickle", "unlock_deck": ""},
-	"3-2": {"chapter": 3, "name": "晶格·致密", "map_id": "variant-g", "wave_count": 18, "wave_tag": "Trickle", "unlock_deck": ""},
-	"3-3": {"chapter": 3, "name": "晶格·满阵", "map_id": "variant-h", "wave_count": 20, "wave_tag": "Trickle", "unlock_deck": "lattice-adv"},
-	"4-1": {"chapter": 4, "name": "核心·终局", "map_id": "fusion", "wave_count": 25, "wave_tag": "Mixed", "unlock_deck": ""},
+	# ── 中枢：起点，不占地区名额。战场 = 三裂环（基准图，逐位等于金标本）──
+	"0-1": {
+		"chapter": 1, "name": "铁砧·中继站", "map_id": "tri-fissure", "wave_count": 10,
+		"region": "", "unlock_deck": "",
+		"prereq": [], "need_regions": 0, "need_cleared": "",
+	},
+	# ── 外环：人类残存区，三区任选起点 ──
+	"1-1": {
+		"chapter": 2, "name": "灰烬熔炉", "map_id": "cinder-forge", "wave_count": 12,
+		"region": "cinder", "unlock_deck": "cinder",
+		"prereq": ["0-1"], "need_regions": 0, "need_cleared": "",
+	},
+	"2-1": {
+		"chapter": 2, "name": "永冻科考站", "map_id": "rime-station", "wave_count": 12,
+		"region": "rime", "unlock_deck": "rime",
+		"prereq": ["0-1"], "need_regions": 0, "need_cleared": "",
+	},
+	"3-1": {
+		"chapter": 2, "name": "磁轨长廊", "map_id": "rail-corridor", "wave_count": 13,
+		"region": "pierce", "unlock_deck": "pierce",
+		"prereq": ["0-1"], "need_regions": 0, "need_cleared": "",
+	},
+	# ── 中环：争夺区。每区两条来路 —— 选错顺序不会卡死（这是"图状解锁"的意义）──
+	"4-1": {
+		"chapter": 3, "name": "雷暴电网", "map_id": "arc-grid", "wave_count": 15,
+		"region": "arc", "unlock_deck": "arc",
+		"prereq": ["1-1"], "need_regions": 0, "need_cleared": "",
+	},
+	"5-1": {
+		"chapter": 3, "name": "锻造联合体", "map_id": "forge-union", "wave_count": 15,
+		"region": "sunder", "unlock_deck": "sunder",
+		"prereq": ["1-1", "2-1"], "need_regions": 0, "need_cleared": "",
+	},
+	"6-1": {
+		"chapter": 3, "name": "生物研究所", "map_id": "bio-lab", "wave_count": 16,
+		"region": "hex", "unlock_deck": "hex",
+		"prereq": ["2-1", "3-1"], "need_regions": 0, "need_cleared": "",
+	},
+	"7-1": {
+		"chapter": 3, "name": "湮灭实验场", "map_id": "void-range", "wave_count": 17,
+		"region": "true", "unlock_deck": "true",
+		"prereq": ["3-1"], "need_regions": 0, "need_cleared": "",
+	},
+	# ── 内环：智械腹地。两道门槛：≥5 区进外围；7 区 + 通关外围 才能决战 ──
+	"8-1": {
+		"chapter": 4, "name": "主脑·外围", "map_id": "overseer-ring", "wave_count": 19,
+		"region": "", "unlock_deck": "",
+		"prereq": [], "need_regions": 5, "need_cleared": "",
+	},
+	"9-1": {
+		"chapter": 5, "name": "主脑·核心", "map_id": "overseer-core", "wave_count": 20,
+		"region": "", "unlock_deck": "",
+		"prereq": [], "need_regions": 7, "need_cleared": "8-1",
+	},
 }
 
+## 起点关（恒解锁）：无前置 + 无门槛。
+const START_STAGE := "0-1"
+
+## 地区的固定序（= 卡包序；`S` 与「7 区齐了没」都按它算，保证可测）。
+const REGION_ORDER: Array = ["cinder", "rime", "pierce", "arc", "sunder", "hex", "true"]
+
+## 地区 id → 中文名（叙事用；卡包名在 `card_packs.gd`）。
+const REGION_NAMES: Dictionary = {
+	"cinder": "灰烬熔炉",
+	"rime": "永冻科考站",
+	"pierce": "磁轨长廊",
+	"arc": "雷暴电网",
+	"sunder": "锻造联合体",
+	"hex": "生物研究所",
+	"true": "湮灭实验场",
+}
+
+## 环 → 章名（航图分组标题）。
+const CHAPTER_TITLES: Dictionary = {
+	1: "中枢 · 铁砧",
+	2: "外环 · 残存区",
+	3: "中环 · 争夺区",
+	4: "内环 · 主脑外围",
+	5: "主脑 · 核心",
+}
+
+
 # ---------------------------------------------------------------------------
-#  地图变体 → 是否已实现（🆕 运行时换图已落地，全部 10 张变体生效）
+#  地图变体 → 是否已实现
 # ---------------------------------------------------------------------------
 ## 已实现的地图 id。未实现的变体在运行时**回落**到 "tri-fissure"（不报错、不崩）。
-##   🆕 2026-11-07：`SpaceModel.active_map_id` 运行时换图已落地（见
-##   `scripts/geo/space_model.gd` §活动地图选择器），故全部 10 张变体标记为已实现。
+##   · `tri-fissure` = 基准（= 现有 const 表，逐位）；
+##   · `variant-a..h` / `fusion` = v1 遗留（保留：旧存档的 map_id 仍可解析，且是几何对照）；
+##   · 其余 9 张 = v2 世界主线的战场（`campaign-v2-overseer.md`）。
 const IMPLEMENTED_MAPS: Array = [
 	"tri-fissure", "variant-a", "variant-b", "variant-c", "variant-d",
 	"variant-e", "variant-f", "variant-g", "variant-h", "fusion",
+	"cinder-forge", "rime-station", "rail-corridor", "arc-grid", "forge-union",
+	"bio-lab", "void-range", "overseer-ring", "overseer-core",
 ]
 
 ## 变体 id → 回落 map id（未实现时）。
@@ -88,24 +174,90 @@ static func resolve_map_id(stage_id: String) -> String:
 
 
 # ---------------------------------------------------------------------------
-#  关卡序 / 解锁（推进链 = 「首次通关」）
+#  结构查询
 # ---------------------------------------------------------------------------
-## 指定关卡的**下一关**（线性推进）。终局 "4-1" 之后无 → ""。
-static func next_stage(stage_id: String) -> String:
-	var i := STAGE_ORDER.find(stage_id)
-	if i < 0 or i + 1 >= STAGE_ORDER.size():
-		return ""
-	return String(STAGE_ORDER[i + 1])
-
-
 ## 指定关卡在 STAGE_ORDER 里的下标（-1 = 未知）。
 static func stage_index(stage_id: String) -> int:
 	return STAGE_ORDER.find(stage_id)
 
 
-## 通关某关后「自动解锁」的下一关（线性推进的核心判据）。
-static func unlock_after_clear(stage_id: String) -> String:
-	return next_stage(stage_id)
+## 关卡是否已登记。
+static func has_stage(stage_id: String) -> bool:
+	return STAGES.has(stage_id)
+
+
+## 该关属于哪个地区（"" = 中枢 / 内环，不占 7 区名额）。
+static func region_of(stage_id: String) -> String:
+	return String((STAGES.get(stage_id, {}) as Dictionary).get("region", ""))
+
+
+## 该关打出的是哪个科技包（"" = 无）。
+static func deck_of(stage_id: String) -> String:
+	return String((STAGES.get(stage_id, {}) as Dictionary).get("unlock_deck", ""))
+
+
+## 该关的前置关（**任一**通关即解锁；空 = 无前置）。
+static func prereqs(stage_id: String) -> Array:
+	return (STAGES.get(stage_id, {}) as Dictionary).get("prereq", [])
+
+
+## 该关的地区门槛（已守地区数 ≥ N；0 = 无门槛）。
+static func need_regions(stage_id: String) -> int:
+	return int((STAGES.get(stage_id, {}) as Dictionary).get("need_regions", 0))
+
+
+## 该关的指定关门槛（某关必须已通关；"" = 无）。
+static func need_cleared(stage_id: String) -> String:
+	return String((STAGES.get(stage_id, {}) as Dictionary).get("need_cleared", ""))
+
+
+## 是否是「起点关」（无前置 + 无门槛）→ 恒解锁。
+static func is_start(stage_id: String) -> bool:
+	if not STAGES.has(stage_id):
+		return false
+	return prereqs(stage_id).is_empty() \
+		and need_regions(stage_id) == 0 \
+		and need_cleared(stage_id) == ""
+
+
+## 该关的波数（**以波表长度为准**，见 `StageWaves.wave_count`）。
+static func wave_count(stage_id: String) -> int:
+	return int((STAGES.get(stage_id, {}) as Dictionary).get("wave_count", 0))
+
+
+## 抵达该关时**最少**已守几个地区 —— 即该关首次进入时的难度自变量 `S`。
+##
+## 🔴 为什么需要它：`S` = `regions_cleared()`，是**动态**值（老玩家重打会更高）。
+##    但「这一关首次抵达时该多难」是个**静态**问题，MC 定难度必须用静态值，
+##    否则同一张表在不同进度下读数不同，无法对拍。
+##
+## 递推（图是 DAG，`prereq` 只会指向更早的关）：
+##   `min_S(关) = max( need_regions , min over p ∈ prereq( min_S(p) + [p 是地区关] ) )`
+##   · `prereq` 为空 → 只剩 `need_regions` 抬底；
+##   · `0-1` 这种「无地区」的关不贡献 +1（它不占 7 区名额）。
+##
+## 实算（v2 十关）：0-1 / 三外环 = 0；四中环 = 1；8-1 = 5；9-1 = 7。
+##   → `escalation_k = floor(S/3)` 依次是 0…0 / 1 / 2（见 `StageWaves.escalation_k`）。
+static func min_regions_on_arrival(stage_id: String) -> int:
+	return _min_region_rec(stage_id, {})
+
+
+static func _min_region_rec(stage_id: String, memo: Dictionary) -> int:
+	if memo.has(stage_id):
+		return int(memo[stage_id])
+	if not STAGES.has(stage_id):
+		return 0
+	var best := 2147483647
+	for p in prereqs(stage_id):
+		var sub := _min_region_rec(String(p), memo)
+		if region_of(String(p)) != "":
+			sub += 1
+		best = mini(best, sub)
+	if best == 2147483647:
+		best = 0
+	best = maxi(best, need_regions(stage_id))
+	memo[stage_id] = best
+	return best
 
 
 # ---------------------------------------------------------------------------
@@ -128,31 +280,40 @@ static func ember_on_fail(reached_wave: int, wave_count: int) -> int:
 
 
 # ---------------------------------------------------------------------------
-#  卡组解锁（方向反转：解锁的是「可选」，不是「更强」）
+#  科技包解锁（方向反转：解锁的是「可选」，不是「更强」）
 # ---------------------------------------------------------------------------
-## 卡组 id 列表（SSOT）。内容等 `faction-decks.md` 定稿回填；现在先登记三个入口。
-const DECK_ORDER: Array = ["cinder-adv", "rime-adv", "lattice-adv"]
+## 包 id 列表（SSOT）。与 `card_packs.gd` 的 7 个地区包一一对应；
+##   `core`（泛用包）是中枢的起点科技，**不占地区名额**，故不在此表。
+const DECK_ORDER: Array = ["cinder", "rime", "pierce", "arc", "sunder", "hex", "true"]
 
-## 卡组 id → 解锁它的关卡。
+## 包 id → 打出它的关卡（守住该地区即入手）。
 const DECK_UNLOCK_STAGE: Dictionary = {
-	"cinder-adv": "1-3",
-	"rime-adv": "2-3",
-	"lattice-adv": "3-3",
+	"cinder": "1-1",
+	"rime": "2-1",
+	"pierce": "3-1",
+	"arc": "4-1",
+	"sunder": "5-1",
+	"hex": "6-1",
+	"true": "7-1",
 }
 
-## 卡组 id → 中文名（世界观占位）。
+## 包 id → 中文名（= 地区名 + 的科技）。
 const DECK_NAMES: Dictionary = {
-	"cinder-adv": "熔炉进阶",
-	"rime-adv": "霜序进阶",
-	"lattice-adv": "枢网进阶",
+	"cinder": "熔炉科技",
+	"rime": "霜序科技",
+	"pierce": "磁轨科技",
+	"arc": "电弧科技",
+	"sunder": "锻造科技",
+	"hex": "生物科技",
+	"true": "湮灭科技",
 }
 
 
-## 某卡组由哪一关解锁（"" = 无 / 未登记）。
+## 某卡包由哪一关解锁（"" = 无 / 未登记）。
 static func deck_unlock_stage(deck_id: String) -> String:
 	return String(DECK_UNLOCK_STAGE.get(deck_id, ""))
 
 
-## 该卡组是否已登记（SSOT 内存在）。
+## 该卡包是否已登记（SSOT 内存在）。
 static func deck_exists(deck_id: String) -> bool:
 	return DECK_ORDER.has(deck_id)

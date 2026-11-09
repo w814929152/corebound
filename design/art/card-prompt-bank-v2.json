@@ -1,9 +1,9 @@
 {
  "bank": "card-prompt-bank-v2",
- "version": "v2",
- "date": "2026-11-08",
+ "version": "v2.7",
+ "date": "2026-11-09",
  "source": "scripts/data/card_packs.gd v0.4 (8 packs x 10 = 80 building cards)",
- "anchor_ref": "design/art/card-illustration-style-v1.md 2.2 (v4 medium density)",
+ "anchor_ref": "design/art/card-art-generation-standard-v1.md v1.7 (3/4 image-to-image, pack color as dominant tone; bright-pack / mid-pack / lift-pack tone variants by pack color luminance; lift-pack validated on sunder/hex/true; all 8 packs complete, 80/80 cards)",
  "supersedes": "card-prompt-bank-v1.json (v1 free-form object, too dense)",
  "spec": {
   "density_version": "v4 (medium: 6-8 shape blocks)",
@@ -15,578 +15,752 @@
   "accent_rule": "1 main accent block + at most 2 small same-hue accents; single hue only",
   "palette": "dark navy + 2 muted steel greys + 1 accent = 4 tones max",
   "background": "solid flat #141726, optional single-layer grid under 6% contrast, no frame border",
-  "negatives": "no gradient, no shading, no glow, no halo, no lens flare, no painterly texture, no stipple, no hatching, no gear trains, no rivet rows, no layered armour, no circuitry, no ornament, no small greebles, no text, no numbers, no watermark, no logo, no characters, no scene, no environment, not isometric, not 3/4, not top-down, not a chess piece, not a lighthouse"
+  "negatives": "no gradient, no shading, no glow, no halo, no lens flare, no painterly texture, no stipple, no hatching, no gear trains, no rivet rows, no layered armour, no circuitry, no ornament, no small greebles, no text, no numbers, no watermark, no logo, no characters, no scene, no environment, not isometric, not 3/4, not top-down, not a chess piece, not a lighthouse",
+  "note": "v4 frontal-elevation spec retained for reference; actual generation follows design/art/card-art-generation-standard-v1.md (3/4 view), see section 3.1"
  },
  "accent_by_pack": {
-  "core": "#3ED0E8",
+  "core": "#9AA5B1",
   "cinder": "#FF6B3D",
   "rime": "#3ED0E8",
-  "pierce": "#3EA8FF",
-  "arc": "#FFC94A",
-  "sunder": "#9AA5B1",
-  "hex": "#B45CFF",
-  "true": "#7A5CFF"
+  "pierce": "#FFC94A",
+  "arc": "#7A5CFF",
+  "sunder": "#E8437F",
+  "hex": "#1A6B7D",
+  "true": "#FF2E4E"
  },
  "cards": {
   "Foundry": {
    "pack": "core",
-   "accent": "#FFC94A",
+   "accent": "#9AA5B1",
    "structure": "a squat wide furnace block on a low stepped plinth, with a rounded dome cap",
    "feature": "ONE strictly horizontal rectangular tap slot on the front face near the base",
-   "accent_block": "a molten metal pool filling the tap slot, plus one small round port above it"
+   "accent_block": "a molten metal pool filling the tap slot, plus one small round port above it",
+   "pack_color_name": "neutral steel grey"
   },
   "Arrow": {
    "pack": "core",
-   "accent": "#3ED0E8",
+   "accent": "#9AA5B1",
    "structure": "a tall tapered shaft on a wide stepped plinth, capped by a small block with a narrow horizontal window",
    "feature": "ONE strictly horizontal ballista arm near the top, with a short vertical bowstring strut beneath it, perfectly level",
-   "accent_block": "the horizontal arm, plus a round energy port on the plinth face"
+   "accent_block": "the horizontal arm, plus a round energy port on the plinth face",
+   "pack_color_name": "neutral steel grey"
   },
   "Cannon": {
    "pack": "core",
-   "accent": "#3ED0E8",
+   "accent": "#9AA5B1",
    "structure": "a wide squat gun turret seen straight from the front: a broad rectangular gun shield standing vertically on a stepped base",
    "feature": "ONE big circular gun muzzle in the centre of the shield, drawn as two concentric circles, facing the viewer directly",
-   "accent_block": "the inner muzzle circle only"
+   "accent_block": "the inner muzzle circle only",
+   "pack_color_name": "neutral steel grey"
   },
   "Frost": {
    "pack": "core",
-   "accent": "#3ED0E8",
+   "accent": "#9AA5B1",
    "structure": "a slim hexagonal column on a low base, with a wider hexagonal crown, body in mid steel grey, clearly lighter than the background",
    "feature": "ONE large bright vertical coolant slot running down the centre of the crown, the brightest and most saturated cyan area in the image",
-   "accent_block": "the coolant slot, plus a thin band at the column base"
+   "accent_block": "the coolant slot, plus a thin band at the column base",
+   "pack_color_name": "neutral steel grey"
   },
   "Scout": {
    "pack": "core",
-   "accent": "#FFC94A",
+   "accent": "#9AA5B1",
    "structure": "a tall thin mast on a small plinth, capped with a wide flat plate",
    "feature": "ONE strictly horizontal optical bar mounted just above the flat plate",
-   "accent_block": "the optical bar lens only"
+   "accent_block": "the optical bar lens only",
+   "pack_color_name": "neutral steel grey"
   },
   "Kinetic": {
    "pack": "core",
-   "accent": "#3ED0E8",
+   "accent": "#9AA5B1",
    "structure": "a heavy anvil block on a wide stepped plinth",
    "feature": "ONE strictly horizontal piston bar above the anvil, with two vertical hammer rods hanging from its ends",
-   "accent_block": "a small steel prism set in the anvil front face"
+   "accent_block": "a small steel prism set in the anvil front face",
+   "pack_color_name": "neutral steel grey"
   },
   "Ranger": {
    "pack": "core",
-   "accent": "#3ED0E8",
+   "accent": "#9AA5B1",
    "structure": "a tall slim shaft on a low base, capped with a narrow box head",
    "feature": "ONE very long horizontal rifle barrel through the box head, perfectly level",
-   "accent_block": "a small sight disc on the box head front"
+   "accent_block": "a small sight disc on the box head front",
+   "pack_color_name": "neutral steel grey"
   },
   "Sentry": {
    "pack": "core",
-   "accent": "#C8D2DC",
+   "accent": "#9AA5B1",
    "structure": "a wide squat pylon with a flared skirt base, body in dark steel grey",
    "feature": "ONE large flat hexagon plate mounted vertically on the front of the pylon, facing the viewer directly",
-   "accent_block": "the hexagon centre, in bright polished steel #C8D2DC — clearly lighter than the body"
+   "accent_block": "the hexagon centre, in bright polished steel #C8D2DC — clearly lighter than the body",
+   "pack_color_name": "neutral steel grey"
   },
   "Catapult": {
    "pack": "core",
-   "accent": "#FF6B3D",
+   "accent": "#9AA5B1",
    "structure": "a wide chassis block on a low track base, seen straight from the front, both sides symmetric",
    "feature": "ONE straight tapered throwing beam standing perfectly vertical in the exact centre, with a U-shaped stone basket at its top",
-   "accent_block": "the basket interior"
+   "accent_block": "the basket interior",
+   "pack_color_name": "neutral steel grey"
   },
   "Harrier": {
    "pack": "core",
-   "accent": "#3ED0E8",
+   "accent": "#9AA5B1",
    "structure": "a squat wide body on a small base, seen straight from the front, no face-like layout, no eyes, no mouth, not a mask",
    "feature": "ONE pair of vertical drum launchers standing side by side on top of the body, each drum facing the viewer as a flat circle",
-   "accent_block": "the two drum faces, nothing else"
+   "accent_block": "the two drum faces, nothing else",
+   "pack_color_name": "neutral steel grey"
   },
   "Vanguard": {
    "pack": "cinder",
    "accent": "#FF6B3D",
-   "structure": "a tall block body with an angled prow, on a low base",
-   "feature": "ONE slanted prow plate across the upper body, angled 20 degrees",
-   "accent_block": "a slit along the prow edge"
+   "structure": "a tall upright rectangular tower body on a wide stepped plinth, capped by a small block with a narrow horizontal window, with two panel seams down the front face and two small round ports on the plinth",
+   "feature": "ONE slanted prow plate across the upper front face, angled 20 degrees, perfectly straight, mounted on the FRONT of the upright tower",
+   "accent_block": "a slit along the prow edge, plus one small round port on the plinth face",
+   "pack_color_name": "molten forge-orange"
   },
   "Ember": {
    "pack": "cinder",
    "accent": "#FF6B3D",
-   "structure": "a short cylindrical brazier on a tripod base",
+   "structure": "a short cylindrical brazier on a tripod base, with a distinct cap segment, two panel seams down the front face and two small round ports on the base",
    "feature": "ONE vertical flame core column rising from the brazier mouth",
-   "accent_block": "the flame core only"
+   "accent_block": "the flame core only, plus one small round port on the base face",
+   "pack_color_name": "molten forge-orange"
   },
   "Blaze": {
    "pack": "cinder",
    "accent": "#FF6B3D",
-   "structure": "a wide furnace block with a domed top",
+   "structure": "a wide furnace block with a domed top, with a distinct cap segment, two panel seams down the front face and two small round ports on the base",
    "feature": "ONE wide open combustion mouth, strictly horizontal, across the mid body",
-   "accent_block": "the mouth interior"
+   "accent_block": "the mouth interior, plus one small round port on the base face",
+   "pack_color_name": "molten forge-orange"
   },
   "Cinder": {
    "pack": "cinder",
    "accent": "#FF6B3D",
-   "structure": "a slim tall shaft on a low base, tapering to a narrow tip",
+   "structure": "a slim tall shaft on a low base, tapering to a narrow tip, with a distinct cap segment, two panel seams down the front face and two small round ports on the base",
    "feature": "ONE strict vertical nozzle at the very top",
-   "accent_block": "the nozzle mouth"
+   "accent_block": "the nozzle mouth, plus one small round port on the base face",
+   "pack_color_name": "molten forge-orange"
   },
   "Pyre": {
    "pack": "cinder",
    "accent": "#FF6B3D",
-   "structure": "a stacked basket tower of three tiers on a low plinth",
+   "structure": "a stacked basket tower of three tiers on a low plinth, with a distinct cap segment, two panel seams down the front face and two small round ports on the base",
    "feature": "ONE strict vertical fuse line running up the front face",
-   "accent_block": "the fuse line only"
+   "accent_block": "the fuse line only, plus one small round port on the base face",
+   "pack_color_name": "molten forge-orange"
   },
   "Maul": {
    "pack": "cinder",
    "accent": "#FF6B3D",
-   "structure": "a wide squat body on a heavy plinth",
+   "structure": "a wide squat body on a heavy plinth, with a distinct cap segment, two panel seams down the front face and two small round ports on the base",
    "feature": "ONE massive horizontal hammer head suspended above the body, with two vertical guide rods",
-   "accent_block": "the hammer head face"
+   "accent_block": "the hammer head face, plus one small round port on the base face",
+   "pack_color_name": "molten forge-orange"
   },
   "Furnace": {
    "pack": "cinder",
    "accent": "#FF6B3D",
-   "structure": "a tall blast furnace drum with a domed firebox top",
+   "structure": "a tall blast furnace drum with a domed firebox top, with a distinct cap segment, two panel seams down the front face and two small round ports on the base",
    "feature": "ONE horizontal tuyere pipe crossing the lower body",
-   "accent_block": "a slit in the firebox dome"
+   "accent_block": "a slit in the firebox dome, plus one small round port on the base face",
+   "pack_color_name": "molten forge-orange"
   },
   "Wildfire": {
    "pack": "cinder",
    "accent": "#FF6B3D",
-   "structure": "a squat canister body on a low base",
+   "structure": "a squat canister body on a low base, with a distinct cap segment, two panel seams down the front face and two small round ports on the base",
    "feature": "ONE strictly horizontal nozzle bar across the top, four nozzles in a row",
-   "accent_block": "the four nozzle mouths"
+   "accent_block": "the four nozzle mouths, plus one small round port on the base face",
+   "pack_color_name": "molten forge-orange"
   },
   "Ashen": {
    "pack": "cinder",
-   "accent": "#9AA5B1",
-   "structure": "a short wide mortar body on a low base",
+   "accent": "#FF6B3D",
+   "structure": "a short wide mortar body on a low base, with a distinct cap segment, two panel seams down the front face and two small round ports on the base",
    "feature": "ONE short thick barrel angled upward at 30 degrees",
-   "accent_block": "a small cracked vent on the body face"
+   "accent_block": "a small cracked vent on the body face, plus one small round port on the base face",
+   "pack_color_name": "molten forge-orange"
   },
   "Hellfire": {
    "pack": "cinder",
    "accent": "#FF6B3D",
-   "structure": "a tall slim body with a tapered crown",
+   "structure": "a tall slim body with a tapered crown, with a distinct cap segment, two panel seams down the front face and two small round ports on the base",
    "feature": "ONE extremely long horizontal lance barrel passing through the crown",
-   "accent_block": "the barrel core only"
+   "accent_block": "the barrel core only, plus one small round port on the base face",
+   "pack_color_name": "molten forge-orange"
   },
   "Drillmaster": {
    "pack": "rime",
-   "accent": "#9AA5B1",
+   "accent": "#3ED0E8",
    "structure": "a raised podium block on a wide stepped base",
    "feature": "ONE strict vertical horn post standing on the podium",
-   "accent_block": "a band across the podium face"
+   "accent_block": "a band across the podium face",
+   "pack_color_name": "bright lake-cyan"
   },
   "Icicle": {
    "pack": "rime",
    "accent": "#3ED0E8",
    "structure": "a slim column under a wide flat canopy",
    "feature": "ONE row of downward-pointing spikes hanging under the canopy rim",
-   "accent_block": "the spike row"
+   "accent_block": "the spike row",
+   "pack_color_name": "bright lake-cyan"
   },
   "Glacier": {
    "pack": "rime",
    "accent": "#3ED0E8",
    "structure": "a faceted ice monolith of three stacked segments on a low base",
    "feature": "ONE chisel-shaped crown standing at the top, its cutting edge pointing upward",
-   "accent_block": "the crown face"
+   "accent_block": "the crown face",
+   "pack_color_name": "bright lake-cyan"
   },
   "Hail": {
    "pack": "rime",
    "accent": "#3ED0E8",
    "structure": "a tripod frame under a small flat cap",
    "feature": "ONE strictly horizontal bar holding three open spherical dispensers",
-   "accent_block": "the three dispenser mouths"
+   "accent_block": "the three dispenser mouths",
+   "pack_color_name": "bright lake-cyan"
   },
   "Permafrost": {
    "pack": "rime",
    "accent": "#3ED0E8",
    "structure": "a wide frozen ground plate with a central column",
    "feature": "ONE strict vertical frost column standing above the plate",
-   "accent_block": "a band near the column base"
+   "accent_block": "a band near the column base",
+   "pack_color_name": "bright lake-cyan"
   },
   "Purity": {
    "pack": "rime",
-   "accent": "#7A5CFF",
+   "accent": "#3ED0E8",
    "structure": "a slim vertical ring frame on a low base",
    "feature": "ONE strict vertical light slot through the ring centre",
-   "accent_block": "the slot only"
+   "accent_block": "the slot only",
+   "pack_color_name": "bright lake-cyan"
   },
   "Snowfall": {
    "pack": "rime",
    "accent": "#3ED0E8",
    "structure": "a wide dome ceiling on a slim column",
    "feature": "ONE row of hanging icicles under the dome rim",
-   "accent_block": "a small vent at the dome top"
+   "accent_block": "a small vent at the dome top",
+   "pack_color_name": "bright lake-cyan"
   },
   "Shard": {
    "pack": "rime",
    "accent": "#3ED0E8",
    "structure": "a low launch frame on a wide base",
    "feature": "ONE strictly horizontal rail carrying three upright ice darts",
-   "accent_block": "the three dart tips"
+   "accent_block": "the three dart tips",
+   "pack_color_name": "bright lake-cyan"
   },
   "Whiteout": {
    "pack": "rime",
    "accent": "#3ED0E8",
    "structure": "a circular housing disc on a short stand",
    "feature": "ONE large fan blade crossing the disc face diagonally",
-   "accent_block": "the hub only"
+   "accent_block": "the hub only",
+   "pack_color_name": "bright lake-cyan"
   },
   "Avalanche": {
    "pack": "rime",
    "accent": "#3ED0E8",
    "structure": "a broad squat mortar body on a low base",
    "feature": "ONE wide short barrel angled upward at 40 degrees",
-   "accent_block": "the muzzle interior"
+   "accent_block": "the muzzle interior",
+   "pack_color_name": "bright lake-cyan"
   },
   "Martyr": {
    "pack": "pierce",
-   "accent": "#9AA5B1",
+   "accent": "#FFC94A",
    "structure": "a solid steel plinth block",
    "feature": "ONE broken spear planted vertically with a 10 degree tilt",
-   "accent_block": "the break face"
+   "accent_block": "the break face",
+   "pack_color_name": "forge-gold"
   },
   "Lance": {
    "pack": "pierce",
-   "accent": "#3EA8FF",
+   "accent": "#FFC94A",
    "structure": "an extremely tall thin spire on a wide tripod base",
    "feature": "ONE needle point at the very top, pointing straight up",
-   "accent_block": "a band at the spire base"
+   "accent_block": "a band at the spire base",
+   "pack_color_name": "forge-gold"
   },
   "Javelin": {
    "pack": "pierce",
-   "accent": "#3EA8FF",
+   "accent": "#FFC94A",
    "structure": "a slim gantry frame on a low base",
    "feature": "ONE strictly horizontal rack holding three parallel spears",
-   "accent_block": "the three spear tips"
+   "accent_block": "the three spear tips",
+   "pack_color_name": "forge-gold"
   },
   "Ballista": {
    "pack": "pierce",
-   "accent": "#3EA8FF",
+   "accent": "#FFC94A",
    "structure": "a wide box frame on a stepped base",
    "feature": "ONE strictly horizontal bow arm pair across the frame, with a taut cable",
-   "accent_block": "the cable only"
+   "accent_block": "the cable only",
+   "pack_color_name": "forge-gold"
   },
   "Sniper": {
    "pack": "pierce",
-   "accent": "#3EA8FF",
+   "accent": "#FFC94A",
    "structure": "a tall slim body on a low base",
    "feature": "ONE extremely long horizontal barrel at the top, perfectly level",
-   "accent_block": "a small dial disc on the body"
+   "accent_block": "a small dial disc on the body",
+   "pack_color_name": "forge-gold"
   },
   "Arcane": {
    "pack": "pierce",
-   "accent": "#B45CFF",
+   "accent": "#FFC94A",
    "structure": "an obsidian obelisk of three stacked segments",
    "feature": "ONE floating diamond crystal above the tip",
-   "accent_block": "the crystal only"
+   "accent_block": "the crystal only",
+   "pack_color_name": "forge-gold"
   },
   "Longbow": {
    "pack": "pierce",
-   "accent": "#3EA8FF",
+   "accent": "#FFC94A",
    "structure": "a tall slim frame on a low base",
    "feature": "ONE tall vertical bow limb with an asymmetric curve, and a taut cable",
-   "accent_block": "the cable line"
+   "accent_block": "the cable line",
+   "pack_color_name": "forge-gold"
   },
   "Needle": {
    "pack": "pierce",
-   "accent": "#3EA8FF",
+   "accent": "#FFC94A",
    "structure": "a slim column on a small base",
    "feature": "ONE pair of parallel vertical lance guides at the top",
-   "accent_block": "the guide tips"
+   "accent_block": "the guide tips",
+   "pack_color_name": "forge-gold"
   },
   "Hemorrhage": {
    "pack": "pierce",
-   "accent": "#FF2E4E",
+   "accent": "#FFC94A",
    "structure": "a squat head block on a narrow shaft",
    "feature": "ONE row of downward barbed spikes under the head",
-   "accent_block": "the spike row"
+   "accent_block": "the spike row",
+   "pack_color_name": "forge-gold"
   },
   "Impaler": {
    "pack": "pierce",
-   "accent": "#3EA8FF",
+   "accent": "#FFC94A",
    "structure": "a heavy iron yoke on a wide base",
    "feature": "ONE strictly horizontal bar carrying three upward spear tips",
-   "accent_block": "the three tips"
+   "accent_block": "the three tips",
+   "pack_color_name": "forge-gold"
   },
   "Thunder": {
    "pack": "arc",
-   "accent": "#FFC94A",
+   "accent": "#7A5CFF",
    "structure": "a stepped ziggurat body of three tiers",
    "feature": "ONE tall vertical lightning rod on the top tier",
-   "accent_block": "the rod tip"
+   "accent_block": "the rod tip",
+   "pack_color_name": "star-violet"
   },
   "Tesla": {
    "pack": "arc",
-   "accent": "#FFC94A",
+   "accent": "#7A5CFF",
    "structure": "a slim column on a low base",
    "feature": "ONE stack of three horizontal torus rings with a sphere resting above",
-   "accent_block": "the sphere only"
+   "accent_block": "the sphere only",
+   "pack_color_name": "star-violet"
   },
   "Bolt": {
    "pack": "arc",
-   "accent": "#FFC94A",
+   "accent": "#7A5CFF",
    "structure": "a compact housing on a low base",
    "feature": "ONE pair of vertical electrodes with a horizontal gap between them",
-   "accent_block": "the gap zone"
+   "accent_block": "the gap zone",
+   "pack_color_name": "star-violet"
   },
   "Storm": {
    "pack": "arc",
-   "accent": "#FFC94A",
+   "accent": "#7A5CFF",
    "structure": "a wide coil drum on a low base",
    "feature": "ONE fan of four conductor prongs spreading upward",
-   "accent_block": "the four prong tips"
+   "accent_block": "the four prong tips",
+   "pack_color_name": "star-violet"
   },
   "Arc": {
    "pack": "arc",
-   "accent": "#FFC94A",
+   "accent": "#7A5CFF",
    "structure": "a slim pylon on a stepped base",
    "feature": "ONE large open ring emitter at the top",
-   "accent_block": "the ring inner edge"
+   "accent_block": "the ring inner edge",
+   "pack_color_name": "star-violet"
   },
   "Spark": {
    "pack": "arc",
-   "accent": "#FFC94A",
+   "accent": "#7A5CFF",
    "structure": "a compact box body on a small base",
    "feature": "ONE short vertical electrode tip at the top",
-   "accent_block": "the tip only"
+   "accent_block": "the tip only",
+   "pack_color_name": "star-violet"
   },
   "Coil": {
    "pack": "arc",
-   "accent": "#FFC94A",
+   "accent": "#7A5CFF",
    "structure": "a tall column on a low base",
    "feature": "ONE vertical helix winding around the upper column",
-   "accent_block": "the winding only"
+   "accent_block": "the winding only",
+   "pack_color_name": "star-violet"
   },
   "Overcharge": {
    "pack": "arc",
-   "accent": "#FFC94A",
+   "accent": "#7A5CFF",
    "structure": "a wide base block with a bulging body",
    "feature": "ONE large spherical capacitor bulb at the top",
-   "accent_block": "the bulb interior"
+   "accent_block": "the bulb interior",
+   "pack_color_name": "star-violet"
   },
   "Thunderhead": {
    "pack": "arc",
-   "accent": "#FFC94A",
+   "accent": "#7A5CFF",
    "structure": "a squat column under a wide cloud-like dome of three stacked plates",
    "feature": "ONE row of downward electrode teeth under the dome",
-   "accent_block": "the tooth tips"
+   "accent_block": "the tooth tips",
+   "pack_color_name": "star-violet"
   },
   "Circuit": {
    "pack": "arc",
-   "accent": "#FFC94A",
+   "accent": "#7A5CFF",
    "structure": "a flat vertical slab body on a low base",
    "feature": "ONE strictly horizontal relay bar across the slab face",
-   "accent_block": "the bar only"
+   "accent_block": "the bar only",
+   "pack_color_name": "star-violet"
   },
   "Drummer": {
    "pack": "sunder",
-   "accent": "#FFC94A",
+   "accent": "#E8437F",
    "structure": "a steel frame on a wide base",
    "feature": "ONE large horizontal drum mounted inside the frame",
-   "accent_block": "the drum face"
+   "accent_block": "the drum face",
+   "pack_color_name": "magenta-crimson"
   },
   "Sunder": {
    "pack": "sunder",
-   "accent": "#9AA5B1",
+   "accent": "#E8437F",
    "structure": "a heavy block body on a wide shockwave plate",
    "feature": "ONE split anvil head at the top, in two halves",
-   "accent_block": "the split seam"
+   "accent_block": "the split seam",
+   "pack_color_name": "magenta-crimson"
   },
   "Breaker": {
    "pack": "sunder",
-   "accent": "#9AA5B1",
+   "accent": "#E8437F",
    "structure": "a thick column on a low base",
    "feature": "ONE thick drill mandrel pointing straight down at the front of the body",
-   "accent_block": "the mandrel tip"
+   "accent_block": "the mandrel tip",
+   "pack_color_name": "magenta-crimson"
   },
   "Shatter": {
    "pack": "sunder",
-   "accent": "#9AA5B1",
+   "accent": "#E8437F",
    "structure": "a narrow body on a small base",
    "feature": "ONE crown of upward fracture spikes at the top",
-   "accent_block": "the spike tips"
+   "accent_block": "the spike tips",
+   "pack_color_name": "magenta-crimson"
   },
   "Ruin": {
    "pack": "sunder",
-   "accent": "#9AA5B1",
+   "accent": "#E8437F",
    "structure": "a massive block body between two vertical guide rails",
    "feature": "ONE single ram block suspended between the rails",
-   "accent_block": "the ram face"
+   "accent_block": "the ram face",
+   "pack_color_name": "magenta-crimson"
   },
   "Quake": {
    "pack": "sunder",
-   "accent": "#FFC94A",
+   "accent": "#E8437F",
    "structure": "a wide hexagonal base plate with a short column",
    "feature": "ONE row of three downward hammer cones under the column",
-   "accent_block": "the three cone tips"
+   "accent_block": "the three cone tips",
+   "pack_color_name": "magenta-crimson"
   },
   "Rend": {
    "pack": "sunder",
-   "accent": "#FF2E4E",
+   "accent": "#E8437F",
    "structure": "a slim body on a low base",
    "feature": "ONE fan of hooked claw blades pointing downward from the upper body",
-   "accent_block": "the claw tips"
+   "accent_block": "the claw tips",
+   "pack_color_name": "magenta-crimson"
   },
   "Crusher": {
    "pack": "sunder",
-   "accent": "#9AA5B1",
+   "accent": "#E8437F",
    "structure": "a squat block body on a wide base",
    "feature": "ONE pair of opposing jaw plates with a horizontal ram between them",
-   "accent_block": "the jaw inner faces"
+   "accent_block": "the jaw inner faces",
+   "pack_color_name": "magenta-crimson"
   },
   "Bastion": {
    "pack": "sunder",
-   "accent": "#9AA5B1",
+   "accent": "#E8437F",
    "structure": "a squat fortress cap with merlon teeth on a wide base",
    "feature": "ONE strictly horizontal shield band across the mid body",
-   "accent_block": "the shield band"
+   "accent_block": "the shield band",
+   "pack_color_name": "magenta-crimson"
   },
   "Siege": {
    "pack": "sunder",
-   "accent": "#FF6B3D",
+   "accent": "#E8437F",
    "structure": "a wide chassis block on a low base",
    "feature": "ONE long sling arm angled upward at 40 degrees",
-   "accent_block": "the sling cup"
+   "accent_block": "the sling cup",
+   "pack_color_name": "magenta-crimson"
   },
   "Omen": {
    "pack": "hex",
-   "accent": "#B45CFF",
+   "accent": "#1A6B7D",
    "structure": "a bone-like arch frame on a low pedestal",
    "feature": "ONE floating eye-shaped sigil inside the arch",
-   "accent_block": "the sigil pupil only"
+   "accent_block": "the sigil pupil only",
+   "pack_color_name": "deep teal"
   },
   "Hex": {
    "pack": "hex",
-   "accent": "#B45CFF",
+   "accent": "#1A6B7D",
    "structure": "an obsidian pedestal of three stacked segments",
    "feature": "ONE floating hexagram sigil above the pedestal",
-   "accent_block": "the sigil only"
+   "accent_block": "the sigil only",
+   "pack_color_name": "deep teal"
   },
   "Rune": {
    "pack": "hex",
-   "accent": "#B45CFF",
+   "accent": "#1A6B7D",
    "structure": "three stacked offset slabs",
    "feature": "ONE strict vertical carved glyph slot on the front slab",
-   "accent_block": "the glyph slot"
+   "accent_block": "the glyph slot",
+   "pack_color_name": "deep teal"
   },
   "Curse": {
    "pack": "hex",
-   "accent": "#B45CFF",
+   "accent": "#1A6B7D",
    "structure": "a slim column on a low base with one horizontal arm",
    "feature": "ONE needle hanging downward from the arm tip",
-   "accent_block": "the needle tip"
+   "accent_block": "the needle tip",
+   "pack_color_name": "deep teal"
   },
   "Plague": {
    "pack": "hex",
-   "accent": "#4FD98A",
+   "accent": "#1A6B7D",
    "structure": "a bulbous flask body on a low base",
    "feature": "ONE strictly horizontal row of three vent nozzles at the base",
-   "accent_block": "the three nozzle mouths"
+   "accent_block": "the three nozzle mouths",
+   "pack_color_name": "deep teal"
   },
   "Wither": {
    "pack": "hex",
-   "accent": "#4FD98A",
+   "accent": "#1A6B7D",
    "structure": "a hollow cage column on a wide basin",
    "feature": "ONE strict vertical ichor column standing inside the cage",
-   "accent_block": "the ichor column"
+   "accent_block": "the ichor column",
+   "pack_color_name": "deep teal"
   },
   "Executioner": {
    "pack": "hex",
-   "accent": "#FF2E4E",
+   "accent": "#1A6B7D",
    "structure": "a tall guillotine frame on a wide base",
    "feature": "ONE heavy cleaver blade raised at the top, angled 20 degrees",
-   "accent_block": "the blade edge"
+   "accent_block": "the blade edge",
+   "pack_color_name": "deep teal"
   },
   "Blight": {
    "pack": "hex",
-   "accent": "#4FD98A",
+   "accent": "#1A6B7D",
    "structure": "a corroded lattice dome on a low column",
    "feature": "ONE row of vertical hanging chains under the dome rim",
-   "accent_block": "the chain ends"
+   "accent_block": "the chain ends",
+   "pack_color_name": "deep teal"
   },
   "Malison": {
    "pack": "hex",
-   "accent": "#B45CFF",
+   "accent": "#1A6B7D",
    "structure": "a slim column carrying a spiked collar ring",
    "feature": "ONE small bell hanging from the collar centre",
-   "accent_block": "the bell only"
+   "accent_block": "the bell only",
+   "pack_color_name": "deep teal"
   },
   "Hexer": {
    "pack": "hex",
-   "accent": "#B45CFF",
+   "accent": "#1A6B7D",
    "structure": "a stone cradle on a low base",
    "feature": "ONE horizontal row of three floating rune cubes",
-   "accent_block": "the cube faces"
+   "accent_block": "the cube faces",
+   "pack_color_name": "deep teal"
   },
   "Null": {
    "pack": "true",
-   "accent": "#7A5CFF",
+   "accent": "#FF2E4E",
    "structure": "an empty square frame on a low plinth",
    "feature": "ONE empty square opening in the frame centre, with nothing inside it",
-   "accent_block": "the frame inner edge only"
+   "accent_block": "the frame inner edge only",
+   "pack_color_name": "alert red"
   },
   "Oblivion": {
    "pack": "true",
-   "accent": "#B45CFF",
+   "accent": "#FF2E4E",
    "structure": "a tall rectangular monolith of three stacked segments",
    "feature": "ONE square hole cut through the upper third",
-   "accent_block": "the hole interior"
+   "accent_block": "the hole interior",
+   "pack_color_name": "alert red"
   },
   "Void": {
    "pack": "true",
-   "accent": "#7A5CFF",
+   "accent": "#FF2E4E",
    "structure": "a slim mast on a low base",
    "feature": "ONE inverted pyramid hanging under the mast crown, apex pointing downward",
-   "accent_block": "the pyramid face"
+   "accent_block": "the pyramid face",
+   "pack_color_name": "alert red"
   },
   "Exile": {
    "pack": "true",
-   "accent": "#7A5CFF",
+   "accent": "#FF2E4E",
    "structure": "a barred gate frame on a low base",
    "feature": "ONE pair of vertical bars with a single horizontal crossbar",
-   "accent_block": "the crossbar only"
+   "accent_block": "the crossbar only",
+   "pack_color_name": "alert red"
   },
   "Rift": {
    "pack": "true",
-   "accent": "#7A5CFF",
+   "accent": "#FF2E4E",
    "structure": "a tall block body split into two offset halves",
    "feature": "ONE strict vertical slit aperture between the halves",
-   "accent_block": "the slit interior"
+   "accent_block": "the slit interior",
+   "pack_color_name": "alert red"
   },
   "Necro": {
    "pack": "true",
-   "accent": "#7A5CFF",
+   "accent": "#FF2E4E",
    "structure": "a bone totem column on a wide base",
    "feature": "ONE horizontal ring of three spirit lanterns around the column",
-   "accent_block": "the lantern faces"
+   "accent_block": "the lantern faces",
+   "pack_color_name": "alert red"
   },
   "Eraser": {
    "pack": "true",
-   "accent": "#7A5CFF",
+   "accent": "#FF2E4E",
    "structure": "a tall body with a wide flat head",
    "feature": "ONE strictly horizontal beam edge at the head front, with a stepped dissolving edge",
-   "accent_block": "the beam edge only"
+   "accent_block": "the beam edge only",
+   "pack_color_name": "alert red"
   },
   "Obliterator": {
    "pack": "true",
-   "accent": "#B45CFF",
+   "accent": "#FF2E4E",
    "structure": "a heavy torso block on a wide base",
    "feature": "ONE pair of blunt fist rams side by side at the front",
-   "accent_block": "the two fist faces"
+   "accent_block": "the two fist faces",
+   "pack_color_name": "alert red"
   },
   "Soulpiercer": {
    "pack": "true",
-   "accent": "#7A5CFF",
+   "accent": "#FF2E4E",
    "structure": "an extremely thin tall lance column on a small base",
    "feature": "ONE strict vertical hollow bore running up the lance",
-   "accent_block": "the bore mouth"
+   "accent_block": "the bore mouth",
+   "pack_color_name": "alert red"
   },
   "Wraith": {
    "pack": "true",
-   "accent": "#7A5CFF",
+   "accent": "#FF2E4E",
    "structure": "a thin mast with a draped shroud plate",
    "feature": "ONE hooded mask plate on the mast, facing forward",
-   "accent_block": "the mask slit"
+   "accent_block": "the mask slit",
+   "pack_color_name": "alert red"
+  }
+ },
+ "pack_color_source": "scripts/ui/ui_style.gd PACK_COLORS (art-bible 2.2 registered colors)",
+ "pack_color_rule": "pack color is the DOMINANT tone of the whole card: about 60% or more of the visible body is painted in this hue using three flat tonal steps of the SAME hue (mid-tone main plate / lighter bevel highlight / darker shadow plate); only a few small structural parts stay neutral blue-grey steel; thick dark-navy outlines unchanged; pack color is SSOT for all 10 cards in the pack, no per-card override",
+ "pack_palette": [
+  {
+   "pack": "core",
+   "hex": "#9AA5B1",
+   "name": "neutral steel grey",
+   "hue_word": "neutral grey",
+   "shadow_word": "charcoal grey"
+  },
+  {
+   "pack": "cinder",
+   "hex": "#FF6B3D",
+   "name": "molten forge-orange",
+   "hue_word": "orange",
+   "shadow_word": "burnt-orange"
+  },
+  {
+   "pack": "rime",
+   "hex": "#3ED0E8",
+   "name": "bright lake-cyan",
+   "hue_word": "cyan",
+   "shadow_word": "deep teal"
+  },
+  {
+   "pack": "pierce",
+   "hex": "#FFC94A",
+   "name": "forge-gold",
+   "hue_word": "gold",
+   "shadow_word": "burnt amber"
+  },
+  {
+   "pack": "arc",
+   "hex": "#7A5CFF",
+   "name": "star-violet",
+   "hue_word": "violet",
+   "shadow_word": "deep indigo"
+  },
+  {
+   "pack": "sunder",
+   "hex": "#E8437F",
+   "name": "magenta-crimson",
+   "hue_word": "magenta",
+   "shadow_word": "deep wine"
+  },
+  {
+   "pack": "hex",
+   "hex": "#1A6B7D",
+   "name": "deep teal",
+   "hue_word": "teal",
+   "shadow_word": "deep ocean teal"
+  },
+  {
+   "pack": "true",
+   "hex": "#FF2E4E",
+   "name": "alert red",
+   "hue_word": "red",
+   "shadow_word": "deep crimson"
+  }
+ ],
+ "pack_color_mode": "dominant",
+ "postprocess_hint": {
+  "standard": "design/art/card-art-generation-standard-v1.md §4",
+  "tone_protect_mode": "remap",
+  "batch_flag": "--dominant",
+  "pack_color_coverage_min_percent": 40,
+  "completion": "80/80 cards, 8/8 packs validated (2026-11-09); no pending pack",
+  "p50_range_dominant": [
+   80,
+   185
+  ],
+  "bright_pack": {
+   "applies_to": ["rime", "pierce"],
+   "batch_flag": "--bright-pack",
+   "tone_white": 230,
+   "bright_threshold": 250,
+   "note": "v1.3: high-luminance pack colors (cyan/gold) saturate the white point at 155; use with --dominant, whole pack only, never per card"
+  },
+  "mid_pack": {
+   "applies_to": ["arc"],
+   "batch_flag": "--mid-pack",
+   "tone_white": 145,
+   "tone_floor": 42,
+   "note": "v1.4: mid-luminance pack colors (L about 90-140, e.g. star-violet) are too dark under default white 155 and get darker under --bright-pack; lift the shadow floor instead of pushing highlights. Mutually exclusive with the other tone flags; use with --dominant, whole pack only, never per card. sunder needs the higher --lift-pack floor (v1.5); hex deep teal (v1.6) and true alert red (v1.7) are validated with --lift-pack. All 8 packs complete."
+  },
+  "lift_pack": {
+   "applies_to": ["sunder", "hex", "true"],
+   "batch_flag": "--lift-pack",
+   "tone_white": 145,
+   "tone_floor": 58,
+   "note": "v1.5 + v1.6 + v1.7: packs with a very high share of dark shadow plates (sunder magenta-crimson #E8437F) or a low-luminance pack color (hex deep teal #1A6B7D L about 91, true alert red #FF2E4E L about 93) fail p50 under --mid-pack. Four-tier pilots: Hex 73/55/89/101, Oblivion 72/55/89/101 -> reuse 145/58 rather than adding a fifth tier. Whole packs passed: sunder p50 87-127, hex 101-138, true 88-108 (true p85 is naturally lower because red has only 0.2126 luminance weight). Mutually exclusive with --bright-pack / --mid-pack; use with --dominant, whole pack only, never per card. All 8 packs complete."
   }
  }
 }

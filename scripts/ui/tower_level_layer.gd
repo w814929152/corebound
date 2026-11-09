@@ -112,6 +112,8 @@ func _process(delta: float) -> void:
 		return
 	_poll = 0.0
 	_rebuild()
+	if not _fire_charge_rows().is_empty():
+		queue_redraw()
 
 
 ## 重建绘制条目：读快照 → 算屏幕坐标 → 比对签名 → 变化才重绘。
@@ -153,6 +155,17 @@ func _rebuild(silent: bool = false) -> void:
 		queue_redraw()
 
 
+## 充能属于新塔的信息牌；不写入 MonsterLayer 的零文本形状层。
+func _fire_charge_rows() -> Array:
+	if world_layer == null or not ("director" in world_layer) or world_layer.director == null:
+		return []
+	var rows: Array = []
+	for t in world_layer.director.snapshot().get("towers", []):
+		if int(t.get("fire_capacity", 0)) > 0:
+			rows.append(t)
+	return rows
+
+
 func _draw() -> void:
 	# 🔴 先按**当前**变换重算一遍：`_draw` 可能由别的信号/重绘触发，
 	#    而上一帧缓存的屏幕坐标可能属于"抽屉还没开"的旧战场宽度。
@@ -169,8 +182,16 @@ func _draw() -> void:
 	var sc: float = world_layer.world_scale()
 	var fs := clampi(int(round(FS_K * sc)), FS_MIN, FS_MAX)
 	var R := 1.70 * sc                      # 与 `monster_layer.U_TOWER` 同口径（塔外接圆）
+	var charge_rows := _fire_charge_rows()
 	for e in _entries:
 		_draw_badge(font, e, R, fs)
+		for charge in charge_rows:
+			if int(charge["slot"]) != int(e["slot"]):
+				continue
+			var text := "%d/%d" % [int(charge["fire_charge"]), int(charge["fire_capacity"])]
+			var width := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+			var pos: Vector2 = e["pos"] + Vector2(-width * 0.5, R + float(fs) + 8.0)
+			draw_string(font, pos, text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(1.0, 0.75, 0.4))
 
 
 ## 单个等级牌（胶囊底 + 等级读数）。

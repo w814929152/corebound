@@ -1,5 +1,12 @@
 # 守核 Corebound · 卡面插画风格提案与提示词包 v4（中密度）
 
+> ⚪ **状态（2026-11-09 更新）：本文留档，不再是新卡生成依据。**
+> 用户已拍板 3/4 视角图生图产线，泛用包 10 张按新标准落地并接入 UI。
+> 🔴 **新卡一律执行 `design/art/card-art-generation-standard-v1.md` 现行 v1.2**（3/4 视角 + Cannon 定稿图作风格参考
+> + 分层装甲板 + **包色即整机主色调** + 色阶校准 + 连通域抠图）。本文的「正面微仰视立面冻结 / 禁 3/4 / 禁装甲板密细节」条款
+> 与新标准冲突，仅作沿革与批次①②记录保留；`card-prompt-bank-v2.json` 仍可用作「对象 / 特征 / 主色」数据源。
+>
+> 以下为原文状态（留档）：
 > 状态：🟡 **待拍板**（圣经开放问题 #3 的落地方案）。
 > 纪律：锚点确认前**只生成 2 张基准**，确认后才批量。本文档即拍板材料。
 > 🟢 **v4（2026-11-08 · 中密度）**：两次拍板收敛出最终密度——v2 太碎（~15 元素）、v3 太空（3 元素），
@@ -377,3 +384,43 @@ on background, crisp vector-like edges, matte finish.
 - 觉得还空 → 加第 3 段分割线 + 第 2 个功能件（形状块 → 10–12）
 - 觉得还碎 → 砍到 2 段、功能件只留 1 个（形状块 → 5–6）
 - 觉得形状"不像那座塔" → 只改那 1 张的功能件描述（写死方向/形态，见 §5 v4a 教训），不动锚点
+
+---
+
+## 批次② · 单张先行验收（2026-11-08）
+
+**节奏变更**：用户拍板「先出一张」——不再整包并行出图，先出 1 张做同族比对，通过后再放量。
+
+### 锚点补强 v4b（只加约束，不改密度档）
+
+首张 Vanguard 按 v4 锚点生成后**严重漂移**：暗色镂空斜楔、主体几乎无亮灰填充、背景画了网格，
+与批次① 的「亮钢灰实心竖塔」完全不同族 → 判废，留档
+`art/_review/batch2/raw_Vanguard_v1_rejected.png`（不进 `art/2d/`、不进 manifest）。
+
+补进 `tools/card_batch_prompt.py` ANCHOR 的两条硬约束：
+
+1. `The silhouette MUST be solid-filled: the two LIGHT muted steel greys cover at least 70 percent of its area, with a tall upright tower-like proportion. Never a hollow outline, never a thin frame, never a dark body, never a flat horizontal wedge.`
+2. `Background: solid flat #141726 ONLY, absolutely no grid lines, no texture, no frame border, no other pattern.`（原来 "optional single-layer grid under 6% contrast" 是漂移源头）
+
+同步把 `card-prompt-bank-v2.json` 里 Vanguard 的 structure 写死成
+「tall upright rectangular tower body on a low stepped base … prow plate mounted on the FRONT」。
+`design/art/card-prompts-batch2.json` 已按新锚点重建（10 张）。
+
+### 工具：`card_keyout.py --degrid`
+
+AI 背景网格线会因与底色有色差而被 flood fill 当成前景保留，合成到卡面上是一层游离方格。
+新增 `degrid()`：alpha 二值 → 两遍 5×5 开运算（抹掉连到主体的细线）→ 膨胀 1px 作掩膜
+→ 与原 alpha 相乘（保住抗锯齿过渡）→ 按清理后 alpha 重算包围盒。
+**默认关闭**，只在出现网格残留时显式开启；批次① 产物不受影响。
+修正版 Vanguard 因锚点已禁网格、背景干净，正式产物未启用 degrid。
+
+### 修正版验收（待用户拍板）
+
+| 项 | 结论 |
+|---|---|
+| 同族一致性 | ✅ 亮灰实心、竖向塔体、厚深蓝描边、单一橙色细缝，与批次① 同族 |
+| 去底 | ✅ 无网格残留、无黑晕；C 形夹内的暗区是透明，落到暗卡面上读作凹槽 |
+| 边缘瑕疵 | 🟡 ① 顶部功能件被画成 C 形夹而非明确斜板；② 底座与主塔之间有一道分离缝。均为可接受级，是否重出由用户定 |
+
+产物：`art/2d/cards/card_vanguard_v1_{t,460}.png`（manifest 163 项）。
+中断前并行调用还产出 `Ember` 原图，按旧锚点生成、**未验收未落地**，待确认后按 v4b 重出。

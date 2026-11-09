@@ -383,7 +383,7 @@ static func compute_dps(player, cfg: Dictionary, geo = null) -> Dictionary:
 
 	# C3 挂件 Aux —— R-8
 	var aux := 1.0
-	if bool(cfg["use_aux"]):
+	if bool(cfg["use_aux"]) and not bool(cfg.get("stacking_frost_enabled", false)):
 		var aux_mode: String = String(cfg.get("aux_mode", "global"))
 		if aux_mode == "per_tower":
 			var aux_parts: Array = []

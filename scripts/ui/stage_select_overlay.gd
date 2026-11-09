@@ -41,7 +41,11 @@ const DESIGN_SIZE := Vector2(1920.0, 1080.0)
 
 ## 每章所在环半径（单位 = min(高, 宽×0.62) 的倍数）。索引 = 章节号-1。
 ##   🔴 数值即「离核心的距离」：第一章最外、终局在核心（0）。
-const RING_FRAC: Array = [0.320, 0.225, 0.130, 0.0]
+## 环半径（× unit）：中枢在最外，主脑核心在正中 —— 与「向内推进」的叙事同向。
+##   🆕 v2 从 4 环扩到 5 环：内环拆成「主脑外围 8-1」与「主脑核心 9-1」两环。
+##   🔴 0.065 这档不能省：两关同环会让两个节点落在同一点（`r=0` 时角度失效），
+##      0.065 × unit(1080) = 70 > 2×NODE_R(27) = 54，刚好不重叠。
+const RING_FRAC: Array = [0.320, 0.225, 0.130, 0.065, 0.0]
 
 ## 节点角向：起点 200° + 每关 +62° → 全 10 关连成向心螺旋（确定性，零 RNG）。
 const ANGLE_START := 200.0
@@ -56,11 +60,15 @@ const LABEL_GAP := 30.0     # 节点 → 关卡名 的径向间距（留够空�
 const NODE_LABEL_FONT := 18
 const CHAPTER_FONT := 18
 
+## 环 → 标题。🔴 与 `CampaignData.CHAPTER_TITLES` 必须逐字一致
+##   （`tests/run_campaign_asserts.gd` 的 [9] 会比对；此处的本地副本是为了绘制层
+##   不依赖数据层的加载顺序，不是第二个真相源）。
 const CHAPTER_TITLES := {
-	1: "第一章 · 熔炉",
-	2: "第二章 · 霜序",
-	3: "第三章 · 枢网",
-	4: "终局 · 核心",
+	1: "中枢 · 铁砧",
+	2: "外环 · 残存区",
+	3: "中环 · 争夺区",
+	4: "内环 · 主脑外围",
+	5: "主脑 · 核心",
 }
 
 var _built: bool = false
@@ -181,7 +189,7 @@ func _build_header() -> void:
 	legend_gap.custom_minimum_size = Vector2(0.0, 14.0)
 	legend_gap.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	head.add_child(legend_gap)
-	for ch in range(1, 5):
+	for ch in range(1, 6):
 		var tex: Texture2D = _ht("ui_map_badge_ch%d_v1.png" % ch)
 		var row: Control = null
 		if tex != null:
@@ -492,12 +500,14 @@ func _paint(ci: Control) -> void:
 func _chapter_color(ch: int) -> Color:
 	match ch:
 		1:
-			return _Style.C_ENEMY                     # 熔炉 · 熔橙
+			return _Style.C_ALLY                      # 中枢 · 己方青（这里是家）
 		2:
-			return _Style.C_ALLY                      # 霜序 · 耀青
+			return _Style.C_ALLY.lerp(_Style.C_STEEL, 0.35)  # 外环 · 青偏钢
 		3:
-			return _Style.C_ALLY.lerp(_Style.C_STEEL, 0.55)  # 枢网 · 青钢（登记色的插值）
-	return _Style.C_ALERT                             # 终局 · 核心 · 警报红
+			return _Style.C_ENEMY.lerp(_Style.C_STEEL, 0.45) # 中环 · 争夺（橙钢混色）
+		4:
+			return _Style.C_ENEMY                     # 内环 · 敌境橙
+	return _Style.C_ALERT                             # 主脑核心 · 警报红
 
 
 func _draw_backdrop(ci: Control, sz: Vector2) -> void:
@@ -524,7 +534,7 @@ func _draw_tracks(ci: Control, sz: Vector2) -> void:
 	var c := Vector2(sz.x * 0.5, sz.y * 0.47)
 	var unit := minf(sz.y, sz.x * 0.62)
 	# 每章一圈「轨道」：完整细环 + 该章跨度内的加粗弧
-	for ch in range(1, 4):
+	for ch in range(1, 6):
 		var rf := float(RING_FRAC[ch - 1])
 		var r := unit * rf
 		var col := _chapter_color(ch)
@@ -643,7 +653,11 @@ func _draw_nodes(ci: Control, sz: Vector2) -> void:
 		var dir := p - c
 		var name_pos: Vector2
 		if dir.length() < 0.001:
-			name_pos = p + Vector2(0.0, -(r + LABEL_GAP + 26.0))
+			# 🔴 核心（9-1）标签挂**下方**，不是上方：8-1 在 rf=0.065 的右上角，
+			#    它的标签被径向推到中心正上方 —— 两个标签会挤在同一行（实测
+			#    「主脑·核心 / 主脑·外围」并排贴着，谁都读不出哪个属于哪个节点）。
+			#    核心的标签往下放，二者一上一下分开 ~130px，归属就一眼可辨。
+			name_pos = p + Vector2(0.0, r + LABEL_GAP + 26.0)
 		else:
 			name_pos = _label_pos(p, dir.normalized(), r, String(st.get("name", "")), NODE_LABEL_FONT)
 		# 贴边节点：把标签推回画布内，避免被裁掉（推回后仍在本节点附近）

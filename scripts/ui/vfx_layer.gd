@@ -494,6 +494,8 @@ func _update_bolts(dt: float) -> void:
 	for tw in controller.runtime.snapshot().get("slots", []):
 		if bool(tw.get("empty", true)):
 			continue
+		if _TowerData.tower_dps(String(tw.get("ctype", "Arrow"))) <= 0.0:
+			continue
 		var slot := int(tw.get("slot", -1))
 		if slot < 0 or slot >= slot_pos.size():
 			continue

@@ -57,6 +57,10 @@ const _MonsterData := preload("res://scripts/data/monster_data.gd")
 const _PathGeometry := preload("res://scripts/geo/path_geometry.gd")
 const _SpaceModel := preload("res://scripts/geo/space_model.gd")
 const _WaveSimAggro := preload("res://scripts/engine/wave_sim_aggro.gd")
+## 🆕 战斗类型（物理/魔法/真实 × 物抗/魔抗）—— 🔴 只在 `cfg.combat_types_enabled` 时消费。
+const _CombatTypes := preload("res://scripts/data/combat_types.gd")
+## 🆕 关卡波表（v2 世界主线）。🔴 只在这里被**读**，不进任何常量。
+const _StageWaves := preload("res://scripts/data/stage_waves.gd")
 
 const DT := 0.1
 
@@ -66,13 +70,18 @@ const DT := 0.1
 #   proto_enabled : 三原型分化（m_hp/m_spd 生效）
 #   elite_enabled : Elite 波词缀（每 5 波）+ Sapper 标记（杀伤需 aggro 开）
 #   aggro_enabled : Q-T3 机会型仇恨（AGGRO_R=9.0）+ 塔 HP + Disabled 中间态
-# 怪物本地结构：[hp, t_remain, state, target_slot, m_dps, sapper, theta, m_spd]
+# 怪物本地结构：[hp, t_remain, state, target_slot, m_dps, sapper, theta, m_spd, proto]
 #   state: 0=Marching 1=AggroTower
+#   🆕 m[8] = 原型名（Rush/Swarm/Tank）—— 仅供战斗类型查抗性用；默认 `cfg.combat_types_enabled=false`
+#      时**连读都不读**（pools 恒 0 → `_apply_pool_m` 一次都不进）。
+#   stage_id   🆕 关卡 id（"" = 无波表 → 金标本口径，逐位不变）
+#   escalation 🆕 已守地区数 `S`（只影响波表，不影响任何常量）
 # ---------------------------------------------------------------------------
 static func simulate_wave_proto_aggro(player, w: int, cfg: Dictionary, geo = null,
 		proto_enabled: bool = true, elite_enabled: bool = true,
 		aggro_enabled: bool = true, exp: float = 0.6, attrition: float = -1.0,
-		warmup_waves: int = 0, protect_core: bool = false, bulwark: bool = false) -> Dictionary:
+		warmup_waves: int = 0, protect_core: bool = false, bulwark: bool = false,
+		stage_id: String = "", escalation: int = 0) -> Dictionary:
 	# ---- 肉盾塔诊断（bulwark）：主力塔重定位到安全位（默认 false → 零扰动）----
 	if bulwark and player != null and w > warmup_waves:
 		_WaveSimAggro._relocate_carry_to_safe(player, geo)
@@ -91,10 +100,48 @@ static func simulate_wave_proto_aggro(player, w: int, cfg: Dictionary, geo = nul
 	var hp_unit := float(ms["hp"])
 	var spk := float(ms["scrap_per_kill"])
 	var t_reach := float(ms["t_reach"])
+	# 🆕 关卡波表：只重排「这一波长什么样」，**不改任何常量**。
+	#   🔴 `stage_id == ""` → spec 恒 {} → 下面恒不执行 → 旧读数逐位不变。
+	#   🔴 `neutral` 波（0-1）必须跳过：它是「实时 == 批处理」的回归锚点（V-5）。
+	var spec: Dictionary = {}
+	if stage_id != "":
+		spec = _StageWaves.wave_spec(stage_id, w, cfg, escalation)
+	var has_spec := not spec.is_empty() and not bool(spec.get("neutral", false))
+	var comp: Dictionary = {}
+	if has_spec:
+		n = int(spec["n"])
+		hp_unit = float(spec["hp"])
+		comp = spec.get("comp", {})
 	var spawn_span := D * _MvpConfig.spawn_window(w)
 	var interval := spawn_span / float(maxi(1, n))
 	var v0_ := _MonsterData.v0(_PathGeometry.TOTAL_LEN, t_reach)
 	var dps := _DE.dps_only(player, cfg, geo)
+
+	# ---- 🆕 战斗类型（`cfg.combat_types_enabled` · 默认 false → 下面恒不消费，逐位不变）----
+	#   🔴 相位时序**逐字对齐真身** `WaveDirector.start_wave`：波首算一次三条类型池，
+	#      **波内冻结**（塔被打停 / 复活都**不**重算类型池 —— 真身只重算 `dps` 总量，
+	#      见 `wave_director.gd` 塔死亡段的 `dps = _DE.dps_only(...)`；类型池在那里不动）。
+	#      镜像若"顺手"跟着重算就会比真身**多**打折，正是最难察觉的那类分岔。
+	#   🔴 三条池之和 ≈ `dps`（`compute_dps` 的补偿求和结合序不同 → 末位可能差 1ulp）：
+	#      真身也是这个口径（总量用 `dps_only`，分池用 `dps_by_type`），故**照抄不修**。
+	var ct_on: bool = bool(cfg.get("combat_types_enabled", false))
+	var phys_dps := 0.0
+	var magic_dps := 0.0
+	var true_dps := 0.0
+	var phys_reduct := 0.0
+	var magic_reduct := 0.0
+	if ct_on:
+		var _byt: Dictionary = _DE.compute_dps(player, cfg, geo).get("dps_by_type", {})
+		phys_dps = float(_byt.get("physical", 0.0))
+		magic_dps = float(_byt.get("magic", 0.0))
+		true_dps = float(_byt.get("true", 0.0))
+		# 破甲光环：从场上塔类型算减抗量（与真身同一 SSOT `CombatTypes.armor_reduction`）。
+		var _ctypes: Array = []
+		if player != null:
+			for _t in player.towers:
+				_ctypes.append(String(_t.ctype))
+		phys_reduct = _CombatTypes.armor_reduction(_ctypes, _CombatTypes.PHYSICAL)
+		magic_reduct = _CombatTypes.armor_reduction(_ctypes, _CombatTypes.MAGIC)
 
 	# ---- 塔 HP（波首满血，未 Disabled 的塔）——仅 aggro 开时重置（与真身 start_wave 同门槛）----
 	if aggro_enabled and player != null:
@@ -112,15 +159,22 @@ static func simulate_wave_proto_aggro(player, w: int, cfg: Dictionary, geo = nul
 			spd_mults.append(1.0)
 			proto_seq.append("Swarm")
 	else:
-		proto_seq = _MonsterData.spawn_sequence(n)
-		var n_e := _MonsterData.elite_count(w, n) if elite_enabled else 0
+		var seq: Array = _MonsterData.spawn_sequence(n) if comp.is_empty() else _StageWaves.spawn_sequence(n, comp)
+		proto_seq = seq
+		# 🔴 分层纪律（与 `WaveDirector._elite_count_wave` 同）：有波表 → 波表说了算
+		#   （含 `S` 加压的 +k）；无波表 → 金标本 `w % 5` 周期。
+		var n_e: int = 0
+		if elite_enabled:
+			n_e = int(spec.get("elite", 0)) if has_spec else _MonsterData.elite_count(w, n)
 		var c := _MonsterData.elite_conserve(n, n_e)
 		var eidx: Array = _MonsterData.elite_indices(n, n_e)
+		# 单只乘数：基准构成时 `proto_mult` 短路返回 `MonsterData` 原值 → 与改前逐位一致。
+		var pm: Dictionary = {"hp": _MonsterData.M_HP, "spd": _MonsterData.M_SPD} if comp.is_empty() else _StageWaves.proto_mult(comp)
 		for i in range(n):
 			var p := String(proto_seq[i])
 			var e := eidx.has(i)
-			hp_mults.append(_MonsterData.hp_mult(p, e, c))
-			spd_mults.append(_MonsterData.spd_mult(p))
+			hp_mults.append(_MonsterData.ELITE_HP_MULT if e else float(pm["hp"][p]) * c)
+			spd_mults.append(float(pm["spd"][p]))
 	# ---- 本波总 HP（用于 threshold / 汇报口径。🔴 不进战斗结算，零玩法影响）----
 	#   🔴 **汇报口径**按轴归约（🔴 与 ② 无关 —— ② 已恒大 assign）：proto ON → Σ hp_unit·m_hp
 	#      （= wave_sim_proto / 上线口径）；proto OFF → n·hp_unit（= 金标本 simulate_wave 口径）。
@@ -135,7 +189,16 @@ static func simulate_wave_proto_aggro(player, w: int, cfg: Dictionary, geo = nul
 
 	# ---- Sapper 出生表（镜像真身 _spawn_one：由 elite_waves_enabled 独立驱动）----
 	#   🔴 与真身同口径：sapper 标记由 elite 驱动、与 proto 无关；行为（锁塔×3）需 aggro 开才生效。
-	var sapper_flags: Array = _WaveSimAggro._build_sapper_flags(n, w, elite_enabled)
+	#   🆕 有波表时**必须**跟着波表的精英只数走（真身走 `_is_elite_wave_at` + `_elite_count_wave`）——
+	#      否则「处刑波」与「w%5 精英波」两套周期分岔，sapper 标记会与实机不一致。
+	var sapper_flags: Array = []
+	if has_spec:
+		sapper_flags.resize(n)
+		if elite_enabled and int(spec.get("elite", 0)) > 0:
+			for e in _MonsterData.elite_indices(n, int(spec["elite"])):
+				sapper_flags[int(e)] = true
+	else:
+		sapper_flags = _WaveSimAggro._build_sapper_flags(n, w, elite_enabled)
 
 	var time := 0.0
 	var spawned := 0
@@ -157,23 +220,37 @@ static func simulate_wave_proto_aggro(player, w: int, cfg: Dictionary, geo = nul
 			if _SpaceModel.is_radial():
 				th = _SpaceModel.spawn_theta(spawned, w)
 			monsters.append([hp_unit * float(hp_mults[spawned]), tr, 0, -1, mdps,
-				sapper_flags[spawned] == true, th, mspd])
+				sapper_flags[spawned] == true, th, mspd, String(proto_seq[spawned])])
 			spawned += 1
 
 		# ---- ② 集火（🔴 恒大 assign = 真身 `_stable_sort_by_remain` 原地排序语义，见文件头）----
 		monsters = _WaveSimAggro._stable_sort_by_time(monsters)
-		var dmg := float(dps_box[0]) * DT
-		for m in monsters:
-			if dmg <= 0.0:
-				break
-			if float(m[0]) <= dmg:
-				dmg -= float(m[0])
-				m[0] = 0.0
-				kills += 1
-				scrap += spk
-			else:
-				m[0] = float(m[0]) - dmg
-				dmg = 0.0
+		if ct_on:
+			# 🆕 类型分池：物 / 魔 / 真 三条池**各自独立集火**，溢出结转不跨池；
+			#   每只怪按「有效抗性 = clamp(静态抗性 − 破甲量, 0, 1)」减免，真实伤害无视抗性。
+			#   🔴 逐字镜像真身 `_apply_pool_live`（顺序 phys → magic → true，免伤跳过不消耗）。
+			var _r: Array = _apply_pool_m(monsters, phys_dps * DT, _CombatTypes.PHYSICAL, spk, phys_reduct)
+			kills += int(_r[0])
+			scrap += float(_r[1])
+			_r = _apply_pool_m(monsters, magic_dps * DT, _CombatTypes.MAGIC, spk, magic_reduct)
+			kills += int(_r[0])
+			scrap += float(_r[1])
+			_r = _apply_pool_m(monsters, true_dps * DT, _CombatTypes.TRUE, spk, 0.0)
+			kills += int(_r[0])
+			scrap += float(_r[1])
+		else:
+			var dmg := float(dps_box[0]) * DT
+			for m in monsters:
+				if dmg <= 0.0:
+					break
+				if float(m[0]) <= dmg:
+					dmg -= float(m[0])
+					m[0] = 0.0
+					kills += 1
+					scrap += spk
+				else:
+					m[0] = float(m[0]) - dmg
+					dmg = 0.0
 
 		# ---- ③ 前进：判死 / 漏怪（AggroTower 冻结 t_remain，不前进不漏怪）----
 		var alive: Array = []
@@ -212,6 +289,42 @@ static func simulate_wave_proto_aggro(player, w: int, cfg: Dictionary, geo = nul
 		"dis_new": int(dis_new_box[0]),
 		"v8_diag": D8,
 	}
+
+
+# ---------------------------------------------------------------------------
+# 🆕 战斗类型：单一类型伤害池的集火（镜像真身 `WaveDirector._apply_pool_live`
+#   / `WaveSim._apply_pool` —— 三者同 SSOT `CombatTypes`）
+#   🔴 与 `WaveSim._apply_pool` 的唯一形式差异：怪物是本地数组（hp = m[0]、
+#      原型 = m[8]），不是对象。**公式一字不改**：
+#        eff = 原始伤害 × (1 − 有效抗性)；击杀消耗的原始伤害 = 怪hp ÷ (1 − 有效抗性)；
+#        有效抗性 = 100% → 该类型打不动这只，**伤害不消耗**，继续下一只。
+#   🔴 只在 `cfg.combat_types_enabled` 时被调用；默认关 → 本函数一次都不会进。
+# ---------------------------------------------------------------------------
+static func _apply_pool_m(monsters: Array, dmg: float, dmg_type: String,
+		spk: float, reduction: float = 0.0) -> Array:
+	var kills := 0
+	var scrap := 0.0
+	if dmg <= 0.0:
+		return [kills, scrap]
+	for m in monsters:
+		if dmg <= 0.0:
+			break
+		if float(m[0]) <= 0.0:
+			continue
+		var resist := _CombatTypes.effective_resist(String(m[8]), dmg_type, reduction)
+		var factor := 1.0 - clampf(resist, 0.0, 1.0)
+		if factor <= 0.0:
+			continue
+		var eff := dmg * factor
+		if float(m[0]) <= eff:
+			dmg -= float(m[0]) / factor
+			m[0] = 0.0
+			kills += 1
+			scrap += spk
+		else:
+			m[0] = float(m[0]) - eff
+			dmg = 0.0
+	return [kills, scrap]
 
 
 # ---------------------------------------------------------------------------

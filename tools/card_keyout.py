@@ -19,7 +19,7 @@ import argparse
 import os
 from collections import deque
 
-from PIL import Image, ImageFilter
+from PIL import Image, ImageChops, ImageFilter
 
 BG = (20, 23, 38)          # #141726
 SAFE = 460                 # 卡框插画安全区边长
@@ -62,7 +62,31 @@ def patch_watermark(im, bg):
     return im
 
 
-def keyout(path, tol=0, edge_tol=64, connectivity_only=False):
+def degrid(im: Image.Image, strength: int = 5, passes: int = 2) -> Image.Image:
+    """抹掉 AI 背景网格线在 keyout 后留下的 1-2px 细线前景。
+
+    🔴 第二批实测教训：锚点允许「optional single-layer grid」，AI 会把网格画成
+    2-3px 的浅灰线。flood fill 只吃掉格子里与底色同色的区域，网格线本身因为
+    与底色有色差被当成前景保留 —— 合成到卡面上就是一层游离的方格，非常脏。
+    处理：alpha 二值 → 开运算（先侵蚀后膨胀）抹掉细线 → 膨胀 1px 作保留掩膜
+    → 与原 alpha 相乘（保留原抗锯齿过渡，不把边缘削成硬锯齿）。主体描边 >8px，
+    5×5 开运算不会伤到；合法的内部结构线也都在 4px 以上。
+    """
+    a = im.getchannel("A")
+    binary = a.point(lambda v: 255 if v >= 48 else 0)
+    # 单遍 5×5 只能抹掉独立细线；网格线两端往往连着主体描边，会被膨胀回来。
+    # 多遍开运算等价于「只保留 >= 2*passes px 厚的块」，连线结构一并断开。
+    opened = binary
+    for _ in range(passes):
+        opened = opened.filter(ImageFilter.MinFilter(strength))
+    for _ in range(passes):
+        opened = opened.filter(ImageFilter.MaxFilter(strength))
+    keep = opened.filter(ImageFilter.MaxFilter(3))
+    im.putalpha(ImageChops.multiply(a, keep))
+    return im
+
+
+def keyout(path, tol=0, edge_tol=64, connectivity_only=False, do_degrid=False):
     """connectivity_only：只按「背景连通区」判定透明，不做颜色距离杀像素 / 距离衰减。
 
     适用：主体描边色与底色接近的暗色调图（如深藏青描边 + 深夜幕紫底）。
@@ -155,7 +179,15 @@ def keyout(path, tol=0, edge_tol=64, connectivity_only=False):
     if maxx < 0:
         raise SystemExit("keyout 失败：整图被识别为背景 " + path)
 
-    box = (minx, miny, maxx + 1, maxy + 1)
+    if do_degrid:
+        im = degrid(im)
+        # 细线被抹掉后包围盒会收缩（原来是被外围网格线撑开的），必须按
+        # 清理后的 alpha 重算，否则插画会在安全区里缩小一圈。
+        box = im.getchannel("A").getbbox()
+        if box is None:
+            raise SystemExit("degrid 失败：主体被整块抹掉 " + path)
+    else:
+        box = (minx, miny, maxx + 1, maxy + 1)
     trimmed = im.crop(box)
 
     # 3) 等比塞进安全区
@@ -180,10 +212,16 @@ def main():
         action="store_true",
         help="只按背景连通域抠图（描边色接近底色时用；不做颜色距离杀像素）",
     )
+    ap.add_argument(
+        "--degrid",
+        action="store_true",
+        help="清理 AI 背景网格线残留（第二批起默认开启，见 degrid() 说明）",
+    )
     args = ap.parse_args()
 
     full, safe, box, info = keyout(
-        args.src, tol=args.tol, connectivity_only=args.connectivity_only
+        args.src, tol=args.tol, connectivity_only=args.connectivity_only,
+        do_degrid=args.degrid
     )
     base = args.out[:-4] if args.out.lower().endswith(".png") else args.out
     p1 = base + "_t.png"

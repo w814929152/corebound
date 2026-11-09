@@ -23,14 +23,25 @@ const _SimPlayer := preload("res://scripts/engine/sim_player.gd")
 const _DE := preload("res://scripts/engine/damage_engine.gd")
 const _Geo6 := preload("res://scripts/geo/geo6.gd")
 const _Stats := preload("res://scripts/engine/stats.gd")
+## 🆕 关卡波表：只用来取「本关几波」（长度接管 `max_wave`，与 `WaveDirector.set_stage` 同口径）。
+const _StageWaves := preload("res://scripts/data/stage_waves.gd")
 
 
 # ---------------------------------------------------------------------------
 # 镜像 RunLoop.run（唯一差异：simulate_wave → simulate_wave_proto）
+#   stage_id   🆕 "" = 旧口径（20 波金标本）；非空 → 波数由波表长度接管
+#   escalation 🆕 已守地区数 `S`
 # ---------------------------------------------------------------------------
 static func run(path: String, cfg: Dictionary, max_wave: int = 20, geo = null, rng = null,
-		proto_enabled: bool = true, elite_enabled: bool = true) -> Dictionary:
+		proto_enabled: bool = true, elite_enabled: bool = true,
+		stage_id: String = "", escalation: int = 0) -> Dictionary:
 	var c: Dictionary = cfg.duplicate(true)
+	# 🆕 波数接管：与 `WaveDirector.set_stage` 同一条纪律 —— 表在则表说了算，
+	#   表不在（未知 id）才用调用方给的 `max_wave`。🔴 `stage_id == ""` → 恒不执行。
+	if stage_id != "":
+		var wc := _StageWaves.wave_count(stage_id)
+		if wc > 0:
+			max_wave = wc
 	if geo == null:
 		geo = _Geo6.build_by_slots(int(c["n_slots"]))
 
@@ -41,7 +52,7 @@ static func run(path: String, cfg: Dictionary, max_wave: int = 20, geo = null, r
 	var cum_rerolls := 0
 
 	for w in range(1, max_wave + 1):
-		var res := _WaveSimProto.simulate_wave_proto(player, w, c, geo, proto_enabled, elite_enabled)
+		var res := _WaveSimProto.simulate_wave_proto(player, w, c, geo, proto_enabled, elite_enabled, stage_id, escalation)
 		core_hp -= float(res["core_damage"])
 		var income := float(res["scrap_earned"]) * (1.0 + float(player.income_mult))
 		cum += income
@@ -80,14 +91,15 @@ static func run(path: String, cfg: Dictionary, max_wave: int = 20, geo = null, r
 # ---------------------------------------------------------------------------
 static func takeoff_rate(path: String, cfg: Dictionary, runs: int = 300,
 		max_wave: int = 20, actions: int = 12, rng = null,
-		proto_enabled: bool = true, elite_enabled: bool = true) -> Dictionary:
+		proto_enabled: bool = true, elite_enabled: bool = true,
+		stage_id: String = "", escalation: int = 0) -> Dictionary:
 	var takeoffs := 0
 	var survives := 0
 	var hits: Array = []
 	for _i in range(runs):
 		var cx: Dictionary = cfg.duplicate(true)
 		cx["max_actions"] = actions
-		var out := run(path, cx, max_wave, null, rng, proto_enabled, elite_enabled)
+		var out := run(path, cx, max_wave, null, rng, proto_enabled, elite_enabled, stage_id, escalation)
 		var rows: Array = out["rows"]
 		var alive := (not rows.is_empty()) and float(rows[-1]["core_hp"]) > 0.0
 		if alive:

@@ -601,3 +601,73 @@ static func set_chrome_accent(host: Control, col: Color) -> void:
 		return
 	host.set_meta("chrome_accent", col)
 	host.queue_redraw()
+
+
+# ---------------------------------------------------------------------------
+# 🆕 三态鼠标光标（asset-pack-v4-result.md §3.2 · 2026-11-08）
+# ---------------------------------------------------------------------------
+## default = 蓝图箭头（全局）；place = 放置准星（拖卡中）；deny = 禁止（落点非法）。
+##   🔴 判空降级：贴图缺失 → 不动光标（保持系统箭头），headless 安全。
+const CURSOR_PATHS := {
+	"default": "res://art/2d/ui/ui_cursor_default_v1.png",
+	"place": "res://art/2d/ui/ui_cursor_place_v1.png",
+	"deny": "res://art/2d/ui/ui_cursor_deny_v1.png",
+}
+const CURSOR_HOTSPOTS := {
+	"default": Vector2(4.0, 2.0),
+	"place": Vector2(24.0, 24.0),
+	"deny": Vector2(24.0, 24.0),
+}
+static var _cursor_cache: Dictionary = {}    # mode -> Texture2D|null（判空缓存）
+
+
+## 切换自定义光标。mode 之外传 "system" 恢复系统箭头。
+static func set_cursor(mode: String) -> void:
+	var path: String = String(CURSOR_PATHS.get(mode, ""))
+	if path == "":
+		return
+	var tex: Texture2D = _cursor_cache.get(mode)
+	if tex == null and not _cursor_cache.has(mode):
+		tex = load(path) if ResourceLoader.exists(path) else null
+		_cursor_cache[mode] = tex
+	if tex == null:
+		return                                 # 资产缺失 → 保持系统箭头
+	Input.set_custom_mouse_cursor(tex, Input.CURSOR_ARROW, CURSOR_HOTSPOTS.get(mode))
+
+
+# ---------------------------------------------------------------------------
+# 🆕 卡包主题色（asset-pack-v5-lib · 2026-11-08）：8 包 modulate 染色表
+# ---------------------------------------------------------------------------
+## 🔴 全部 art-bible §2.2 表内色；未知 id 兜底钢灰。仅用于染白烘焙件
+##    （ui_lib_head_bar 等）—— modulate 是乘法，深底件会被染黑。
+const PACK_COLORS := {
+	"core": Color(0.604, 0.647, 0.694),    # 钢灰 #9AA5B1（泛用 = 中性）
+	"cinder": Color(1.0, 0.42, 0.239),     # 熔橙 #FF6B3D
+	"rime": Color(0.243, 0.816, 0.910),    # 耀青 #3ED0E8
+	"pierce": Color(1.0, 0.788, 0.29),     # 辉金 #FFC94A
+	"arc": Color(0.478, 0.361, 1.0),       # 星紫 #7A5CFF
+	"sunder": Color(0.91, 0.263, 0.498),   # 噬品红 #E8437F
+	"hex": Color(0.102, 0.42, 0.49),       # 深青 #1A6B7D
+	"true": Color(1.0, 0.18, 0.306),       # 警报红 #FF2E4E（湮灭 = 终极危险）
+}
+
+
+static func pack_color(pack_id: String) -> Color:
+	return PACK_COLORS.get(pack_id, C_STEEL)
+
+
+## 图鉴分组底板 / 标题条（asset-pack-v5-lib）：判空降级同 icon() 管法。
+const LIB_BLOCK_PATH := "res://art/2d/ui/ui_lib_block_v1.png"
+const LIB_HEAD_BAR_PATH := "res://art/2d/ui/ui_lib_head_bar_v1.png"
+static var _lib_tex_cache: Dictionary = {}
+
+
+static func lib_tex(kind: String) -> Texture2D:
+	var path: String = LIB_BLOCK_PATH if kind == "block" else LIB_HEAD_BAR_PATH
+	if _lib_tex_cache.has(path):
+		return _lib_tex_cache[path]
+	var tex: Texture2D = null
+	if ResourceLoader.exists(path):
+		tex = load(path)
+	_lib_tex_cache[path] = tex
+	return tex

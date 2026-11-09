@@ -52,17 +52,18 @@ const TAG_CN := {
 
 ## 第 1 行：这张卡**做什么**（机制，不含数值）
 const ROLE := {
+	"Pyroclasm": "火焰附加时充能",
 	# ---- 建筑卡（塔）：L1 机制 / L2 数值 / L3 标记 ----
 	"Arrow": "单体，无附加",
 	"Cannon": "溅射：一次打一片",
-	"Frost": "命中减速 30%",
+	"Frost": "命中叠冰冻 10%",
 	"Lance": "远程单体",
 	"Tesla": "近身溅射 + 减速",
 	"Sunder": "削弱全场物抗",
 	"Hex": "削弱全场魔抗",
 	# ---- 🆕 流派第二塔（2026-11-07 · card-packs v0.2）----
 	"Ember": "近身灼烧：一片",
-	"Icicle": "单体强减速",
+	"Icicle": "单体叠冰冻",
 	"Javelin": "近身连射",
 	"Bolt": "单体电弧直击",
 	"Maul": "群体物理压制",
@@ -81,7 +82,7 @@ const ROLE := {
 	"Blaze": "近距持续灼烧",
 	"Cinder": "单体点火",
 	"Pyre": "阵亡：爆炸 40",
-	"Glacier": "强减速",
+	"Glacier": "十层冻结 2 秒",
 	"Hail": "范围减速",
 	"Permafrost": "持续减速",
 	"Purity": "最近塔转纯粹",
@@ -116,7 +117,7 @@ const ROLE := {
 	"Hellfire": "远距持续灼烧",
 	"Snowfall": "范围减速",
 	"Shard": "冰晶贯穿",
-	"Whiteout": "强力范围减速",
+	"Whiteout": "范围叠冰冻",
 	"Avalanche": "远程冰霜溅射",
 	"Longbow": "远程贯穿",
 	"Needle": "双重贯穿",
@@ -306,6 +307,9 @@ static func describe(nm: String) -> String:
 	var r := role(nm)
 	if r == "":
 		return ""
+	var charge := _TD.tower_fire_charge(nm) if (_TD.TOWERS.has(nm) or _TD.TOWERS_EXT.has(nm)) else {}
+	if not charge.is_empty():
+		return "不自动攻击\n火焰 %d 次充满\n密集区爆发 %s" % [int(charge["capacity"]), _num(float(charge["damage"]))]
 	# 🆕 经济建筑：不攻击，每波按比例补贴废料（不能用「伤害 0 · 射程 0」那行）。
 	if _TD.tower_income(nm) > 0.0:
 		return "%s\n每波 +%d%% 废料\n占 1 个塔位" % [r, int(round(_TD.tower_income(nm) * 100.0))]
@@ -317,6 +321,9 @@ static func describe(nm: String) -> String:
 	if _TD.tower_convert(nm) != "":
 		return "%s\n不攻击 · 占塔位\n最近 1 座塔" % r
 	# 🆕 击杀升级：任意击杀都给本塔加等级（优先于弹射显示 —— 它是成长身份）。
+	var frost_def := _tower_def(nm)
+	if not frost_def.is_empty() and float(frost_def.get("slow", 0.0)) > 0.0:
+		return "%s\n每层减速 10%%\n十层冻结 2 秒" % r
 	if _TD.tower_on_kill_lv(nm):
 		return "%s\n%s\n击杀 +1 级" % [r, stat_line(nm)]
 	if _TD.tower_buff_debuff_dmg(nm) > 0.0:

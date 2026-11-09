@@ -30,6 +30,24 @@ const MainMenu := preload("res://scripts/ui/main_menu_overlay.gd")
 ##    🔴 金标本零扰动：本开关只影响**窗口模式**的玩家路线；headless 分支与
 ##        `--script` 测试路径永不进入 `_ready` 的 else 分支（见上）。
 const CAMPAIGN_ENABLED := true
+## 🆕 关卡波表开关（`scripts/data/stage_waves.gd` · `design/gdd/stage-waves.md`）。
+##   true  → 每波按该关波表覆盖 `n` / `hp_unit`（**整关总血量守恒**，只改形状）
+##   false → 走金标本曲线（`monster_stats(w)`），与改前逐位相同
+##   🔴 一行回滚：改回 false。金标本引擎从不读这条路径（它走 `wave_sim`）→ 零扰动。
+##   🔴 前提：`CampaignData` 必须已是 v2 的十关（同名不同义的 id 会套错波表）。
+##      当前 `CampaignData.STAGES` 已是 v2，且 `tests/run_campaign_asserts.gd` 会断言
+##      「每关 wave_count == StageWaves.wave_count(id)」→ 两者漂移会直接红。
+const STAGE_WAVES_ENABLED := true
+
+## 🆕 科技包解锁判据（`design/gdd/campaign-v2-overseer.md` §9 第 4 项 · 2026-11-08）
+##   true  → **守住地区 → 入手该地区科技**（`card_packs.unlock_by_region`）。
+##           进关时该地区包「借用」可用，通关后永久入手 —— 这是剧情的核心闭环。
+##   false → 老口径（`all_packs_open` 全开 / 最佳波次逐包解锁），一行回滚。
+##   🔴 只在玩家路线（窗口模式）打开；headless 与 `--script` 路径永不进入 `_ready` 的
+##      else 分支 → 金标本 / MC 逐位不变。
+##   🔴 打开后 `best_wave` 不再驱动解锁（`RunMeta.next_unlock_wave()` 返回 -1）：
+##      存档里那半条线保留不删，只是不再当判据。
+const DECK_BY_REGION_ENABLED := true
 
 var _bs: Node = null
 var _pack_select: CanvasLayer = null
@@ -129,8 +147,13 @@ func _ready() -> void:
 		if CAMPAIGN_ENABLED:
 			_campaign = Campaign.new()
 			_campaign.load_save()
-			print("[boot] 关卡推进 ON · 当前关卡 %s · Ember %d" % [
-				_campaign.current_stage(), _campaign.ember()])
+			# 🆕 把「已守地区」注入卡包判据，并设好本关的「借用科技」。
+			#    🔴 必须在主界面打开**之前**同步：图鉴页会读解锁态，晚一帧就会先闪一遍
+			#       "全部锁着"再跳成正确状态。
+			_sync_deck_unlock()
+			print("[boot] 关卡推进 ON · 当前关卡 %s · Ember %d · 已守地区 %d · 科技包 %d" % [
+				_campaign.current_stage(), _campaign.ember(),
+				_campaign.regions_cleared(), CardPacks.unlocked_ids(RunMeta.best_wave()).size()])
 			_stage_select = StageSelect.new()
 			add_child(_stage_select)
 			_stage_select.stage_selected.connect(_on_stage_selected)
@@ -183,13 +206,34 @@ func _open_stage_select() -> void:
 
 func _on_stage_selected(sid: String) -> void:
 	# 选完关卡 → 继续走卡包选择流程（带当前关卡进局）。
+	# 🆕 先按新关卡重算「借用科技」：换一张图不刷新，玩家会带着上一关的借用包进局
+	#    （= 白拿一包，且守住后才发现「这包本来就是我的」）。
+	_sync_deck_unlock(String(sid))
 	_open_pack_select()
+
+
+## 🆕 科技包解锁判据同步（**唯一写入点**）。
+##   `stage_id` = 即将进入的关卡（"" → 用 `campaign.current_stage()`）。
+##   🔴 关掉 `DECK_BY_REGION_ENABLED` 时必须显式清空注入态：`card_packs` 的注入变量是
+##      静态的，会跨局 / 跨测试残留 —— 老口径下读到一个残留的地区表就是"幽灵解锁"。
+func _sync_deck_unlock(stage_id: String = "") -> void:
+	# 🔴 必须 `and _campaign != null`：`CAMPAIGN_ENABLED=false` 时没有 `_campaign`，
+	#    此时若仍把 region 口径打开，玩家只剩 core 一包且**没有任何途径**解锁其余 7 包
+	#    （解锁数据源整个不存在）→ 内容全部不可达。没有关卡系统就必须退回全开。
+	CardPacks.unlock_by_region = DECK_BY_REGION_ENABLED and _campaign != null
+	if not CardPacks.unlock_by_region:
+		CardPacks.set_region_progress([], "")
+		return
+	var sid: String = stage_id if stage_id != "" else _campaign.current_stage()
+	CardPacks.set_region_progress(_campaign.cleared_regions(), CampaignData.region_of(sid))
 
 
 ## 需要选包 → 弹界面；不需要（已解锁 ≤ 必须选的数）→ 全带，直接开局。
 func _open_pack_select() -> void:
 	if _bs == null or _pack_select == null:
 		return
+	# 🔴 兜底同步：`restart_hook` / 主界面路径也可能走到这里，缺一次同步就会用旧地区表。
+	_sync_deck_unlock()
 	if RunMeta.needs_selection():
 		_pack_select.open()
 	else:
@@ -211,14 +255,20 @@ func _begin_run(packs: Array) -> void:
 	if CAMPAIGN_ENABLED and _campaign != null:
 		var sid: String = _campaign.current_stage()
 		var st: Dictionary = CampaignData.STAGES.get(sid, {})
-		var wc: int = int(st.get("wave_count", 20))
+		var wc: int = CampaignData.wave_count(sid)
 		if _bs != null and _bs.wave_director != null:
-			_bs.wave_director.set_max_wave(wc)
+			# 🆕 关卡波表：`set_stage` 成功 = 它已按**波表长度**接管波数控制；
+			#    失败（开关关 / 无表）→ 退回按关卡表注入波数（旧行为）。
+			_bs.wave_director.stage_waves_enabled = STAGE_WAVES_ENABLED
+			if not _bs.wave_director.set_stage(sid, _campaign.regions_cleared()):
+				_bs.wave_director.set_max_wave(wc)
 		# 🆕 运行时换图：按当前关卡注入活动地图（未实现自动回落 tri-fissure）。
 		var mid: String = CampaignData.resolve_map_id(sid)
 		SpaceModel.set_active_map(mid)
-		print("[boot] 本局关卡 %s（%s）· %d 波 · 地图 %s" % [
-			sid, String(st.get("name", "")), wc, SpaceModel.active_map_id])
+		print("[boot] 本局关卡 %s（%s）· %d 波 · 地图 %s · S=%d%s" % [
+			sid, String(st.get("name", "")), wc, SpaceModel.active_map_id,
+			_campaign.regions_cleared(),
+			"" if not STAGE_WAVES_ENABLED else "（波表）"])
 	var names: Array = []
 	for pid in packs:
 		names.append(CardPacks.pack_name(String(pid)))
@@ -255,6 +305,8 @@ func _on_run_finished(won: bool, wave: int) -> void:
 			var r: Dictionary = _campaign.on_failed(sid, wave)
 			if r.get("ok", false):
 				print("[boot] 关卡推进 · %s 失败 · Ember +%d" % [sid, int(r.get("ember_gained", 0))])
+		# 🆕 守住新地区 → 立刻把它并入卡包判据（下一局选包 / 图鉴都读同一份）。
+		_sync_deck_unlock()
 
 
 ## 字符串拼接（`String.join` 只吃 PackedStringArray，这里避开隐式转换坑）

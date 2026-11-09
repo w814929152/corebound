@@ -27,6 +27,8 @@ extends RefCounted
 
 const _WaveSimProtoAggro := preload("res://scripts/engine/wave_sim_proto_aggro.gd")
 const _WaveSimAggro := preload("res://scripts/engine/wave_sim_aggro.gd")
+## 🆕 关卡波表：只用来取「本关几波」（长度接管 `max_wave`，与 `WaveDirector.set_stage` 同口径）。
+const _StageWaves := preload("res://scripts/data/stage_waves.gd")
 const _ShopAI := preload("res://scripts/engine/shop_ai.gd")
 const _SimPlayer := preload("res://scripts/engine/sim_player.gd")
 const _DE := preload("res://scripts/engine/damage_engine.gd")
@@ -36,12 +38,21 @@ const _Stats := preload("res://scripts/engine/stats.gd")
 
 # ---------------------------------------------------------------------------
 # 镜像 RunLoop.run（唯一差异：simulate_wave → simulate_wave_proto_aggro）
+#   stage_id   🆕 "" = 旧口径（20 波金标本）；非空 → 波数由波表长度接管
+#   escalation 🆕 已守地区数 `S`
 # ---------------------------------------------------------------------------
 static func run(path: String, cfg: Dictionary, max_wave: int = 20, geo = null, rng = null,
 		proto_enabled: bool = true, elite_enabled: bool = true, aggro_enabled: bool = true,
 		exp: float = 0.6, attrition: float = -1.0, warmup_waves: int = 0,
-		protect_core: bool = false, bulwark: bool = false, diag_out: Array = []) -> Dictionary:
+		protect_core: bool = false, bulwark: bool = false, diag_out: Array = [],
+		stage_id: String = "", escalation: int = 0) -> Dictionary:
 	var c: Dictionary = cfg.duplicate(true)
+	# 🆕 波数接管：与 `WaveDirector.set_stage` 同一条纪律 —— 表在则表说了算，
+	#   表不在（未知 id）才用调用方给的 `max_wave`。🔴 `stage_id == ""` → 恒不执行。
+	if stage_id != "":
+		var wc := _StageWaves.wave_count(stage_id)
+		if wc > 0:
+			max_wave = wc
 	# 🔒 B 轮（2026-10-10）· V-7 修复接线（**逐字移植**自 `run_loop_aggro.gd:41-52`）：
 	#   `repair_on_disable==1`（FREE）挂 run-loop 层（本波 shop_phase 之后无条件全修）；
 	#   `==2`（PRICED）走 `shop_ai` 既有开关守卫内的候选动作（shop_ai.gd 一行不改）。
@@ -65,7 +76,7 @@ static func run(path: String, cfg: Dictionary, max_wave: int = 20, geo = null, r
 	for w in range(1, max_wave + 1):
 		var res := _WaveSimProtoAggro.simulate_wave_proto_aggro(player, w, c, geo,
 			proto_enabled, elite_enabled, aggro_enabled, exp, attrition, warmup_waves,
-			protect_core, bulwark)
+			protect_core, bulwark, stage_id, escalation)
 		core_hp -= float(res["core_damage"])
 		# 🔒 B 轮 · V-7 计数 [4]=n_repair_eligible（幂等）：本波有塔被打停 → 本局出现过 Disabled 塔。
 		if diag != null and int(res["dis_new"]) > 0:
@@ -130,7 +141,8 @@ static func takeoff_rate(path: String, cfg: Dictionary, runs: int = 300,
 		max_wave: int = 20, actions: int = 12, rng = null,
 		proto_enabled: bool = true, elite_enabled: bool = true, aggro_enabled: bool = true,
 		exp: float = 0.6, attrition: float = -1.0, warmup_waves: int = 0,
-		protect_core: bool = false, bulwark: bool = false) -> Dictionary:
+		protect_core: bool = false, bulwark: bool = false,
+		stage_id: String = "", escalation: int = 0) -> Dictionary:
 	var takeoffs := 0
 	var survives := 0
 	var hits: Array = []
@@ -138,7 +150,8 @@ static func takeoff_rate(path: String, cfg: Dictionary, runs: int = 300,
 		var cx: Dictionary = cfg.duplicate(true)
 		cx["max_actions"] = actions
 		var out := run(path, cx, max_wave, null, rng, proto_enabled, elite_enabled,
-			aggro_enabled, exp, attrition, warmup_waves, protect_core, bulwark)
+			aggro_enabled, exp, attrition, warmup_waves, protect_core, bulwark, [],
+			stage_id, escalation)
 		var rows: Array = out["rows"]
 		var alive := (not rows.is_empty()) and float(rows[-1]["core_hp"]) > 0.0
 		if alive:

@@ -55,7 +55,10 @@ const TestSuiteUIStyle := preload("res://tests/run_ui_style_asserts.gd")
 const TestSuiteTowerLevel := preload("res://tests/run_tower_level_asserts.gd")
 const TestSuiteCardPack := preload("res://tests/run_card_pack_asserts.gd")
 const TestSuiteCampaign := preload("res://tests/run_campaign_asserts.gd")
+const TestSuiteFrost := preload("res://tests/run_frost_asserts.gd")
+const TestSuiteFireCharge := preload("res://tests/run_fire_charge_asserts.gd")
 const TestSuiteCombatTypes := preload("res://tests/run_combat_types_asserts.gd")
+const TestSuiteStageWaves := preload("res://tests/run_stage_waves_asserts.gd")
 const _Geo := preload("res://scripts/geo/geo.gd")
 const _SpaceModel := preload("res://scripts/geo/space_model.gd")
 
@@ -133,7 +136,8 @@ func _initialize() -> void:
 				or a == "radial" or a == "geo8" or a == "radial8" or a == "radial8diag"
 				or a == "repair8" or a == "aggro_golive" or a == "tutorial"
 				or a == "extpack" or a == "uistyle" or a == "tlv"
-				or a == "cardpack" or a == "campaign" or a == "combat_types"):
+				or a == "cardpack" or a == "campaign" or a == "combat_types"
+				or a == "stagewaves" or a == "firecharge" or a == "frost"):
 			only = a
 
 	var ok := true
@@ -196,8 +200,17 @@ func _initialize() -> void:
 	if only == "" or only == "campaign":
 		ok = _run_suite(TestSuiteCampaign) and ok
 	# 🆕 战斗类型（2026-11-07）：物理/魔法/真实三类型 + 抗性 + 破甲（纯逻辑 + 一次真 runtime，秒级）。
+	if only == "" or only == "frost":
+		ok = _run_suite(TestSuiteFrost) and ok
+	if only == "" or only == "firecharge":
+		ok = _run_suite(TestSuiteFireCharge) and ok
 	if only == "" or only == "combat_types":
 		ok = _run_suite(TestSuiteCombatTypes) and ok
+	# 🆕 关卡波表（2026-11-08）：波型串 / 守恒律 / S 加压 / 精英 / 三原型 / 导演接线
+	#   （纯逻辑 + 4 次导演建表，无 MC，秒级）。🔴 默认回归含它：
+	#   V-5「0-1 每一波必中性」是整条回归链的锚点，必须每次都被检查到。
+	if only == "" or only == "stagewaves":
+		ok = _run_suite(TestSuiteStageWaves) and ok
 	# 🔴 第五刀 · 三轴合并镜像退化逐位守护（独立入口，**不进**默认无参回归 → 九段聚合读数逐位不变）。
 	if only == "aggro_golive":
 		ok = TestSuiteAggroGolive.new().run_all() and ok

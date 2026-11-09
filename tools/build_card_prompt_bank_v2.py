@@ -1,13 +1,23 @@
 # -*- coding: utf-8 -*-
 """构建卡面插画提示词库 v2（v4 中密度口径）。
 
+🔴 **2026-11-09 警告：请勿直接运行本脚本重建 JSON。**
+`design/art/card-prompt-bank-v2.json` 的 80 张 `structure/feature` 已在 v4b 阶段
+手工补强（例如 Vanguard 写死为 upright rectangular tower），本文件的 CARDS 仍是旧版；
+重建会把这些补强整体回退。当前本文件只作为**包色真源 PACK_ACCENT / PACK_COLOR_NAME
+的镜像**保留，与 json 的 `accent_by_pack` / `pack_palette` 同步维护。
+配色改动请直接改 json，或先把 CARDS 与 json 对齐再重建。
+
+
 v1 -> v2 的变化：
   v1: {"object": "...a, ...b, ...c"}  自由描述，部件数量不受控 -> 画面碎
   v2: {"structure": 三段主形, "feature": 形态写死的功能件, "accent_block": 主色落点}
 
-铁律（来自 art/card-illustration-style-v1.md §2.2 / §5 v4a 教训）：
+⚪ 以下铁律是**旧 v4 正面立面口径（留档）**，只适用于本文件 CARDS 的旧描述：
   1. 每张卡只能有 1 个功能件，且必须在文本里写死方向（horizontal / vertical / downward / 仰角）；
   2. 主色只能落在 accent_block 描述的 1 主 + <=2 点缀上，同色相；
+     🔴 现行 v1.2 口径相反：包色是整机主色调（60%+ 三阶平涂），accent_block 只留给能量点缀，
+        见 design/art/card-art-generation-standard-v1.md §2.1 / §3.1。
   3. structure 里最多出现 3 个结构段名，不许出现齿轮/螺栓/电路/装甲层叠。
 
 运行：py -3.9 tools/build_card_prompt_bank_v2.py
@@ -18,16 +28,30 @@ import os
 
 OUT = os.path.join(os.path.dirname(__file__), "..", "design", "art", "card-prompt-bank-v2.json")
 
-# pack -> 主色（与 ui_style TAG_COLORS 同源）
+# pack -> 包色（🔴 2026-11-09 SSOT 对齐：逐字复刻 scripts/ui/ui_style.gd 的 PACK_COLORS，
+# 全部取自 art-bible §2.2 已登记色；图鉴分组标题条与卡面插画共用同一套编码）。
+# 旧表 core/rime 撞色、hex/true 同为紫系，跨包几乎无法靠颜色区分 —— 已废弃。
 PACK_ACCENT = {
-    "core": "#3ED0E8",
-    "cinder": "#FF6B3D",
-    "rime": "#3ED0E8",
-    "pierce": "#3EA8FF",
-    "arc": "#FFC94A",
-    "sunder": "#9AA5B1",
-    "hex": "#B45CFF",
-    "true": "#7A5CFF",
+    "core": "#9AA5B1",     # 钢灰（泛用 = 中性基准族）
+    "cinder": "#FF6B3D",   # 熔橙
+    "rime": "#3ED0E8",     # 耀青
+    "pierce": "#FFC94A",   # 辉金
+    "arc": "#7A5CFF",      # 星紫
+    "sunder": "#E8437F",   # 噬品红
+    "hex": "#1A6B7D",      # 深青
+    "true": "#FF2E4E",     # 警报红
+}
+
+# 包色英文名（提示词用），与 PACK_ACCENT 一一对应
+PACK_COLOR_NAME = {
+    "core": "neutral steel grey",
+    "cinder": "molten forge-orange",
+    "rime": "bright lake-cyan",
+    "pierce": "forge-gold",
+    "arc": "star-violet",
+    "sunder": "magenta-crimson",
+    "hex": "deep teal",
+    "true": "alert red",
 }
 
 # card -> (pack, structure, feature, accent_block, accent_override)
@@ -369,6 +393,8 @@ CARDS = {
         "the mask slit", None),
 }
 
+# ⚪ 以下 SPEC 是 v4「正面立面 / 禁装甲板」口径的留档；实际生成以
+#    design/art/card-art-generation-standard-v1.md 的 3/4 口径为准（见 §3.1 转译表）。
 SPEC = {
     "density_version": "v4 (medium: 6-8 shape blocks)",
     "size": "1024x1024 generate -> keyout -> fit into 460x460 card safe area",
@@ -385,10 +411,13 @@ SPEC = {
 
 def main():
     cards = {}
-    for name, (pack, structure, feature, accent_block, override) in CARDS.items():
+    # 🔴 2026-11-09：accent_override 一律忽略 —— 包内 10 张必须同色，
+    #    否则「靠颜色认卡包」失效（旧表单包最多混了 4 种色）。
+    for name, (pack, structure, feature, accent_block, _override) in CARDS.items():
         cards[name] = {
             "pack": pack,
-            "accent": override or PACK_ACCENT[pack],
+            "accent": PACK_ACCENT[pack],
+            "pack_color_name": PACK_COLOR_NAME[pack],
             "structure": structure,
             "feature": feature,
             "accent_block": accent_block,
@@ -396,12 +425,18 @@ def main():
 
     bank = {
         "bank": "card-prompt-bank-v2",
-        "version": "v2",
-        "date": "2026-11-08",
+        "version": "v2.1",
+        "date": "2026-11-09",
         "source": "scripts/data/card_packs.gd v0.4 (8 packs x 10 = 80 building cards)",
-        "anchor_ref": "design/art/card-illustration-style-v1.md 2.2 (v4 medium density)",
+        "anchor_ref": "design/art/card-art-generation-standard-v1.md (3/4 image-to-image pipeline)",
         "supersedes": "card-prompt-bank-v1.json (v1 free-form object, too dense)",
+        "pack_color_source": "scripts/ui/ui_style.gd PACK_COLORS (art-bible 2.2 registered colors)",
+        "pack_color_rule": "pack color is the SSOT for every card in the pack: one large armour panel (~20% of body) in pack color + one small high-saturation accent of the same hue; no per-card color override",
         "spec": SPEC,
+        "pack_palette": [
+            {"pack": p, "hex": PACK_ACCENT[p], "name": PACK_COLOR_NAME[p]}
+            for p in ("core", "cinder", "rime", "pierce", "arc", "sunder", "hex", "true")
+        ],
         "accent_by_pack": PACK_ACCENT,
         "cards": cards,
     }

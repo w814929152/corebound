@@ -10,6 +10,10 @@ extends SceneTree
 ##
 
 const _SpaceModel := preload("res://scripts/geo/space_model.gd")
+const _BuildGrid := preload("res://scripts/geo/build_grid.gd")
+const _CampaignData := preload("res://scripts/data/campaign_data.gd")
+const _Packs := preload("res://scripts/data/card_packs.gd")
+const _ShopRuntime := preload("res://scripts/gameplay/shop_runtime.gd")
 const _TSM := preload("res://scripts/engine/time_state_machine.gd")
 
 
@@ -21,6 +25,7 @@ class Driver extends Node:
 	var ml: Node
 	var runtime
 	var scenario := "product"
+	var stage_id := "0-1"
 	var shots: Array = []
 
 	func _ready() -> void:
@@ -84,6 +89,8 @@ class Driver extends Node:
 			await _run_uic4()
 		elif scenario == "revive":
 			await _run_revive()
+		elif scenario == "stage":
+			await _run_stage()
 		else:
 			await _run_product()
 		_log("[P6] shots taken: %s" % str(shots))
@@ -120,6 +127,10 @@ class Driver extends Node:
 				break
 		_place_pending()
 
+	## 🔴 2026-11-09 修：落子已改为**自由摆放**（`confirm_placement_at(pos)`），
+	##   `geo.slots` 从空表起步、只在落子后追加 —— 旧的「按槽位号 0..n 试」只剩 1 个起手格，
+	##   第二张塔卡必失败 → pending 越堆越多、塔数永远 1 → 假失败（实测 W5 亡，towers=1 pending=4）。
+	##   现在按 `BuildGrid.site_points()` 逐格心试，失败才回退老路径。
 	func _place_pending() -> void:
 		var guard := 0
 		while runtime.pending.size() > 0 and guard < 24:
@@ -127,10 +138,17 @@ class Driver extends Node:
 			if not runtime.begin_placement(0):
 				break
 			var ok := false
-			for slot in range(0, runtime.geo.slots.size()):
-				if runtime.confirm_placement(slot):
-					ok = true
-					break
+			if runtime.has_method("confirm_placement_at"):
+				for p in _BuildGrid.site_points():
+					if bool(runtime.confirm_placement_at(p)):
+						ok = true
+						break
+			if not ok:
+				# 回退：老槽位路径（PATH 模式 / 无网格时仍可用）
+				for slot in range(0, runtime.geo.slots.size()):
+					if bool(runtime.confirm_placement(slot)):
+						ok = true
+						break
 			if not ok:
 				runtime.cancel_placement()
 				break
@@ -185,6 +203,65 @@ class Driver extends Node:
 				await _shot("VICTORY.png")
 				_log("[P6] **WON at W%d**" % w)
 				return
+
+	# ------------------------------------------------------------------
+	# 🆕 整关端到端（真身 · 卡包限制 + 波表长度）：`stage` + 关卡 id
+	#   使命：MC 用的是**批处理镜像**；SW7/SW8 只对拍**单波**。没有任何东西验证过
+	#   「真身能从 W1 走到这关的最后一波，且中途的卡池是这关真正给的那几包」。
+	#   本场景把 boot.gd 的三步注入照搬（波表 / 卡包 / 重开），跑完整关。
+	# ------------------------------------------------------------------
+	func _run_stage() -> void:
+		var sid := stage_id
+		var S := _CampaignData.min_regions_on_arrival(sid)
+		# ① 已守地区：按 DECK_ORDER 取前 S 个（= 图状推进的必然结果，见 campaign-v2 §9）
+		var owned: Array = []
+		for i in range(mini(S, _CampaignData.DECK_ORDER.size())):
+			owned.append(String(_CampaignData.DECK_ORDER[i]))
+		# ② 卡包：region 口径 + 本关借用（`boot.gd:_sync_deck_unlock` 同款）
+		_Packs.unlock_by_region = true
+		_Packs.set_region_progress(owned, _CampaignData.region_of(sid))
+		var packs: Array = _Packs.unlocked_ids(0)
+		var cap := _Packs.required_picks(0)
+		if packs.size() > cap:
+			packs = packs.slice(0, cap)
+		_ShopRuntime.set_active_packs(packs)
+		# ③ 波表接管波数（失败 = 退回关卡表波数，与 boot 同回退）
+		wd.stage_waves_enabled = true
+		controller.start_new_run()                 # 用新卡池重开一局
+		var ok: bool = wd.set_stage(sid, S)
+		if not ok:
+			wd.set_max_wave(_CampaignData.wave_count(sid))
+		wd.start_wave(1)
+		var wmax := int(wd._max_wave)
+		_log("[P6-stage] sid=%s S=%d set_stage=%s waves=%d packs=%s cards=%d"
+			% [sid, S, str(ok), wmax, str(packs), _ShopRuntime.player_card_names().size()])
+		for w in range(1, wmax + 1):
+			if w > 1:
+				director.start_next_wave()
+				await _frames(4)
+			director.close_shop()
+			await _frames(3)
+			var before := float(runtime.player.core_hp)
+			wd.run_to_end()
+			await _frames(5)
+			_log("[P6-stage] W%d/%d 结束: core=%.0f→%.0f towers=%d disabled=%d victory=%s failed=%s"
+				% [w, wmax, before, float(runtime.player.core_hp),
+					runtime.player.towers.size(), int(wd._count_disabled_towers()),
+					str(wd.victory), str(wd.run_failed)])
+			if bool(wd.victory):
+				_log("[P6-stage] **%s 通关**（%d 波 · 残血 %.0f%%）"
+					% [sid, w, 100.0 * float(runtime.player.core_hp) / maxf(1.0, float(runtime.player.core_hp_max))])
+				return
+			if bool(wd.run_failed) or bool(controller.over):
+				_log("[P6-stage] **%s 失败于 W%d/%d**（残血 %.0f%%）"
+					% [sid, w, wmax, 100.0 * float(runtime.player.core_hp) / maxf(1.0, float(runtime.player.core_hp_max))])
+				# 🆕 复活诊断（塔为什么没爬起来）：fired=成交 / refused=闸门拒绝 / elig=合格死亡
+				_log("[P6-stage] revive_diag=%s" % str(wd.revive_diag))
+				return
+			await _frames(4)
+			_autobuild()
+			await _frames(3)
+		_log("[P6-stage] 跑满 %d 波仍未判胜负（⚠️ 末波没结算 = 真身有洞）" % wmax)
 
 	# ------------------------------------------------------------------
 	# 失败局：不建塔
@@ -317,10 +394,13 @@ class Driver extends Node:
 
 func _initialize() -> void:
 	var scenario := "product"
+	var stage_arg := "0-1"
 	for a in OS.get_cmdline_user_args():
 		var s := a.strip_edges().to_lower()
-		if s in ["product", "fail", "uic4", "revive"]:
+		if s in ["product", "fail", "uic4", "revive", "stage"]:
 			scenario = s
+		elif s.contains("-"):
+			stage_arg = s
 	var scene: Node = load("res://scenes/battle_shop.tscn").instantiate()
 	scene.name = "BattleShop"
 	root.add_child(scene)
@@ -332,4 +412,5 @@ func _initialize() -> void:
 	d.name = "P6Driver"
 	d.scene = scene
 	d.scenario = scenario
+	d.stage_id = stage_arg
 	root.add_child(d)

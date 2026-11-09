@@ -250,6 +250,8 @@ var last_placed_slot: int = -1
 func setup(p_path: String, seed_value: int, overrides: Dictionary = {}) -> void:
 	path = p_path
 	cfg = _Cfg.cfg_of(p_path)
+	# 玩家实时路线使用叠层冰冻；历史模拟保留原 Aux 数值口径。
+	cfg["stacking_frost_enabled"] = true
 	for k in overrides:
 		cfg[k] = overrides[k]
 	# 🆕 自由摆放：几何从**空槽位表**起步 —— 没有预置塔位，位置由玩家点选后追加。

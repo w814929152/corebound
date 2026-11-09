@@ -224,6 +224,30 @@ static func arc_of_t(t_remain: float, m_spd: float, v0_: float, total_len: float
 ##      故八槽下此值必须 ≥0.15。此常量即冻结口径，改动须重新过 AC-S6-3 硬约束。
 const EXPO_SAFE_MAX: float = 0.15
 
+## 🆕 阵地化（17 格 · `BuildGrid.sites_active()`）专用阈值 —— **与 8 槽红线分开冻结**。
+##
+## 🔴 为什么必须分开（2026-11-09 实测）：`expo_frac = asin(R/d)/π` 在 8 槽布局里天然二分
+##   （近环 d≈6–9 → 1.0；深位 d≈40+ → ≈0.05），0.15 正好切在中间。
+##   但 17 格阵地的 r 全落在 **18–42**，`expo_frac` 全挤在 **0.073–0.159** —— 用 0.15 判，
+##   17 个格心只有 **1 个**算「暴露位」。
+##   而「战斗内复活」的资格闸门硬依赖 `is_exposed`（`wave_director.gd:861`：
+##   `death_valid ∧ is_exposed ∧ ¬is_carry`）→ 实机 94% 的格子**永远不可复活**，
+##   产品开关 `combat_revive_enabled` 在实机上等于没开。
+##   实测取证：`6-1` W14 处刑波十塔全灭，`revive_diag = {fired:0, elig:0, refused:10,
+##   nonexp_death:7, carry_death:3}` → 核心 1000→0，一波穿核。
+##
+## 标定口径（不是随手取数）：让**内圈三台 P1–P3（r 18–32 · d ≤ 34）** 成为暴露位/肉盾位，
+##   **孤台 N1–N3（r 39–42 · d ≥ 39）** 保持安全位（低风险高单价位，见 scene-map §9）。
+##   实测 `expo_frac`：内圈最远格 0.099 / 孤台最近格 0.073 → 阈值取 **0.085** 落在这条缝里。
+##   🔴 8 槽口径 `EXPO_SAFE_MAX = 0.15` **一字不动** → AC-S6-3（4 暴露 / 4 安全）仍成立；
+##      本常量只在阵地化开启时经 `expo_safe_max_for()` 生效。
+const EXPO_SAFE_MAX_SITES: float = 0.085
+
+## 按几何口径取阈值：阵地化（17 格）用新标定，8 槽 / PATH 用冻结的 0.15。
+## 🔴 唯一分派点：调用方**不要**自己写三元表达式，否则"哪套几何用哪档"会散落成多份。
+static func expo_safe_max_for(sites_active: bool) -> float:
+	return EXPO_SAFE_MAX_SITES if sites_active else EXPO_SAFE_MAX
+
 ## 塔位 P 到核心的距离（径向暴露度第一手数据，对应 PATH 的 d_path）。
 static func dist_to_core(p: Vector2, core: Vector2) -> float:
 	var dx: float = p.x - core.x
