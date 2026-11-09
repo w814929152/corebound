@@ -1,6 +1,7 @@
 # 守核 Corebound · 卡面插画生成标准 v1（3/4 视角图生图产线）
 
-> 状态：🟢 **当前生效 · v1.7**（2026-11-09 立 / 同日八次更新）。适用于 `art/2d/cards/card_*_v1_{t,460}.png` 的全部新增与重绘。当前进度 **80 / 80 张（8 包全部完成）**，见 §7。
+> 状态：🟢 **当前生效 · v1.8**（2026-11-09 立 / 同日九次更新）。适用于 `art/2d/cards/card_*_v1_{t,460}.png` 的全部新增与重绘。当前进度 **80 / 80 张（8 包全部完成）**，见 §7；**引擎实机验收见 §5.12**。
+> 🆕 **v1.8 变更（引擎实机验收）**：此前「本机无 Godot 编辑器」的判断有误 —— 编辑器在 Steam 库，正是 **4.7.2.stable.steam** 且自带 `4.7.2.stable` Windows 导出模板。已完成 `--import` 重导入、80 张卡面全量加载探针、重新 `--export-release`、图鉴 / 商店实机截图复核；**未改任何生成参数、提示词或质检门槛**。新增探针 / 截图脚本与两张实机样张，详见 §5.12、§9。
 > 🆕 **v1.7 变更（批次⑪收官）**：最后一包 `true` 警报红 `#FF2E4E` 按铁律 5 先出 `Oblivion` 试点，四档实测默认 72 / `--bright-pack` 55 / `--mid-pack` 89 / **`--lift-pack` 101**，第三次复用该档；整包 10 张全过检（p50 88–108 / cov 64.3–81.7%）。新增**真红防串色补句** `NOT pink, NOT magenta, NOT crimson`，`sunder`↔`true` 近色对并排复核解除；`Eraser` 因锚点带出青色炮口重出 1 张。**档位参数、门槛、包色一律未动**。详见 §3.1 注、§4.5、§5.11。
 > 🆕 **v1.6 变更（批次⑩低明度包色）**：`hex` 深青 `#1A6B7D`（L≈91，8 包里最低明度）按铁律 5 先出 `Hex` 试点，四档实测默认 73 / `--bright-pack` 55 / `--mid-pack` 89 / **`--lift-pack` 101**，确认**复用 v1.5 的 `--lift-pack`**（不新增第五档、不改任何参数）。整包 10 张一次过检（p50 101–138 / cov 88.5–99.6%），并完成 `rime`↔`hex` 近色对并排复核。**门槛、提示词模板、包色一律未动**。详见 §4.5、§5.10。
 > 🆕 **v1.5 变更（批次⑨暗板占比高的包色）**：新增第四个整包后处理档位 `--lift-pack`。噬品红 `#E8437F` 用 `--mid-pack` 仍有 4 张 p50 74–79 跌破 80；整包 10 张 × 6 组探测后改 `--white 145 --floor 58`（白场不变、只再抬暗板落点），10 张全过检且描边仍深藏青。**仍只动后处理**：冻结提示词、主色调口径、质检门槛一律不变。详见 §4.4。
@@ -536,6 +537,25 @@ py -3.9 tools/card_batch3_process.py                               # 默认 batc
 
 ---
 
+### 5.12 引擎实机验收（2026-11-09 · **v1.8 · Godot 4.7.2 Steam 版**）
+
+> 前提更正：此前 §8 #5 / #10 记「本机无 Godot 编辑器」有误。编辑器位于 Steam 库 `C:/Program Files (x86)/Steam/steamapps/common/Godot Engine/godot.windows.opt.tools.64.exe`，版本 `4.7.2.stable.steam.ed1daf0bf`，与 `project.godot` 的 `config/features=4.7` 一致；自带导出模板 `editor_data/export_templates/4.7.2.stable/`（含 `windows_release_x86_64.exe`）。以下四条均在真引擎上跑通，**未改任何生成参数 / 提示词 / 质检门槛**。
+
+| 步骤 | 命令 / 脚本 | 结果 |
+|---|---|---|
+| ① 重导入 | `godot --headless --path . --import` | exit 0、日志 0 error；按内容 md5 重新导入 `card_eraser_v1_{460,t}.png`（11:15 幂等复跑过色阶），`.godot/imported/card_*.ctex` 共 **160 个**（80×`_460` + 80×`_t`），缓存与最新 PNG 对齐 |
+| ② 全量加载探针 | `godot --headless --path . --script res://tools/probe_card_art_all.gd` | **80 / 80 张** `card_art()` 加载成功、纹理尺寸全为 460²、缺图仍降级返回 `null`；`PASS · 失败项 = 0`（退出时 ObjectDB / resources-in-use 是 `--script` 模式通用清理噪声，非加载失败） |
+| ③ 重新导出 | `godot --headless --path . --export-release "Windows Desktop" build/windows/Corebound.exe` | `[ DONE ] savepack`、exit 0；产物 **196,623,600 B**（旧版 132,145,144 B，+64.5 MB 为 160 张卡面资源），时间戳 2026-11-09 11:35，已替换旧 exe |
+| ④ 主场景自测 | 编辑器 `--headless --path . --quit-after 5` / 导出 exe 同参数 | 项目模式 **123 项全通过 / 0 失败**；导出版 115 通过 / 6 失败，6 项全是「打不开 `res://scripts/**/*.gd`」—— pck 内脚本已编译为 `.gdc` + `.remap`，源码 grep 类断言在导出版读不到文本，**与卡面 / 导出完整性无关，非回归** |
+
+**UI 实机截图**（`godot --path . --script res://tools/shoot_card_art_smoke.gd`，窗口模式 / OpenGL 3.3 兼容）：
+- `art/_review/godot_smoke_library_cards.png`：主菜单「卡组图鉴」页，脚本内统计 **80 张**来自 `art/2d/cards/` 的 TextureRect 全部实例化；core 钢灰 / cinder 熔橙等包色一眼可分，96×96 插画未裁切、未压住文字。
+- `art/_review/godot_smoke_shop_cards.png`：战斗商店三个商品位，`Frost` / `Cannon` 两张建筑卡显示 72px 插画带；中间 `FireUp` 是单塔效果卡、不在 80 张建筑卡里 → `card_art()` 返回 `null` → 插画带整带隐藏，版式回落无图（§6 的判空降级在真机上生效），**2 / 3 属预期而非缺图**。
+
+**新发现的边界**：图鉴标题写「共 81 张卡」——`scripts/data/card_packs.gd` 的 cinder 熔炉包除 10 张外额外收录 **`Pyroclasm`**（焚星塔，11 张/包）。它不在 8×10 的 80 张卡面清单里，图鉴按 §6 降级显示为纯文字卡条。当前按「80 张收官、不再出图」的口径保留；若要求图鉴零空白，需单独补 1 张卡面（见 §8 #11）。
+
+---
+
 ## 6. 落盘与游戏接线
 
 - 正式资产：`art/2d/cards/card_<name小写>_v1_t.png`（1024² 透明底）与 `card_<name小写>_v1_460.png`（460² 安全区透明底）。
@@ -550,7 +570,7 @@ py -3.9 tools/card_batch3_process.py                               # 默认 batc
 ## 7. 收官：8 包 80 张全部完成
 
 卡池共 8 包 × 10 张 = 80 张（`scripts/data/card_packs.gd` 的 `PACKS`，与提示词库逐字对齐）。
-**资产盘点（2026-11-09 · 批次⑪ 收官）**：`art/2d/cards/` 已有 **80 张**正式卡面（8 包各 10 张），`_v1_t.png` / `_v1_460.png` 各 80 个、`.import` 160 个且 uid 全唯一，**无待建卡面**；批次① 的 10 张原图只留在 `art/_review/batch1/`，从未进入正式目录。进度总览见 `art/_review/batch11/compare_pack_progress_batch11.png`。后续只剩 Godot 重导入 / export 与 UI 实机验证。
+**资产盘点（2026-11-09 · 批次⑪ 收官）**：`art/2d/cards/` 已有 **80 张**正式卡面（8 包各 10 张），`_v1_t.png` / `_v1_460.png` 各 80 个、`.import` 160 个且 uid 全唯一，**无待建卡面**；批次① 的 10 张原图只留在 `art/_review/batch1/`，从未进入正式目录。进度总览见 `art/_review/batch11/compare_pack_progress_batch11.png`。**Godot 重导入 / export / UI 实机验证已于 v1.8 全部完成**（§5.12）；当前唯一边界是 cinder 包额外第 81 卡位 `Pyroclasm` 无卡面（§8 #11）。
 
 | 包 id | 名称 | 包色 | 张数 | 卡面状态 |
 |---|---|---|---|---|
@@ -577,12 +597,14 @@ py -3.9 tools/card_batch3_process.py                               # 默认 batc
 | 2 | `Harrier` 双垂直发射鼓略像双筒望远镜 / 眼睛 | 待用户复核，必要时重出（提示词加 `no face-like layout`） |
 | 3 | 旧文档 `card-illustration-style-v1.md` 的「禁 3/4 / 正面立面冻结」条款与本文冲突 | 已在旧文档头部挂状态指针；正文留档不改 |
 | 4 | 美术圣经 §11 开放问题 #3 曾记「当前无卡面资产」 | 已同步更新为「✅ 已定：AI 扁平插画 · 3/4 图生图产线」 |
-| 5 | 本机无 Godot 编辑器（只有导出的 `Corebound.exe`，embed_pck 无法热更），UI 接线**未实机验证** | 用 Godot 4.7.2 打开项目重导入 → F5 看商店 / 图鉴 → 需要出包时重新 `--export-release` |
-| 6 | 80 张卡面**已全部落盘**（8 包各 10 张），无待建卡 | ✅ 批次⑪ 收官解除；后续只做 Godot 4.7.2 重导入与 export，不再出图 |
+| 5 | ~~本机无 Godot 编辑器，UI 接线未实机验证~~ | ✅ **v1.8 解除**：编辑器在 Steam 库，为 `4.7.2.stable.steam` 且自带导出模板；`--import` / 全量探针 / `--export-release` / 图鉴+商店截图四项全跑通，详见 §5.12 |
+| 6 | 80 张卡面**已全部落盘**（8 包各 10 张），无待建卡 | ✅ 批次⑪ 收官解除；Godot 4.7.2 重导入与 export 已于 v1.8 完成，不再出图（唯一例外见 #11） |
 | 7 | 近色对风险**全部解除**；中性色在覆盖率自检中免检 | ✅ `rime`↔`hex` 于批次⑩、`sunder`↔`true` 于批次⑪ 并排复核通过（真红防串色补句生效）；若日后调整包色，须重新并排复核 |
 | 8 | **`core` 10 张仍是蓝钢灰族，与其余 7 包的整机主色调是两种口径并存** | 用户 2026-11-09 拍板「core 作中性基准族不重出」。若日后要求全组严格统一，单独重出 core 10 张（用 `--dominant`，包色 `neutral grey / charcoal grey`） |
 | 9 | `Whiteout` 在 `x≥70% & y≥90%` 检查区有 37 个不透明像素；批次⑧ 的 `Storm` 393 / `Thunderhead` 256 / `Arc` 5、批次⑨ 的 `Breaker` 304、批次⑩ 的 `Wither` 245、批次⑪ 的 `Soulpiercer` 1 同理 | 均人工放大复核为**主体部件边缘色块 / 抗锯齿单点**（底座撑脚 / 钻杆尖端），透明底图上无「AI生成 WORKBUDDY>」文字，属构图边界例外而非水印残留。留档 `art/_review/batch8/watermark_check_batch8.png`、`art/_review/batch9/watermark_check_batch9.png`、`art/_review/batch10/watermark_check_batch10.png`、`art/_review/batch11/watermark_check_batch11.png`；若日后统一卡面尺寸，优先重出偏宽偏低 / 部件伸出的卡并加 `compact narrow base` |
-| 10 | **新增卡面的 `.import` 不会自动出现**（本机无 Godot 编辑器） | 批次⑥ 补 20 个、批次⑦ 补 18 个、批次⑧ 补 20 个、批次⑨ 补 20 个、批次⑩ 补 20 个、批次⑪ 补 20 个，现 `art/2d/cards/` 共 **160 个 `.import` 且 uid 全唯一**（`uid://` 随机唯一，`path` = `md5(res:// 路径)`），全部新卡已补齐；最终仍需 Godot 4.7.2 打开项目重导入生成 `.ctex` 并重新 export |
+| 10 | **新增卡面的 `.import` 不会自动出现**（本机无 Godot 编辑器） | 批次⑥ 补 20 个、批次⑦ 补 18 个、批次⑧ 补 20 个、批次⑨ 补 20 个、批次⑩ 补 20 个、批次⑪ 补 20 个，现 `art/2d/cards/` 共 **160 个 `.import` 且 uid 全唯一**（`uid://` 随机唯一，`path` = `md5(res:// 路径)`），全部新卡已补齐；✅ 最终已由 Godot 4.7.2 `--import` 校验：160 个 `card_*.ctex` 生成无误、80 张全部可 `load()`（§5.12）。仓库约定 `*.import` / `*.uid` 不入库，由引擎按需重生成 |
+| 11 | 图鉴共 **81 个卡位**：cinder 熔炉包额外收录 `Pyroclasm`，无对应卡面 → 图鉴显示纯文字卡条 | 当前按「80 张收官」保留（§5.12）；若要零空白，单独补 1 张 `card_pyroclasm_v1_{t,460}.png`（`--dominant` + cinder 默认档）并按 §6 补 `.import`，需用户拍板 |
+| 12 | 导出的 `Corebound.exe` 无头自测固定 6 项失败（「打不开 `res://scripts/**/*.gd`」） | 非回归：pck 内 `.gd` 已编译为 `.gdc` + `.remap`，源码 grep 类断言在导出版读不到文本；项目模式同套件 123/0 全通过（§5.12）。若要求导出版自测全绿，须把这些断言改为读编译产物或仅在编辑器模式运行 |
 
 ---
 
@@ -602,6 +624,7 @@ py -3.9 tools/card_batch3_process.py                               # 默认 batc
 | 对象 / 主色 / **包色真源** | `design/art/card-prompt-bank-v2.json` **v2.7**（`pack_palette` 的 `hex/name/hue_word/shadow_word`、`pack_color_rule`、`accent_by_pack`、`cards[*].accent`、`postprocess_hint.bright_pack` / `.mid_pack` / `.lift_pack` / `.completion`）；镜像常量 `tools/build_card_prompt_bank_v2.py::PACK_ACCENT`（🔴 勿运行重建）；UI 侧 `scripts/ui/ui_style.gd::PACK_COLORS` |
 | 旧口径体系（正面立面 v4/v4b · 留档） | `design/art/card-illustration-style-v1.md`、`design/art/card-prompts-batch2.json` |
 | 后处理工具 | `tools/card_tone_levels.py`、`card_keyout.py`、`card_batch3_process.py`、`card_mock_card.py`、`card_contact_sheet.py` |
+| **v1.8 引擎实机验收** | `tools/probe_card_art_all.gd`（80 张 headless 加载探针）、`tools/shoot_card_art_smoke.gd`（图鉴 + 商店窗口截图）、`art/_review/godot_smoke_library_cards.png`、`art/_review/godot_smoke_shop_cards.png`、`art/_review/update_standard_v18.py`；`build/windows/Corebound.exe`（导出产物，`build/` 不入库） |
 | 总纲 | `design/art/art-bible.md` §2.2 / §5.5 / §6.5 / §11 |
 
 ---
@@ -629,4 +652,6 @@ py -3.9 tools/card_batch3_process.py                               # 默认 batc
 | 2026-11-09 | **v1.6 低明度包色验证**：批次⑩ `Hex` 试点四档实测默认 73 / bright 55 / mid 89 / **lift 101**，确认深青 `#1A6B7D`（L≈91）**复用 v1.5 的 `--lift-pack`**，不新增第五档、不改参数、不放宽门槛；青色系模板按 §3.1 补主色提亮句。`card-prompt-bank-v2.json` 升 **v2.6**（`postprocess_hint.lift_pack.applies_to` 加 `hex`），`anchor_ref` 同步 v1.6 |
 | 2026-11-09 | **批次⑩** hex 咒术包 10 张整包落地（深青 `#1A6B7D`），`--lift-pack` 一次过检（p50 101–138 / p85 161–182 / cov 88.5–99.6% / alpha 全 255）；量化色相直方图确认无第二色相；`Wither` 检查区 245 px 复核为底座撑脚；`rime`↔`hex` 近色对并排复核解除；补 20 个 `.import`（共 140 个 uid 唯一）；正式卡面达 **70 张 / 80（7 包完成）**。交付 `art/_review/batch10/contact_batch10_cards.png`、`compare_pack_color_batch10.png`、`compare_pack_progress_batch10.png`、`compare_nearhue_batch10.png` |
 | 2026-11-09 | **v1.7 真红防串色 + 第三次复用 lift-pack**：批次⑪ `Oblivion` 试点四档 72 / 55 / 89 / 101，确认警报红 `#FF2E4E`（L≈93）同样复用 `--lift-pack`，不新增第五档、不放宽门槛；§3.1 注把低明度主色提亮句通用化为 `Lift the {hue} main plate`，并新增 `NOT pink, NOT magenta, NOT crimson` 防串色句。`card-prompt-bank-v2.json` 升 **v2.7**（`lift_pack.applies_to` 加 `true`、`postprocess_hint.completion`），`anchor_ref` 同步 v1.7 |
+| 2026-11-09 | **v1.8 引擎实机验收（更正「本机无编辑器」）**：确认 Steam 库内 Godot `4.7.2.stable.steam` + 自带 `4.7.2.stable` 导出模板可用；`--headless --import` 重导入（160 个 `card_*.ctex`）、`probe_card_art_all.gd` 80/80 全通过、`--export-release` 更新 `build/windows/Corebound.exe`（196,623,600 B）、窗口模式截图确认图鉴 80 张 / 商店 2 张（效果卡降级）接线生效；项目模式主场景自测 123/0。`card-prompt-bank-v2.json` 升 **v2.8**（仅同步 `anchor_ref` / `completion` 状态，**不改任何生成参数**） |
+| 2026-11-09 | **v1.8 新发现的边界**：图鉴 81 个卡位中 cinder 额外卡 `Pyroclasm` 无卡面（§8 #11）；导出版自测 6 项「源码 grep 读不到 .gd」失败属 pck 编译产物的测试设计限制、非回归（§8 #12） |
 | 2026-11-09 | **批次⑪ 收官** true 湮灭包 10 张整包落地（警报红 `#FF2E4E`），`--lift-pack` 全过检（p50 88–108 / p85 118–150 / cov 64.3–81.7% / alpha 全 255）；`Eraser` 因锚点带出青色炮口重出 1 张（亮青点缀 0.50%→0.11%，剪影改竖直方塔）；`Obliterator` / `Wraith` 防脸化转译通过；`sunder`↔`true` 近色对并排复核解除，至此全部近色对已复核；补 20 个 `.import`（共 160 个 uid 唯一）。**正式卡面 80 / 80，8 包全部完成**。交付 `art/_review/batch11/contact_batch11_cards.png`、`compare_pack_color_batch11.png`、`compare_pack_progress_batch11.png`、`compare_nearhue_batch11.png` |

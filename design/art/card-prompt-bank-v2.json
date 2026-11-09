@@ -1,9 +1,9 @@
 {
  "bank": "card-prompt-bank-v2",
- "version": "v2.7",
+ "version": "v2.8",
  "date": "2026-11-09",
  "source": "scripts/data/card_packs.gd v0.4 (8 packs x 10 = 80 building cards)",
- "anchor_ref": "design/art/card-art-generation-standard-v1.md v1.7 (3/4 image-to-image, pack color as dominant tone; bright-pack / mid-pack / lift-pack tone variants by pack color luminance; lift-pack validated on sunder/hex/true; all 8 packs complete, 80/80 cards)",
+ "anchor_ref": "design/art/card-art-generation-standard-v1.md v1.8 (3/4 image-to-image, pack color as dominant tone; bright-pack / mid-pack / lift-pack tone variants by pack color luminance; lift-pack validated on sunder/hex/true; all 8 packs complete, 80/80 cards; engine-verified with Godot 4.7.2 Steam: import + 80-card load probe + export + UI screenshots)",
  "supersedes": "card-prompt-bank-v1.json (v1 free-form object, too dense)",
  "spec": {
   "density_version": "v4 (medium: 6-8 shape blocks)",
@@ -736,7 +736,7 @@
   "tone_protect_mode": "remap",
   "batch_flag": "--dominant",
   "pack_color_coverage_min_percent": 40,
-  "completion": "80/80 cards, 8/8 packs validated (2026-11-09); no pending pack",
+  "completion": "80/80 cards, 8/8 packs validated (2026-11-09); no pending pack; engine-verified with Godot 4.7.2 (Steam) on 2026-11-09; extra 81st card slot Pyroclasm has no card art (by design, pending user decision)",
   "p50_range_dominant": [
    80,
    185
