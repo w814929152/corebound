@@ -671,3 +671,19 @@ static func lib_tex(kind: String) -> Texture2D:
 		tex = load(path)
 	_lib_tex_cache[path] = tex
 	return tex
+
+
+## 商店商品位承托板（asset-pack-v6）：判空降级同 lib_tex() 管法。
+##   🔴 中性不染色 —— 稀有度边框 / 可购性 accent 由 card_blueprint() + chrome 承担。
+const SLOT_PLATE_PATH := "res://art/2d/ui/ui_shop_slot_plate_v1.png"
+static var _slot_plate_checked := false
+static var _slot_plate_cache: Texture2D = null
+
+
+static func slot_plate_tex() -> Texture2D:
+	if _slot_plate_checked:
+		return _slot_plate_cache
+	_slot_plate_checked = true
+	if ResourceLoader.exists(SLOT_PLATE_PATH):
+		_slot_plate_cache = load(SLOT_PLATE_PATH)
+	return _slot_plate_cache

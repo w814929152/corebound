@@ -323,6 +323,21 @@ func _make_slot(_i: int) -> PanelContainer:
 	p.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	p.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	p.add_theme_stylebox_override("panel", _Style.card_blueprint())
+	# 🆕 资产包 v6：9-slice 中性承托板（v2-hud §7 #2 遗留件）。
+	#    🔴 必须**先于** vb 加入 —— PanelContainer 会把每个子节点铺满 content rect，
+	#       先加者画在下、后加者画在上；末尾的 chrome 仍保持最上层。
+	#    缺贴图 / headless 未导入 → 整层不建，版式逐字回落改前状态。
+	#    承托板不染色也不做四角刻线：稀有度由 card_blueprint 边框、四角由 chrome 承担。
+	var plate_tex := _Style.slot_plate_tex()
+	if plate_tex != null:
+		var plate := NinePatchRect.new()
+		plate.texture = plate_tex
+		plate.patch_margin_left = 12
+		plate.patch_margin_right = 12
+		plate.patch_margin_top = 12
+		plate.patch_margin_bottom = 12
+		plate.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		p.add_child(plate)
 	var vb := VBoxContainer.new()
 	vb.add_theme_constant_override("separation", 5)
 	p.add_child(vb)

@@ -26,12 +26,19 @@ const _Packs := preload("res://scripts/data/card_packs.gd")
 const _RunMeta := preload("res://scripts/gameplay/run_meta.gd")
 
 ## 单包卡面尺寸（全部卡包同一尺寸 —— X3「不得用布局差异暗示」）。
-##   🔴 宽度 180：8 包 × 180 + 7×14 间距 ≈ 1438 < 1600 实际窗口，横向不溢出。
-##   🔴 高度 292 与内容实测对齐（2026-11-07）：卡列表改**双列纯卡名网格**后
-##     内容最小高度 ≈ 266px（含 24 边距），292 留余量 —— 每卡「卡名+定位」两行堆叠
-##     的旧排法内容高达 539px（8 包 ×6 卡时代溢出瓦片边界），定位信息改由
-##     商店卡面 describe / 包 tag_line 承载，瓦片只回答「这包有哪 10 张卡」。
-const TILE_SIZE := Vector2(180.0, 336.0)
+##   🔴 宽度 180：逻辑视口 1920（`window/size/viewport_*`），实际窗口 1600×900 是
+##      `canvas_items` 等比缩放（0.833）—— 按 1920 排：8 包 ×180 + 7×14 = 1538，
+##      面板 1590，左右各留 165。**别按 1600 预算**，那会把缩放误判成溢出。
+##   🔴 高度 480（2026-11-09 修正）：卡列表改**单列**后 10 行 ×24 + 9×2 = 258px；
+##      10 卡包实测内容高 449、熔炉包（11 卡）475 —— 统一取 480（X3：瓦片尺寸必须全同，
+##      不能给熔炉包开小灶），余量由底部 spacer 吸收。
+##      旧双列方案在 8 包 ×10 卡后失效：网格真实宽 200px（列宽由最长卡名撑开，
+##      Thunderhead 95px），瓦片内容区只有 156px → 卡名横向穿到隔壁瓦片。
+##      单列内容区 156px 能完整放下全部卡名（最长 95px）。
+const TILE_SIZE := Vector2(180.0, 480.0)
+## 瓦片间距 · 面板左右内边距（与 `_Style.panel(..., h, v)` 的 h 保持同值）。
+const TILE_GAP := 14.0
+const PANEL_PAD_X := 26.0
 
 var _built: bool = false
 var _tiles: Array = []          # Array[Dictionary]：{id, btn, status, name, tag, cards, roles}
@@ -68,16 +75,25 @@ func _build() -> void:
 	bg.mouse_filter = Control.MOUSE_FILTER_STOP     # 吃掉点击，防止穿透到战场
 	add_child(bg)
 
+	# 🆕 2026-11-09：居中改由 CenterContainer 完成。
+	#   🔴 旧写法 `panel.set_anchors_and_offsets_preset(PRESET_CENTER)` + grow BOTH 在
+	#      CanvasLayer 下不可靠（实测 1590 宽的面板落在 x=165，右缘 1755 > 1600）。
+	#      容器居中不吃布局时机，宽度也由内容决定。
+	var holder := CenterContainer.new()
+	holder.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(holder)
+
 	var panel := PanelContainer.new()
-	panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
-	panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	panel.grow_vertical = Control.GROW_DIRECTION_BOTH
-	panel.custom_minimum_size = Vector2(1188.0, 0.0)
-	panel.add_theme_stylebox_override("panel", _Style.panel(_Style.C_ALLY, 2, 26.0, 22.0))
+	# 面板宽 = 瓦片行最小宽 + 左右内边距 —— 由 PACKS 数量推导，加包不再手改。
+	var n_packs: int = _Packs.PACKS.size()
+	panel.custom_minimum_size = Vector2(
+		n_packs * TILE_SIZE.x + (n_packs - 1) * TILE_GAP + PANEL_PAD_X * 2.0, 0.0)
+	panel.add_theme_stylebox_override("panel", _Style.panel(_Style.C_ALLY, 2, PANEL_PAD_X, 22.0))
 	# 🆕 §5.5 蓝图语言：外沿四角 L 刻线（辉金 accent，与主标题同极）
 	_Style.attach_corner_chrome(panel)
 	_Style.set_chrome_accent(panel, _Style.C_GOLD)
-	add_child(panel)
+	holder.add_child(panel)
 
 	var vbox := VBoxContainer.new()
 	vbox.add_theme_constant_override("separation", 14)
@@ -96,7 +112,7 @@ func _build() -> void:
 	vbox.add_child(_Style.hline())
 
 	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 14)
+	row.add_theme_constant_override("separation", int(TILE_GAP))
 	row.alignment = BoxContainer.ALIGNMENT_CENTER
 	vbox.add_child(row)
 	for i in _Packs.PACKS.size():
@@ -154,6 +170,30 @@ func _make_tile(pack: Dictionary, seq: int) -> Button:
 	_Style.button(b, "normal")
 	b.pressed.connect(_on_tile_pressed.bind(pid))
 
+	# 🆕 资产包 v6：包色顶条（复用 v5 白烘焙标题条，运行时染包色）。
+	#    🔴 绝对定位、**不占布局高度** —— 瓦片高度预算紧，任何增高都不允许。
+	#    🔴 2026-11-09 修复：首版只设 anchors/offsets，瓦片尺寸还没算出时
+	#       TextureRect 被贴图原始尺寸 640×40 钉住，结果一条红带从瓦片一路画到
+	#       屏幕外（`clip_contents` 当时也是关的）。现在：EXPAND_IGNORE_SIZE 解除
+	#       最小宽 + resized 回调按瓦片宽度重铺 + 瓦片开裁剪兜底。
+	#    包色与卡面主色调、图鉴分组标题条共用 ui_style.pack_color()（§2.1 SSOT）。
+	#    贴图缺失 / headless → 整条不建，回落纯文本瓦片。
+	b.clip_contents = true
+	var head_tex := _Style.lib_tex("head_bar")
+	if head_tex != null:
+		var head := TextureRect.new()
+		head.texture = head_tex
+		head.modulate = _Style.pack_color(pid)
+		head.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		head.stretch_mode = TextureRect.STRETCH_SCALE
+		head.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		b.add_child(head)
+		var lay_head := func() -> void:
+			head.position = Vector2(12.0, 2.0)
+			head.size = Vector2(maxf(b.size.x - 24.0, 0.0), 8.0)
+		b.resized.connect(lay_head)
+		lay_head.call()
+
 	var margin := MarginContainer.new()
 	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -208,13 +248,14 @@ func _make_tile(pack: Dictionary, seq: int) -> Button:
 
 	v.add_child(_Style.hline())
 
-	# 🆕 卡列表 = 双列纯卡名网格（§5.2 数字/实体优先：瓦片是「货架标签」不是卡面——
-	#    每卡定位由商店 describe / tag_line 承载；8 包 ×6 卡时代两行堆叠排法实测
-	#    内容 539px，溢出瓦片边界压住底栏，故收敛为网格）。
+	# 🆕 卡列表 = **单列**纯卡名网格（§5.2 数字/实体优先：瓦片是「货架标签」不是卡面——
+	#    每卡定位由商店 describe / tag_line 承载）。
+	#    🔴 2026-11-09：双列 → 单列。双列在 8 包 ×10 卡后失效：列宽由最长卡名撑开，
+	#       网格真实宽 200px > 瓦片内容区 156px，卡名横向穿到隔壁瓦片（实测）。
+	#       单列 148px 能完整放下全部 10 个卡名（最长 Thunderhead 95px）。
 	var grid := GridContainer.new()
-	grid.columns = 2
-	grid.add_theme_constant_override("h_separation", 8)
-	grid.add_theme_constant_override("v_separation", 4)
+	grid.columns = 1
+	grid.add_theme_constant_override("v_separation", 2)
 	grid.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	v.add_child(grid)
 	var card_names: Array = []
@@ -222,6 +263,10 @@ func _make_tile(pack: Dictionary, seq: int) -> Button:
 		var l1 := _Style.label(String(cnm), 16, _Style.C_TEXT)
 		l1.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		l1.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		# 兜底：将来若出现更长的卡名，省略号收尾，绝不画到瓦片外（clip_text 同时把
+		#   标签最小宽压到 0，列宽改由 EXPAND_FILL 分配，网格不会再被卡名撑宽）。
+		l1.clip_text = true
+		l1.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 		grid.add_child(l1)
 		card_names.append(l1)
 
