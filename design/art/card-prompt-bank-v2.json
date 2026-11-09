@@ -189,6 +189,15 @@
    "accent_block": "the barrel core only, plus one small round port on the base face",
    "pack_color_name": "molten forge-orange"
   },
+  "Pyroclasm": {
+   "pack": "cinder",
+   "accent": "#FF6B3D",
+   "structure": "a squat wide charging-core bunker on a low stepped plinth, a thick barrel-shaped drum body with a domed cap, with layered armour plating, panel seams, rivets and two small round ports on the base",
+   "feature": "ONE large circular core chamber set into the centre of the front face, with FOUR short radial fin plates radiating outwards from it in a strict cross layout (one up, one down, one left, one right), every fin a perfectly straight flat rectangular plate",
+   "accent_block": "the circular core chamber only, plus one small round port on the base face",
+   "pack_color_name": "molten forge-orange",
+   "_note": "81st slot (2026-11-09): cinder pack extra card, 11 cards in that pack. Not part of the original 8x10=80 batch; added so the coverage gate in card_batch3_process.py applies instead of silently skipping a BOM-less card."
+  },
   "Drillmaster": {
    "pack": "rime",
    "accent": "#3ED0E8",

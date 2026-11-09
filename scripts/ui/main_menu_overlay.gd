@@ -43,8 +43,14 @@ const KEYART_BG_PATH := "res://art/2d/ui/keyart_menu_bg_v1.png"
 const PAGE_MENU := 0
 const PAGE_LIBRARY := 1
 
-## 图鉴单卡尺寸。5 张一行：5 × 278 + 4 × 12 = 1430 ≤ 1776（1920 − 2×72）。
-const CARD_SIZE := Vector2(278.0, 126.0)
+## 图鉴单卡尺寸。5 张一行：5 × 320 + 4 × 12 = 1648 ≤ 1764（1920 − 2×72 − 滚动条）。
+## 🔴 2026-11-09（第 81 卡）：宽度 278 → 320 是为了**名字行**，不是为了卡片观感。
+##    278 时代单卡内宽 = 278 − 24(内边距) − 96(插画) − 8(间距) = 150，
+##    名字行还要再让出 ▲▲▲ 与 tag 角标（合计约 50–68）→ 名字实得 82–102px；
+##    而 `Thunderhead` 在 18px 下需 120px，`Hemorrhage` 112、`Executioner` 106
+##    → 全库 **9 张卡名被省略号吃掉**（实测见 tools/probe_card_name_fit.gd）。
+##    加宽 42 后名字实得 124–144，81 张全部不截断；图鉴区本来就富余 326px 没用上。
+const CARD_SIZE := Vector2(320.0, 126.0)
 const MENU_X := 140.0
 const LIB_MARGIN_X := 72.0
 const LIB_TOP := 148.0
@@ -428,9 +434,9 @@ func _make_card(pack_id: String, nm: String) -> Control:
 	pc.custom_minimum_size = CARD_SIZE
 	pc.add_theme_stylebox_override("panel", _Style.card_blueprint("normal", rar))
 	pc.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	# 🔴 卡宽必须锁死 278：`custom_minimum_size` 只是**最小**值，PanelContainer 的
-	#    实际最小宽还会被最长文本行顶大。实测（tools/probe_ui_rects.gd）改造前
-	#    8 个包里有 6 个包卡宽不齐，278 / 282 / 304 / 308 / 318 / 326 混排，
+	# 🔴 卡宽必须锁死在 CARD_SIZE（现 320）：`custom_minimum_size` 只是**最小**值，
+	#    PanelContainer 的实际最小宽还会被最长文本行顶大。实测（tools/probe_ui_rects.gd）
+	#    278 时代 8 个包里有 6 个包卡宽不齐，278 / 282 / 304 / 308 / 318 / 326 混排，
 	#    最右一列顶到 x=1618 —— 超出卡片网格公共右边界 1536，长卡名的卡直接
 	#    压到隔壁格子。⇒ 文字一律 clip（min width 归 0），再加 clip_contents 兜底。
 	pc.clip_contents = true
