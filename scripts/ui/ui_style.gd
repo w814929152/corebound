@@ -65,6 +65,30 @@ static func _pad(sb: StyleBoxFlat, h: float, v: float) -> StyleBoxFlat:
 	return sb
 
 
+## 三级入口专用底座：**全透明底 + 仅底部一条 2px 线**。
+##   🔴 为什么不能四态全透明（改造前的写法）：按钮 `custom_minimum_size` 是 320×52，
+##      但无底无边 ⇒ 玩家看到的只是一行 16px 灰字，视觉重心落在文字上，
+##      于是「按钮 52 高 + 容器 separation 6」算出来的 6px 间距，看起来忽大忽小，
+##      三个入口像三段散落的文字而不是一列控件。
+##      下划线给出**可见的按钮体**（宽 = 按钮宽），仍比 normal 弱一档：
+##      不填底、不描边、hover 不抬底，只把线点亮。
+##   🔴 线必须 2px：逻辑视口 1920×1080 在 1600×900 窗口里是 ×0.833 缩放，
+##      1px 逻辑线落到屏幕上只有 0.83px，被抗锯齿混进背景直接看不见
+##      （和资产包 v6 承托板顶部亮线同一个坑）。
+static func _ghost_box(line: Color) -> StyleBoxFlat:
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0, 0, 0, 0)
+	sb.set_border_width_all(0)
+	sb.border_width_bottom = 2
+	sb.border_color = line
+	sb.set_corner_radius_all(0)
+	sb.content_margin_left = 12.0
+	sb.content_margin_right = 12.0
+	sb.content_margin_top = 8.0
+	sb.content_margin_bottom = 8.0
+	return sb
+
+
 ## 主面板（商店抽屉 / 弹窗底座）：深色底 + 亮色描边 + 圆角 + 内边距。
 # ---------------------------------------------------------------------------
 #  九宫格面板（art/2d/ui · 资产包 v1 批次④ · 渐进替换）
@@ -388,6 +412,15 @@ static func button(b: Button, variant: String = "normal") -> void:
 	var dis: StyleBox = _base(Color(C_BG.r, C_BG.g, C_BG.b, 0.55),
 		Color(C_STEEL.r, C_STEEL.g, C_STEEL.b, 0.30), BORDER_W, radius)
 	_pad(dis, 12.0, 8.0)
+
+	# 🆕 ghost 四态改写为「下划线式次级入口」（理由见 _ghost_box 注释）。
+	#    必须在九宫格替换**之前**，否则会被 StyleBoxTexture 覆盖（ghost 无贴图，实际不会，
+	#    但保持顺序语义清晰）。
+	if variant == "ghost":
+		normal = _ghost_box(Color(C_STEEL.r, C_STEEL.g, C_STEEL.b, 0.62))
+		hover = _ghost_box(Color(C_ALLY.r, C_ALLY.g, C_ALLY.b, 0.95))
+		pressed = _ghost_box(Color(C_ALLY_DARK.r, C_ALLY_DARK.g, C_ALLY_DARK.b, 1.0))
+		dis = _ghost_box(Color(C_STEEL.r, C_STEEL.g, C_STEEL.b, 0.22))
 
 	# 🆕 九宫格渐进替换（资产包 v1 批次②）：贴图存在 → 四态全部走 StyleBoxTexture
 	#   （hover/pressed 用 modulate_color 提亮/压暗，复刻旧路径的明度差）；

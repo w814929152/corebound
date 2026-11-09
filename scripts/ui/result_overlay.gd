@@ -90,7 +90,10 @@ func _build() -> void:
 	#    往右下长，整体偏到中心右下方半个面板。改成 BOTH 后从中心向两侧对称扩张 = 真正居中。
 	_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	_panel.grow_vertical = Control.GROW_DIRECTION_BOTH
-	_panel.custom_minimum_size = Vector2(520.0, 0.0)
+	# 🔴 面板宽度不是随手定的：横幅源图 960×96（10:1），面板 640 宽 ⇒ 横幅按比例
+	#    正好 64 高，横竖都整除 0.6667。（改造前 520 宽 + 强拉 64 高 ⇒ 横向压到 0.54、
+	#    纵向拉到 0.67，横幅上的斜切金块被拉成一排碎梯形，实机截图一眼可见。）
+	_panel.custom_minimum_size = Vector2(640.0, 0.0)
 	# 🆕 补面板样式（原先走 Godot 默认主题 → 一块无描边的灰色方块，与战场语言断裂）
 	_panel.add_theme_stylebox_override("panel", _Style.panel(_Style.C_ALLY, 2, 26.0, 22.0))
 	# 🆕 §5.5 蓝图语言：外沿四角 L 刻线，accent 随胜负切换（show_result 内 set_chrome_accent）
@@ -109,11 +112,17 @@ func _build() -> void:
 	margin.add_child(vbox)
 
 	# 🆕 v4 横幅带：标题上方（宽随面板拉伸；缺失 → 不加，标题直接顶上）
+	#   🔴 STRETCH_SCALE 会把 960×96 硬拉到面板宽 × 64 —— 只有面板正好 640 宽
+	#      才是等比。改用 KEEP_ASPECT_CENTERED，比例变了也不会变形（上下/左右留白）。
 	if _load_tex(BANNER_WON_PATH) != null:
 		_banner = TextureRect.new()
 		_banner.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		_banner.stretch_mode = TextureRect.STRETCH_SCALE
+		_banner.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 		_banner.custom_minimum_size = Vector2(0.0, 64.0)
+		# 🔴 源图是淡金色斜切条（中间一块更亮），按不透明贴上去就是「面板顶部贴了
+		#    一张浅色纸」，亮度压过标题，中间高亮块还像碎梯形。降到 0.26 后它退回
+		#    「标题区的暖色底纹」，胜负各用自己的色相（金 / 红）仍可分辨。
+		_banner.modulate = Color(1, 1, 1, 0.26)
 		vbox.add_child(_banner)
 
 	_title_label = Label.new()

@@ -177,6 +177,13 @@ func _build_menu() -> Control:
 	col.add_child(gap2)
 
 	# 三个入口（按钮 = 320×52，同一列左对齐；▶ 是键盘焦点标记，形状通道）
+	# 🆕 入口独立成 VBox（separation 10）：ghost 改成下划线式之后有了可见按钮体，
+	#    沿用 `col` 的 6px 会把三个入口挤成一整块，与上方标题块失去分组感。
+	var btn_box := VBoxContainer.new()
+	btn_box.add_theme_constant_override("separation", 10)
+	btn_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	col.add_child(btn_box)
+
 	var defs := [["开始游戏", "primary"], ["卡组图鉴", "normal"], ["退出游戏", "ghost"]]
 	for i in defs.size():
 		var row := HBoxContainer.new()
@@ -195,7 +202,7 @@ func _build_menu() -> Control:
 		b.pressed.connect(_activate.bind(i))
 		b.mouse_entered.connect(_focus_on.bind(i))
 		row.add_child(b)
-		col.add_child(row)
+		btn_box.add_child(row)
 		_menu_buttons.append(b)
 		_menu_markers.append(mk)
 
@@ -253,15 +260,18 @@ func _build_library() -> Control:
 
 	_back_btn = Button.new()
 	_back_btn.text = "返 回"
-	_back_btn.custom_minimum_size = Vector2(180.0, 46.0)
+	# 🆕 180 → 76：ghost 现在带下划线，180 宽的线下面只挂 3 个字（居中），
+	#    会变成「一条长线 + 中间一小撮字」。收到 ≈ 文字宽 + 内边距后，
+	#    线 ≈ 词的宽度，右端与下方「滚轮浏览 · Esc 返回主界面」同一边界。
+	_back_btn.custom_minimum_size = Vector2(76.0, 40.0)
 	_back_btn.focus_mode = Control.FOCUS_NONE
 	_Style.button(_back_btn, "ghost")
 	_back_btn.anchor_left = 1.0
 	_back_btn.anchor_right = 1.0
-	_back_btn.offset_left = -LIB_MARGIN_X - 180.0
+	_back_btn.offset_left = -LIB_MARGIN_X - 76.0
 	_back_btn.offset_right = -LIB_MARGIN_X
-	_back_btn.offset_top = 38.0
-	_back_btn.offset_bottom = 84.0
+	_back_btn.offset_top = 42.0
+	_back_btn.offset_bottom = 82.0
 	_back_btn.pressed.connect(back_to_menu)
 	page.add_child(_back_btn)
 
@@ -418,6 +428,12 @@ func _make_card(pack_id: String, nm: String) -> Control:
 	pc.custom_minimum_size = CARD_SIZE
 	pc.add_theme_stylebox_override("panel", _Style.card_blueprint("normal", rar))
 	pc.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# 🔴 卡宽必须锁死 278：`custom_minimum_size` 只是**最小**值，PanelContainer 的
+	#    实际最小宽还会被最长文本行顶大。实测（tools/probe_ui_rects.gd）改造前
+	#    8 个包里有 6 个包卡宽不齐，278 / 282 / 304 / 308 / 318 / 326 混排，
+	#    最右一列顶到 x=1618 —— 超出卡片网格公共右边界 1536，长卡名的卡直接
+	#    压到隔壁格子。⇒ 文字一律 clip（min width 归 0），再加 clip_contents 兜底。
+	pc.clip_contents = true
 
 	# 🆕 插画（2026-11-08 批次②③）：左侧 96×96 方形安全区缩放。
 	#    资产缺失 / headless 未导入 → card_art() 返回 null → 降级为纯文字条（占满整行）。
@@ -443,19 +459,21 @@ func _make_card(pack_id: String, nm: String) -> Control:
 	row.add_child(v)
 
 	var top := HBoxContainer.new()
-	top.add_theme_constant_override("separation", 6)
+	top.add_theme_constant_override("separation", 4)
 	top.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	v.add_child(top)
 
 	var name_l := _Style.label(nm, 18, _Style.C_WHITE)
 	_Style.apply_font(name_l, "medium")
+	# 🔴 名字必须自己吃下剩余宽度（EXPAND_FILL），**不能**再靠一个 `sp` 占位来顶：
+	#    一旦 clip_text = true，Label 的最小宽归 0，若旁边还有一个 EXPAND 的空白 Control，
+	#    HBox 会把全部剩余宽度分给那个空白，名字直接拿到 0px 被裁干净（实测：
+	#    32 张卡名整行消失）。clip 只在极端长名下才触发省略号。
+	name_l.clip_text = true
+	name_l.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	name_l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	name_l.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	top.add_child(name_l)
-
-	var sp := Control.new()
-	sp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	sp.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	top.add_child(sp)
 
 	# 稀有度 ▲ 角标（形状通道，与边框色双通道表达）
 	var pips := _Style.label("▲".repeat(_Style.rarity_pips(rar)), 16, _Style.rarity_color(rar))
@@ -471,6 +489,8 @@ func _make_card(pack_id: String, nm: String) -> Control:
 
 	var desc := _Style.label(_CardText.describe(nm), 16, _Style.C_TEXT)
 	desc.autowrap_mode = TextServer.AUTOWRAP_OFF
+	desc.clip_text = true                         # 同上：3 行 `\n` 文本，行宽不参与最小宽
+	desc.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	desc.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	v.add_child(desc)
 
@@ -535,9 +555,11 @@ func _refresh_dynamic() -> void:
 			_status.text = "最佳波次 W%d · 已解锁 %d / %d 包" % [
 				best, unlocked.size(), _Packs.PACKS.size()]
 	if _lib_head != null:
-		_lib_head.text = "共 %d 张卡 · %d 个卡包 · 基础每包 %d 张（实际 %d 个卡位）· 未解锁包压暗显示" % [
-			_Packs.all_cards().size(), _Packs.PACKS.size(), _Packs.CARDS_PER_PACK,
-			_Packs.all_cards().size()]
+		# 🔴 旧文案「共 81 张卡 …（实际 81 个卡位）」把同一个数字说了两遍，
+		#    「基础每包 10 张」又是开发者口径（熔炉包实际 11 张）。改成玩家口径：
+		#    总数 + 包数 + 每包下限 + 锁定包的表现。
+		_lib_head.text = "%d 张卡 · %d 个卡包 · 每包 %d 张起 · 未解锁包压暗显示" % [
+			_Packs.all_cards().size(), _Packs.PACKS.size(), _Packs.CARDS_PER_PACK]
 	for blk in _pack_blocks:
 		var pid := String((blk as Dictionary)["id"])
 		var st: Label = (blk as Dictionary)["status"]
