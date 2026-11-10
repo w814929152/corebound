@@ -60,6 +60,7 @@ const TestSuiteFrost := preload("res://tests/run_frost_asserts.gd")
 const TestSuiteFireCharge := preload("res://tests/run_fire_charge_asserts.gd")
 const TestSuiteCombatTypes := preload("res://tests/run_combat_types_asserts.gd")
 const TestSuiteStageWaves := preload("res://tests/run_stage_waves_asserts.gd")
+const TestSuiteTowerSprites := preload("res://tests/lint_tower_sprites.gd")
 const _Geo := preload("res://scripts/geo/geo.gd")
 const _SpaceModel := preload("res://scripts/geo/space_model.gd")
 
@@ -175,7 +176,7 @@ func _initialize() -> void:
 				or a == "extpack" or a == "uistyle" or a == "tlv"
 				or a == "cardpack" or a == "campaign" or a == "combat_types"
 				or a == "stagewaves" or a == "firecharge" or a == "frost"
-				or a == "world"):
+				or a == "towersprites" or a == "world"):
 			only = a
 
 	var ok := true
@@ -251,6 +252,9 @@ func _initialize() -> void:
 	#   V-5「0-1 每一波必中性」是整条回归链的锚点，必须每次都被检查到。
 	if only == "" or only == "stagewaves":
 		ok = _run_suite(TestSuiteStageWaves) and ok
+	# 🆕 塔身贴图（2026-11-10）：免导入 lint，守住「82 个塔原型都有 128² 贴图且互不雷同」。
+	if only == "" or only == "towersprites":
+		ok = _run_suite(TestSuiteTowerSprites) and ok
 	# 🆕 关卡实装（2026-11-09）：地形 / 镜头 / 结构攻防 / 建筑卡商店 / 准备阶段 …
 	#   进默认回归（子进程串行，约 20–40 s）；只想跑这一组时用 `-- world`。
 	if only == "" or only == "world":

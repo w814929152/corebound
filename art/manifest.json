@@ -1721,7 +1721,63 @@
    ]
   },
   {
+   "file": "sprites/sp_tower_arc_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "sprites/sp_tower_arcane_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
    "file": "sprites/sp_tower_arrow_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "sprites/sp_tower_ashen_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "sprites/sp_tower_avalanche_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "sprites/sp_tower_ballista_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "sprites/sp_tower_bastion_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "sprites/sp_tower_blaze_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "sprites/sp_tower_blight_v1.png",
    "size": [
     128,
     128
@@ -1735,7 +1791,70 @@
    ]
   },
   {
+   "file": "sprites/sp_tower_breaker_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
    "file": "sprites/sp_tower_cannon_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "sprites/sp_tower_catapult_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "sprites/sp_tower_cinder_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "sprites/sp_tower_circuit_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "sprites/sp_tower_coil_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "sprites/sp_tower_crusher_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "sprites/sp_tower_curse_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "sprites/sp_tower_drillmaster_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "sprites/sp_tower_drummer_v1.png",
    "size": [
     128,
     128
@@ -1749,7 +1868,77 @@
    ]
   },
   {
+   "file": "sprites/sp_tower_eraser_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "sprites/sp_tower_executioner_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "sprites/sp_tower_exile_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "sprites/sp_tower_foundry_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
    "file": "sprites/sp_tower_frost_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "sprites/sp_tower_furnace_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "sprites/sp_tower_glacier_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "sprites/sp_tower_hail_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "sprites/sp_tower_harrier_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "sprites/sp_tower_hellfire_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "sprites/sp_tower_hemorrhage_v1.png",
    "size": [
     128,
     128
@@ -1763,7 +1952,28 @@
    ]
   },
   {
+   "file": "sprites/sp_tower_hexer_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "sprites/sp_tower_icehunter_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
    "file": "sprites/sp_tower_icicle_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "sprites/sp_tower_impaler_v1.png",
    "size": [
     128,
     128
@@ -1777,7 +1987,35 @@
    ]
   },
   {
+   "file": "sprites/sp_tower_kinetic_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
    "file": "sprites/sp_tower_lance_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "sprites/sp_tower_longbow_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "sprites/sp_tower_malison_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "sprites/sp_tower_martyr_v1.png",
    "size": [
     128,
     128
@@ -1791,6 +2029,34 @@
    ]
   },
   {
+   "file": "sprites/sp_tower_necro_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "sprites/sp_tower_needle_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "sprites/sp_tower_null_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "sprites/sp_tower_obliterator_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
    "file": "sprites/sp_tower_oblivion_v1.png",
    "size": [
     128,
@@ -1798,7 +2064,161 @@
    ]
   },
   {
+   "file": "sprites/sp_tower_omen_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "sprites/sp_tower_overcharge_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "sprites/sp_tower_permafrost_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "sprites/sp_tower_plague_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "sprites/sp_tower_purity_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "sprites/sp_tower_pyre_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "sprites/sp_tower_pyroclasm_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "sprites/sp_tower_quake_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "sprites/sp_tower_ranger_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "sprites/sp_tower_rend_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "sprites/sp_tower_rift_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "sprites/sp_tower_ruin_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
    "file": "sprites/sp_tower_rune_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "sprites/sp_tower_scout_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "sprites/sp_tower_sentry_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "sprites/sp_tower_shard_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "sprites/sp_tower_shatter_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "sprites/sp_tower_siege_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "sprites/sp_tower_sniper_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "sprites/sp_tower_snowfall_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "sprites/sp_tower_soulpiercer_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "sprites/sp_tower_spark_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "sprites/sp_tower_storm_v1.png",
    "size": [
     128,
     128
@@ -1819,7 +2239,56 @@
    ]
   },
   {
+   "file": "sprites/sp_tower_thunder_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "sprites/sp_tower_thunderhead_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "sprites/sp_tower_vanguard_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
    "file": "sprites/sp_tower_void_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "sprites/sp_tower_whiteout_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "sprites/sp_tower_wildfire_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "sprites/sp_tower_wither_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "sprites/sp_tower_wraith_v1.png",
    "size": [
     128,
     128

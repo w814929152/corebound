@@ -142,17 +142,22 @@ UI 由 `scripts/ui/ui_style.gd::card_art(card_name)` 懒加载，缺图 / headle
 
 ---
 
-## 6. 战场实体（25 件）
+## 6. 战场实体（92 件）
 
 | 组 | 件数 | 名单 |
 |---|---:|---|
-| 塔身 `sp_tower_*` | 15 | arrow, bolt, cannon, ember, frost, hex, icicle, javelin, lance, maul, oblivion, rune, sunder, tesla, void |
+| 塔身 `sp_tower_*` | **82** | 覆盖 `building_card_params.gd` 的 `TOWERS`(3) + `TOWERS_EXT`(79) 全部可摆放原型；完整名单见 `art/manifest.json` |
 | 怪物 `sp_mon_*` | 6 | rush / swarm / tank 各含普通 + elite |
 | 投射物 `sp_proj_*` | 2 | bolt, dot |
 | 核心 / 杂兵 | 2 | `sp_core_v1`(256²), `sp_minion_v1` |
 | 散布件 | — | 其余为 128² / 64² |
 
 `monster_layer.gd::_sprite("sp_tower_" + ctype.to_lower())` 拼名加载，判空降级回程序化 `draw_*`。
+🔴 **2026-11-10 v2 更新**：原先 15 张塔贴图由同一八边形模板烘焙、只有中心小徽记不同，且其余 67 个原型无贴图（降级成默认三角、与 Arrow 撞脸）。
+现由 `tools/gen_tower_sprites_v2.py` 按数值 SSOT 生成 82 张，逐塔不同武装构型 + tag 双通道；
+`tests/lint_tower_sprites.gd`（进默认回归）守住「每个原型都有 128² 贴图且互不逐字节相同」。
+🆕 **2026-11-10 增量**：数值表外部新增 `Icehunter`（第 82 个原型），已由同一产线补出 `sp_tower_icehunter_v1.png` 并同步 manifest；`-- towersprites` 82/82 PASS。v2 预览总览仍为首版 81 张快照，待数值表稳定后统一全量重跑。
+设计与红线见 `design/art/tower-sprites-v2.md`。
 VFX 特效、伤害数字、塔位空槽 / 威胁楔、同心环仍为纯代码绘制，Solo 约束下的有意选择。
 
 ---
@@ -175,6 +180,7 @@ VFX 特效、伤害数字、塔位空槽 / 威胁楔、同心环仍为纯代码�
 | `asset-pack-v1/v2-hud/v3-map/v4-map-terrain/v4-result/v5-lib.md` | 六个资产包提案与接入记录 | 全部已落地 |
 | `card-illustration-style-v1.md`、`card-prompts-batch1/2.json`、`tools/card_batch_prompt.py` | 旧正面立面 v4/v4b/v4c 口径 | ⚪ **留档 + 已挂 DEPRECATED 标注，与现行 3/4 口径冲突，勿用于新卡** |
 | `asset-gap-audit-2026-11-09.md` | 09:09 缺口审计 | ⚪ **已过期作废**，见 §10 |
+| `tower-sprites-v2.md` | 战场塔身贴图 v2：辨识度红线、六通道视觉语言、加载契约与产线 | 2026-11-10 现行 |
 
 ---
 
@@ -183,7 +189,7 @@ VFX 特效、伤害数字、塔位空槽 / 威胁楔、同心环仍为纯代码�
 | 环节 | 脚本 |
 |---|---|
 | 卡面出图后处理 | `card_tone_levels.py`（四档色阶）、`card_keyout.py`（自适应底色去底 + 可选 `--degrid`）、`card_batch3_process.py`（整包批量）、`card_mock_card.py`（卡框样张）、`card_contact_sheet.py` |
-| 程序化贴图生成 | `gen_art_pack_v1.py`（v1 界面件）、`gen_ui_hud_pack_v1.py`、`gen_ui_map_pack_v1.py`、`gen_ui_result_pack_v1.py`、`gen_ui_lib_pack_v1.py`、`gen_map_terrain_v1.py` |
+| 程序化贴图生成 | `gen_art_pack_v1.py`（v1 界面件）、`gen_ui_hud_pack_v1.py`、`gen_ui_map_pack_v1.py`、`gen_ui_result_pack_v1.py`、`gen_ui_lib_pack_v1.py`、`gen_map_terrain_v1.py`、`gen_tower_sprites_v2.py`（2026-11-10 起塔身 82 张的现行产线，v1 塔贴图已由其覆盖） |
 | 主视觉派生 | `keyart_postprocess_v1.py`、`keyart_menu_hero_v1.py`、`keyart_stage_bg_v1.py` |
 | 引擎探针 / 截图 | `probe_card_art_all.gd`（80 张加载）、`shoot_card_art_smoke.gd`、`shoot_main_menu.gd`、`shoot_stage_smoke.gd`、`shoot_hud_smoke.gd`、`shoot_result_smoke.gd`、`shoot_map_terrain_smoke.gd`、`shoot_rarity_smoke.gd`、`probe_font_weight.gd` |
 | 评审留档 | `art/_review/batch1..batch11/` 各含 `raw_*` 原图、`mock_*` 卡框样张、`contact_*` 接触表、`compare_*` 对比、`watermark_check_*` |
