@@ -2,308 +2,147 @@
 
 [![CI](https://github.com/w814929152/corebound/actions/workflows/ci.yml/badge.svg)](https://github.com/w814929152/corebound/actions/workflows/ci.yml)
 
-> 肉鸽塔防 + 卡牌构筑 · PC / Steam · Godot 4.7.2-stable
->
-> 玩家在**径向战场**上围绕核心布置防御塔，每波之间用安全窗买卡、装配、改装构筑；
-> 开局先在**裂隙航图**（大地图）上选关，打完该关要求的波数（10~20）且核心未归零即通关。
+**围绕核心建造防线，用卡牌组合抵御来自四周的怪物。**
 
----
+守核是一款开发中的肉鸽塔防与卡牌构筑游戏，面向 PC，使用 **Godot 4.7.2** 开发。玩家从裂隙航图选择关卡和卡包，在波间购买建筑、部署防御塔，再主动开启下一波。守住核心并完成关卡要求的波数即可通关。
 
-## 玩法一句话
+## 当前版本
 
-怪物从**出生环**沿径向直插**核心**（径向核心围攻）。塔位分布在核心周围的暴露 / 安全环带上；玩家在波间安全窗内用**废料**买卡（建筑卡 / 单塔卡 / 全局卡）与刷新商店，构筑出一条能清场的防线。核心 HP 归零即失败，打完该关要求的波数（`campaign_data.STAGES[*].wave_count`）且核心未归零即通关。
+截至 **2026-11-10**，已提交的主要内容：
 
-## 核心机制
+- **10 个关卡**：各有异形地形、障碍、入口与波表，每关 10–20 波。
+- **8 个卡包、82 张建筑卡**：每局最多选择 3 包，形成 30–32 张建筑卡池；可用包不足 3 个时使用全部可用包。
+- **自由部署与升级**：在可建区域拖放建筑，同原型落在同格可升级，建筑上限为 10 座。
+- **战术战斗**：防御塔按实际射程攻击，怪物可持续攻击塔与核心；支持物理、魔法、真实伤害及多种状态效果。
+- **中文界面与卡名**：菜单、图鉴、卡包、商店、背包和详情共用名称来源。
+- **居中竖版商店**：三张卡牌并排展示，移除外层底板与工具栏，停留卡面后显示详情。
+- **镜头导航与退出确认**：默认 200% 近景，支持平移、缩放和总览；退出关卡前暂停并确认。
 
-| 机制 | 说明 |
+![商店界面预览](art/_review/shop-portrait.png)
+
+*已提交商店版本的运行截图；此图用于展示卡牌布局。*
+
+## 开始游戏
+
+1. 安装 **Godot 4.7.2**，克隆仓库。
+2. 用 Godot 导入仓库根目录的 `project.godot`，等待资源导入完成。
+3. 运行项目，从主菜单进入裂隙航图，选择已解锁的关卡和卡包。
+4. 开局只有核心和 **30 废料**。购买建筑卡，将底部背包里的建筑拖到地图上，点击“开始战斗”。
+
+也可使用命令行启动：
+
+```bash
+git clone https://github.com/w814929152/corebound.git
+cd corebound
+godot --editor --path .
+godot --path .
+```
+
+命令中的 `godot` 需替换为本机引擎可执行文件路径，或先将引擎加入 PATH。
+
+## 操作
+
+| 操作 | 方式 |
 |---|---|
-| **径向运动学** | `ρ = R_s · m_spd · clamp(t_remain/t_reach, 0, 1/m_spd)`；`t_remain` 为**唯一权威状态量**，出生角由黄金角派生的**确定性**序列给出（零 RNG） |
-| **三原型分化** | Rush（快 / 高移速）/ Swarm（基准）/ Tank（慢 / 高 HP）——由 `prototype_split_enabled` 控制 |
-| **精英波（Elite）** | 每 5 波（W5/10/15/20）出现精英单位（更高 HP + 品红环标识）；Sapper 精英锁塔增伤 |
-| **塔死亡与处置** | 仇恨锁定 → 塔可被打到 `Disabled` 中间态（断输出不断链）→ 修复 / 被动拆除 / 放置不管 |
-| **献祭（Salvage Rite）** | 安全窗内拆塔的第二个出口：返还 0%、卡全销毁，换取 `stackcap_bonus`（收益 ∝ 投入） |
-| **肉盾流（Bulwark）** | 涌现策略：暴露位塔先挨打、怪物锁定后停下不漏怪 → 用站位换来后排输出 |
+| 选择关卡 | 点击航图节点，或 `←` / `→` 移动焦点、`Enter` 选择 |
+| 航图返回主菜单 | `Esc` |
+| 打开 / 收起商店 | `Tab` |
+| 购买商品 | 点击购买，或商店打开时按 `1` / `2` / `3` |
+| 刷新商店 | 商店打开时按 `R`，消耗废料 |
+| 锁定商品 | 点击卡面“锁定”；商店打开时 `Space` 切换当前焦点商品的锁定 |
+| 部署建筑 | 从底部建筑背包拖放到可建格子 |
+| 取消放置 / 收起商店 | `Esc` |
+| 开始战斗 / 下一波 | 点击右上方对应按钮 |
+| 平移战场 | 拖动空地或按住鼠标中键拖动 |
+| 缩放 / 总览 | 滚轮或导航按钮；“总览”查看全图 |
+| 回到核心 | `F` 或“回到核心”，恢复默认 200% 近景 |
+| 退出当前关卡 | 点击“退出关卡”，确认返回航图；`Esc` 或“继续游戏”取消 |
 
-## 卡池与扩展包
+主动放弃不结算本局奖励，永久解锁进度保留；重新挑战会重建本局构筑。
 
-> 🔴 **2026-11-09 起玩家商店只出售建筑卡**（`shop_runtime.EFFECT_CARDS_ENABLED = false`，效果卡实现保留）。
-> 当前基础池 = `Arrow` / `Cannon` / `Frost` **3 张**；下文的 `FireUp` / `FrostUp` / `ScrapUp` 与扩展包强化卡
-> **暂不进池**。把该常量改回 `true` 即恢复 6 张混合池口径。
+## 卡包与关卡进度
 
-玩家路线商店基础池 6 张：`Arrow` / `Cannon` / `Frost`（三塔）+ `FireUp` / `FrostUp`（强化）+ `ScrapUp`（经济）。
+当前玩家商店**只出售建筑卡**。强化卡、经济卡的历史实现保留在工程中，未加入当前玩家卡包。
 
-**扩展包**（实机默认开启，`shop_runtime.set_extended_pack()` 一行可关）再加 4 张：
+| 卡包 | 建筑数 | 主要机制 |
+|---|---:|---|
+| 泛用包 | 10 | 经济、赏金、物理类型转换 |
+| 熔炉包 | 11 | 灼烧、火焰充能、登场升级 |
+| 霜序包 | 11 | 冰冻、减速、整备升级 |
+| 穿甲包 | 10 | 贯穿、流血、阵亡升级 |
+| 电弧包 | 10 | 弹射、减速、击杀升级 |
+| 破甲包 | 10 | 削物抗、流血、攻防光环 |
+| 咒术包 | 10 | 削魔抗、易伤、持续伤害 |
+| 湮灭包 | 10 | 真实伤害、召唤、觉醒 |
 
-| 卡 | 定位 | dps | tag | rng | 特点 |
-|---|---|---|---|---|---|
-| **Lance** | 远程狙击 | 11.0 | `pierce` | 26.0 | 射程与输出双高，代价是独立 tag（协同从头攒） |
-| **Tesla** | 贴身通电 | 6.0 | `shock` | 16.0 | 全塔最低 dps，换群伤 + 0.10 减速 |
-| **PirUp** / **ShkUp** | 强化 | — | `pierce` / `shock` | — | 分别只对 Lance / Tesla 生效 |
+泛用包常驻；已守地区的科技永久解锁，当前地区原生卡包可在本关借用。通关与失败按规则结算余烬，主动退出不结算。再来一局会先返回航图，可重新选择关卡和卡包。
 
-🔴 **扩展卡只进玩家池**：金标本 `TOWERS` / `ShopAI.CARD_NAMES` / `WEIGHTS` 一字未动，AI 路线与 300 局 MC 金标本完全不受影响。设计与取舍见 `docs/phase6/extended-pack.md`。
+建筑只能部署在可建格子，障碍、核心禁建区和地图外不可落子。同原型同格叠层升级；不同原型不能覆盖已有建筑。放置时显示六边形网格，取消后建筑仍保留在背包中。
 
-### 卡包（82 张建筑卡 · 每局最多选 3 包）
+完整内容见 [卡牌图鉴](docs/phase6/card-catalog.md)、[卡包设计](docs/phase6/card-packs.md) 和 [关卡推进](docs/phase6/world-map.md)。
 
-当前卡池共 **8 包、82 张建筑卡**：熔炉包、霜序包各 11 张，其余每包 10 张，一卡一包。选择 3 包时，本局卡池为 **30 张**，每包含熔炉包或霜序包之一增加 1 张（最多 **32 张**）；可用包不足 3 个时选择全部可用包。
+## 开发与验证
 
-| 卡包 | id | 张数 | 机制 |
-|---|---|---|---|
-| 泛用包 | `core` | 10 | 赏金、经济、物理类型转换 |
-| 熔炉包 | `cinder` | 11 | 灼烧、火焰充能、登场升级、觉醒 |
-| 霜序包 | `rime` | 11 | 冰系、减速、整备升级 |
-| 穿甲包 | `pierce` | 10 | 贯穿、流血、阵亡升级 |
-| 电弧包 | `arc` | 10 | 弹射链、减速、击杀升级 |
-| 破甲包 | `sunder` | 10 | 削物抗、流血、攻防光环 |
-| 咒术包 | `hex` | 10 | 削魔抗、易伤、持续伤害 |
-| 湮灭包 | `true` | 10 | 真实伤害、击杀升级、召唤、觉醒 |
-
-- 玩家路线按地区解锁科技包：泛用包常驻，已守地区的科技永久入手，当前地区的原生包可本关借用。
-- 刷新保底：手动刷新后若没有所选包的身份塔，会替换一个未锁定位补入随机身份塔。
-- 关卡选择后进入选包，再开始战斗；再来一局会先返回航图。
-- 卡包与顺序以 `scripts/data/card_packs.gd` 为准；完整图鉴见 `docs/phase6/card-catalog.md`。
-- 选择存档为 `user://card_packs.json`；空选包时保留旧测试口径。
-
-设计推导、池序坑、刷新保底、与关卡推进的关系见 `docs/phase6/card-packs.md`。
-
-- **金标本（golden reference）逐位对齐**：玩法数值以一套 Python 对照实现为金标本，headless 测试逐位（`%.17g` / `%.17e`）比对，任何 ULP 级偏差都会翻红。
-- **浮点可移植性强制**（ADR-0002）：整数指数必须走 `FpPow.pow_int()`；移植 Python `sum()` 必须走 `FpSum.sum_py()`。
-- **双空间模型**：`SpaceModel` 支持 PATH（折线路径）与 RADIAL（径向）双模，默认 PATH、窗口模式注入 RADIAL，一行可回滚。
-- **渲染层只读**：UI 只读战斗快照（snapshot），零玩法写入、零新信号。
-
-## 关卡推进与裂隙航图（大地图选关）
-
-全屏裂隙航图采用**五层轨道、螺旋链式展示**，由中枢逐步向主脑核心推进。航线表示展示顺序，实际解锁按前置与已守地区数量判断。
-
-| 区域 | 关卡 | 波数 |
-|---|---|---|
-| 中枢 · 铁砧 | 0-1 | 10 |
-| 外环 · 残存区 | 1-1 / 2-1 / 3-1 | 12 / 12 / 13 |
-| 中环 · 争夺区 | 4-1 / 5-1 / 6-1 / 7-1 | 15 / 15 / 16 / 17 |
-| 主脑外围 | 8-1 | 19 |
-| 主脑核心 | 9-1 | 20 |
-
-- 点击已解锁节点选择关卡；`←→` 移动焦点，`Enter` 选择，`Esc` 返回主菜单（界面保留文字提示）。
-- 守住中枢后开放外环三区，中环按各关前置解锁；守住至少 5 个地区可进外围，守住全部 7 区且通关外围后可挑战核心。
-- 通关与失败按规则结算余烬，关卡通关还会永久解锁对应地区科技包。
-- **换图不换引擎**：每关绑定一张 `map_variants` 变体图，切换只改
-  `SpaceModel.active_map_id`，岩脊 / 出生弧 / 阵地表整套替换。
-- **再来一局**回到航图（能看到刚解锁的关），再选卡包 → 开打。
-- 🔴 三态用**形状 + 颜色 + 文字**三条通道表达（✓ 已通关 / ▶ 可挑战 / 🔒 未解锁），
-  锁定节点点上去**无反应**，不弹错、不踢人。
-- 当前关卡与波表以 `campaign_data.gd`、`stage_waves.gd` 为准；世界主线说明见 `design/gdd/campaign-v2-overseer.md`。
-- 一行回滚：`boot.gd` 的 `CAMPAIGN_ENABLED = false` → 不弹航图、不注入波数、不记账，
-  回到 20 波金标本口径（卡包流程照旧）。
-
-设计与布局推导见 `docs/phase6/world-map.md`。
-
-## UI 样式
-
-所有玩家可见界面共用一层样式来源 `scripts/ui/ui_style.gd`（调色板 / **字体注册表** / StyleBox 工厂 / 按钮变体 / 悬停动效），
-色值逐字取自 `design/art/art-bible.md` §2.2，**不允许在各界面里二次发明颜色或控件外观**。
-
-- **字体（art-bible §5.4，2026-11-07 接入）**：正文 Noto Sans SC 400 / 强调 500 / 展示 900
-  （思源黑体同源 · SIL OFL）+ JetBrains Mono 等宽数字 —— 统一经 `ui_style.gd` 的
-  `font_body / font_medium / font_display / font_num` 取用；`project.godot` 的
-  `gui/theme/custom_font` 做工程级兜底。数字读数（积分 / 血量 / 波次 / 等级牌 / 伤害数字）
-  一律等宽，滚动不再抖动。两份字体均带 OFL 授权文件入库 `assets/fonts/`。
-
-- 按钮五变体：`primary`（金描边，主操作）/ `normal` / `ghost` / `danger` / `unavail`，
-  自带悬停抬起 1.05、按下 0.97、0.12s 弹性缓动（§5.1）。
-- **蓝图 chrome 与仪表读数（2026-11-07 接入）**：`attach_corner_chrome()` 提供外沿四角
-  L 刻线（accent 可运行时切换 —— 结算面板胜利辉金 / 失败警报红），选包 / 选关主面板共用；
-  结算界面 = Black 标题 + 三行等宽战报（核心剩余 / 坚守波次 / 本局废料），
-  选包 / 选关底栏数字读数（已选 N/M 包 · 卡池 K 张 / 余烬）一律拆「中文骨架 + 等宽数字」。
-- 玩家可见文本最小 16px 由 `_Style.label()` 强制兜底（§9.1 P0）。
-- 结构断言 `tests/run_ui_style_asserts.gd`（80 项，进默认回归）钉住：**不得出现系统默认控件**、
-  三位商品位尺寸一致（X3）、文案零开发占位、调色板不漂移、卡面每行 ≤9 汉字、放置入口可达。
-
-重构背景与逐条对照见 `docs/phase6/ui-polish.md`。
-
-## 卡面信息
-
-每张卡在商店里必须自己回答「这张卡干什么」，文案统一从 `scripts/data/card_text.gd` 取，
-**对数值 SSOT 只读不写** —— 伤害 / 射程 / 可强化对象全部现场派生，改数值卡面自动跟随。
-
-- 卡面视觉走**蓝图风**（art-bible §5.5，2026-11-07 落地）：直角细描边卡座 + 四角刻线
-  （可购性提亮为耀青）+ Tag 电路符号芯片（`ui_style.TAG_COLORS`，颜色复用 §2.2 登记色）
-  + 等宽数字价格。Tag 数据源 = `card_text.tag_of()`；**稀有度色阶不做**（GDD §7.1）。
-
-- 商品位恒 3 行：`机制` / `伤害 7 · 射程 18` / `标记：火`（建筑卡）；
-  `强化「火」系塔` / `可强化 Cannon` / `同卡再买叠层`（单塔效果卡）。
-- 三张卡下方一行说清购买流程（建筑卡进待放置队列 / 单塔效果卡投给点选塔 / 全局卡立即生效）。
-- 🔴 商品位内宽实测仅 **155px**，16px 下**一行只放得下约 9 个汉字** ——
-  文案写超了会二次换行、把三张卡撑成不等高，`uistyle` §I 有断言拦这条。
-
-设计与版式推导见 `docs/phase6/card-text.md`。
-
-## 放置塔（自由摆放）
-
-建筑卡买下后进「待放置队列」，点队列里的「放置」进入 ⑤ 放置模式（0.25× 减速、**抽屉收起、战场全屏**）。
-
-**塔可以放在任意格点**，不再限于 6 个固定塔位：进入 ⑤ 后整片可建区铺开**正六边形网格**
-（外接圆半径 1.55 单位，邻格间距 2.68 单位），鼠标所指的格子实时给出落子预览。
-
-> **为什么是六边形**：方格到 4 个斜角邻格的距离是正邻的 1.414 倍 —— 斜向埋塔更便宜，
-> 玩家会自发只走对角线、塔阵退化成菱形条纹。六边形 6 个邻格距离全等（√3R），
-> 没有这个「免费的方向」。单格面积 6.24 u² ≈ 改前方格 2.5² = 6.25 u² → **单格容量不变**，
-> 网格覆盖 960 个格心（改前 964）。
-
-| 格子状态 | 战场表现 | 点击结果 |
-|---|---|---|
-| 可新建 | 耀青六边形 + 半透明填充 + `＋` 徽标 | 落子 |
-| 可升级（同格同原型） | 辉金粗六边形框（只描边不填充，塔身不被染色）+ `↑` 徽标 | 叠层，不新增塔 |
-| 核心禁建区 / 战场外 | 钢灰六边形，无徽标 | 无反应 |
-| 塔数已满 / 该格已有别的原型 | 钢灰六边形，无徽标 | 无反应 |
-
-- 可建区：核心周围 4 单位禁建，外径 44 单位封顶（出生环 55，不给"怪一出生就挨打"的白嫖位）。
-- **塔数上限 10**（`cfg["tower_cap"]`），与金标本槽位数 `n_slots = 6` 语义分离。
-  ⚠️ 10 是起点值、**未经 MC 校准**，见下一节。
-- 可建位几何与判定共用 `scripts/geo/build_grid.gd` —— 逻辑层和渲染层不会各写一套参数。
-- 🔴 **点错不踢人**：点禁建区 / 点灰显格都只是无反应，退出放置模式只认 `Esc`。
-- 徽标符号全部用 `draw_line` 画，渲染层保持零文本（AC-T1-24）。
-- 结构断言 `tests/run_ui_style_asserts.gd` §J（14 项）+ §K（27 项，进默认回归）钉住
-  「落子入口可达」与「网格几何不变量（吸附幂等 / 核心禁建 / 塔数上限 / 同格升级）」。
-- 端到端点击验证见 `tests/probe_placement.gd`（需窗口，非 CI）。
-
-### ⚠️ 塔数上限 10 未经平衡验证
-
-`n_slots = 6` 是 κ_r=0.050 / ATTRITION=1.50 / 300 局 MC 判据链的共同基准。放宽到 10 座后，
-经济曲线、κ 收敛路径、每波掉塔期望都会变 —— 要变成可发布数值需重跑 10 槽口径 MC 并重标 κ_r。
-
-一键回退：`ShopRuntime.free_placement = false` → 回到 6 个固定塔位（金标本口径）。
-
-设计与取舍见 `docs/phase6/free-placement.md`；上一轮"落子入口不可达"的修复复盘见
-`docs/phase6/placement-fix.md`。
-
-## 关卡实装（2026-11-09）
-
-十关各自一张异形地块（`scripts/data/battlefield_maps.gd`）：地形绘制、建塔、放置网格、敌人出生边界共用同一份数据；
-场地扩为原版 1.5 倍宽高。战场镜头支持左键拖空地 / 中键平移 / 滚轮缩放 / `F` 回到核心，商店与背包不抢手势。
-
-- **怪物攻建筑**：从第一波起，怪到仇恨范围停下打塔；无塔可打时抵近核心 3 单位持续攻核，可被击杀。参数在 `monster_data.gd`（基础 20/s × 原型系数），仍属可玩初值、未做整局平衡。
-- **战术战斗**：玩家关卡逐塔按真实射程找目标，溢出只在同一射程内结转；模拟器与历史回归仍走原聚合池。
-- **开局**：只有核心 + 30 废料，没有起手塔；准备阶段自行买卡、落塔，确认后开战。
-
-推导与验收见 `docs/phase6/battlefield-redesign.md`、`docs/phase6/monster-structure-attacks.md`、`docs/phase6/stage-implementation.md`。
-
-## 本地运行与自测
-
-需要 Godot **4.7.2-stable**。
+在项目根目录运行，首次使用前先导入资源：
 
 ```bash
-GODOT="<你的 Godot 可执行文件>"
+# 导入资源
+godot --headless --path . --import
 
-# 全量 headless 回归（切片 1–8 + T1 仇恨 + world 关卡实装 11 套）
-"$GODOT" --headless --path . --script res://tests/run_tests.gd
+# 默认完整回归（包含 world 12 套检查）
+godot --headless --path . --script res://tests/run_tests.gd
 
-# 只跑某切片（参数必须以 slice 开头）
-"$GODOT" --headless --path . --script res://tests/run_tests.gd -- slice5
+# 关卡、商店、放置、镜头和退出关卡
+godot --headless --path . --script res://tests/run_tests.gd -- world
 
-# 只跑关卡实装那一组（地形 / 镜头导航 / 结构攻防 / 建筑卡商店 / 准备阶段 / 卡面详情 / 关卡推进）
-"$GODOT" --headless --path . --script res://tests/run_tests.gd -- world
+# UI 样式 / 塔身贴图资产守卫
+godot --headless --path . --script res://tests/run_tests.gd -- uistyle
+godot --headless --path . --script res://tests/run_tests.gd -- towersprites
 
-# 只跑某一套结构断言（uistyle / tlv / campaign / cardpack / combat_types / extpack / tutorial）
-#   两种入口等价：单套件可直跑（`extends SceneTree`，中文输出不过 OS.execute 的 GBK 转换，不会乱码）
-"$GODOT" --headless --path . --script res://tests/run_ui_style_asserts.gd
-"$GODOT" --headless --path . --script res://tests/run_tests.gd -- uistyle
-
-# radial8 聚合闸门
-"$GODOT" --headless --path . --script res://tests/run_tests.gd -- radial8
-
-# 实机口径 MC（RADIAL + 三原型 + Elite；B 起飞率 ≥ 0.80 门禁）
-"$GODOT" --headless --path . --script res://tests/run_slice_proto_elite_mc.gd
-
-# 窗口模式直接玩（真实帧）
-"$GODOT" --path .
+# 径向战斗与消耗战门禁
+godot --headless --path . --script res://tests/run_tests.gd -- radial8
 ```
 
-> ⚠️ `--headless --script` 路径下 Godot 没有 `global_script_class_cache`，因此工程内**一律 `preload`，不写 `class_name`**。
->
-> ⚠️ `--script` 指向的文件**必须继承 `SceneTree` / `MainLoop`**（`--script` 是「换主循环」而非「加载模块」）。
-> `tests/run_*_asserts.gd` 因此统一 `extends SceneTree` + `_initialize() -> quit(0/1)`；
-> `run_tests.gd` 的进程内聚合走 `.new().run_all()` —— `.new()` 不触发 `_initialize()`，两条入口共用同一份断言。
-> 需要**真帧**的脚本（`call_deferred("run")`：地形 / 镜头 / 准备阶段 / 结构攻防…）无法进程内直调，
-> 由 `run_tests.gd` 用 `OS.execute` 拉子进程收集退出码（`-- world` 与默认回归都会跑）。
-> 若写成 `extends RefCounted`，直跑会被引擎拒载：「Can't load the script as it doesn't inherit from SceneTree or MainLoop」。
+2026-11-10 本地验证：默认完整回归退出码 **0**；随后补跑 world **12/12 PASS（16.3 秒）**。这是本地验收记录，GitHub Actions 当前状态以上方徽章及 [工作流运行记录](https://github.com/w814929152/corebound/actions) 为准。
 
-## 打包可玩版本
+已知限制：
 
-已配好 Windows Desktop 导出预设（`export_presets.cfg`，单文件 exe + 内嵌 pck）：
+- `radial8` 的 `attrition8` 有历史平衡断言失败，见 [交接记录](docs/phase6/handoff-2026-11-09.md)；本轮未修复或复跑该组，未降低阈值。
+- Godot 退出时仍有 ObjectDB、RID 和资源未释放警告。
+- 10 塔上限及结构攻击参数仍需进一步整局平衡验证。
+- 仓库不包含 Windows 成品包；本地旧构建可能落后于源码。
+
+数值与模拟代码维护约定见 [工程控制清单](docs/architecture/control-manifest.md)。玩家路线和金标本模拟器有独立的开关与验证路径，请勿为通过测试随意修改数值或阈值。
+
+## 导出 Windows 版本
+
+安装与引擎版本一致的 Godot 导出模板后，使用已有的 Windows Desktop 预设：
 
 ```bash
-"$GODOT" --headless --path . --export-release "Windows Desktop" build/windows/Corebound.exe
+godot --headless --path . --export-release "Windows Desktop" build/windows/Corebound.exe
 ```
 
-产物 `build/windows/Corebound.exe`（约 112 MB，pck 内嵌，双击即玩，无需安装 Godot 或联网）。`build/`、`*.exe` 已在 `.gitignore` 内，**二进制不入库**。
+产物为内嵌 PCK 的可执行文件。`build/` 与可执行文件不进入 Git，具体步骤见 [打包说明](docs/phase6/demo-build.md)。
 
-**操作**：开局在裂隙航图点节点选关（`←→` 移动 · `Enter` 进入）· `Tab` 商店 · `1/2/3` 买卡 · `R` 刷新 · `Space` 开下一波 · `Esc` 关抽屉/取消/跳过引导 · 鼠标点地图上的格子落子（自由摆放，见上文「放置塔」）。
+## 工程结构与文档
 
-详细打包流程、模板位置、验收记录与已知限制见 `docs/phase6/demo-build.md`。
+| 路径 | 内容 |
+|---|---|
+| `scripts/engine/` | 伤害、战斗循环与金标本模拟 |
+| `scripts/gameplay/` | 刷怪、商店运行时与玩法接线 |
+| `scripts/geo/` | 空间模型与建造网格 |
+| `scripts/data/` | 建筑、卡包、地图、关卡与波表数据 |
+| `scripts/ui/` | 战场、HUD、商店与菜单 |
+| `art/`、`assets/` | 游戏美术、字体等资源 |
+| `tests/`、`tools/` | 回归检查、资源生成与预览工具 |
+| `docs/`、`design/` | 架构、验收记录和设计规范 |
 
-## CI
-
-`.github/workflows/ci.yml` 在 push / PR 时自动跑（`docs/**`、`**/*.md`、`.workbuddy/**` 的改动不触发），ubuntu-latest + Godot 4.7.2-stable，共 **9 步测试**：
-
-1. **默认回归** —— 切片 1–8 + T1 仇恨 + B-1 引导状态机 + 扩展包/UI 样式/塔等级牌/卡包/关卡推进/战斗类型，外加 **world 关卡实装 11 套**（地形 / 镜头导航 / 结构攻防 / 建筑卡商店 / 准备阶段 / 卡面详情 / 关卡推进，子进程串行），多段汇总、退出码 0；
-2. **音频资产 lint** —— 免导入的 `key → path` 兜底校验（关闭 G-6：音频 id 打错在运行时只会静默 null）；
-3. **音频框架回归断言** —— audio-spec-a §7 五条（池 24+4 / 总线名 / 信号数 / 聚焦低通 / token 扫描）；
-4. **radial8 聚合闸门** —— 9 个子套件：geo8 / radial / geo8_smoke / geo8_golden / expo / bulwark8 / panorama8 / attrition8 / vfx_cache_guard；
-5. **aggro_golive 退化逐位守护** —— 三轴合并镜像（第五刀）；
-6. **实机口径 MC** —— 三原型 + Elite，300 局，B 起飞率 ≥ 0.80；
-7. **实机全开 MC** —— proto/elite/aggro 全 ON × `repair_on_disable` ∈ {0 OFF, 1 FREE, 2 PRICED}，PRICED 多塔 B@6 ≥ 0.80（第五刀上线门禁）；
-8. **反制窗口 M-1 上线 MC（C-8）** —— REVIVE(9) 多塔 B@6 ≥ 0.80，并自检 OFF B@6 复现 203/300 = 0.677（M-1 接线零扰动）；
-9. **反制窗口实时版 MC（R-1）** —— 真身 `WaveDirector` 直读产品开关 `combat_revive_enabled`，OFF B@6 守门 + PRODUCT B@6 ≥ 0.80。
-
-任一步非零退出 = CI 红。日志无论成败都会作为 artifact 上传。
-
-> 🔴 硬门禁请按**步骤名**引用，勿按序号引用：插步会使序号整体偏移（2026-10-13 音频两步插入，曾使原步 1–7 变步 1–9）。
-
-## 目录结构
-
-```
-scripts/
-  engine/    伤害引擎 / 战斗循环 / 金标本镜像（wave_sim、run_loop、shop_ai…）
-  gameplay/  刷怪调度（wave_director）、怪物实体、商店桥接
-  geo/       空间模型（径向 / 折线路径）与几何
-  data/      怪物与塔的数值表（SSOT）
-  ui/        战场渲染、HUD、商店覆盖层、启动场景
-tests/       headless 断言套件 + 各切片冒烟 + 数值扫描 / MC 脚本
-docs/
-  architecture/  工程控制清单（红线与口径冻结）、ADR、各切片架构
-  phase3/        各切片验收报告、质量门、径向迁移、体验层与玩法刀次规格
-design/      设计稿（GDD、数值模拟）
-```
-
-## 文档索引
-
-- **工程控制清单（总红线 + 口径冻结 + 提交前自检）**：`docs/architecture/control-manifest.md`
-- **径向迁移质量门**：`docs/phase3/quality-gate-radial-migration.md`
-- **各切片验收**：`docs/phase3/slice{1..8}-verify.md`
-- **浮点可移植性决策**：`docs/architecture/adr-0002-float-portability.md`
-- **UI 样式重构对照**：`docs/phase6/ui-polish.md`
-- **卡面文案与版式推导**：`docs/phase6/card-text.md`
-- **放置模式修复（四条 bug 复盘）**：`docs/phase6/placement-fix.md`
-- **自由摆放（网格化 + 坐标落子 + 塔数上限）**：`docs/phase6/free-placement.md`
-- **卡包（分池 + 开局选包 + 地区科技解锁）**：`docs/phase6/card-packs.md`
-- **大地图选关（裂隙航图 + 关卡推进接线）**：`docs/phase6/world-map.md`
-
----
-
-## 状态
-
-Phase 3 MVP：切片 1–8 已交付（伤害引擎 → 战斗循环 → 商店 → 径向核心围攻 → 塔死亡玩法 → 可玩胜负）；
-径向迁移收官（默认窗口即 RADIAL）；三原型 / 精英波已上线。
-Phase 6：扩展包 / 卡包（8 包共 82 张，每局最多 3 包）/ 关卡推进 + 裂隙航图（10 关 × 10 张地图变体）/
-战斗类型（物攻 · 魔攻 · 真实 × 双抗性）已落地并进默认回归。
-
-**2026-11-09 关卡实装（已进默认回归）**：十关异形地块 + 战场镜头 /
-怪物攻建筑 / 逐塔真实判距 / 建筑卡商店（效果卡暂停、无起手塔、30 废料）。
-旧 `slice4` / 扩展包 / 卡包 / UI 套件已同步到该口径；`world` 组 11 个脚本全绿。
-
-> 🔴 数值口径为工程级冻结资产：`ATTRITION` / `κ_r` / `AGGRO_R` / 塔位 / `SPAWN_RADIUS` / 核心 HP / `hp_growth` / 三原型表等，改动一律走 ADR 并需拍板。
-
-[碎冰猎手](docs/phase6/icehunter.md)（`Icehunter`，霜序包）：优先攻击射程内完全冻结的单位，对冻结目标无视物抗与魔抗；未冻结目标正常计算魔抗。自身不附加冰冻。
-
-关卡内右上角点击「退出关卡」可暂停并确认返回航图；Esc 或「继续游戏」取消退出。主动放弃不结算本局奖励，不能续玩本局，已解锁进度保留。
-
-战场默认采用 200% 近景以便辨认建筑；滚轮或 ± 可继续调整，点击「总览」查看全图，按 F 或「回到核心」恢复默认近景。
+- [最新功能交接](docs/phase6/handoff-2026-11-10-gameplay.md)
+- [商店布局与操作](docs/phase6/shop-ui-2026-11-10.md)
+- [退出关卡](docs/phase6/stage-exit.md)
+- [UI 样式](docs/phase6/ui-polish.md)
+- [自由部署](docs/phase6/free-placement.md)
+- [战场与地形](docs/phase6/battlefield-redesign.md)
+- [怪物攻击建筑](docs/phase6/monster-structure-attacks.md)
+- [程序化塔身贴图](design/art/tower-sprites-v2.md)
+- [代理开发入口](AGENTS.md)
