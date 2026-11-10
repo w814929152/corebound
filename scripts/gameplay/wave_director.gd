@@ -1304,6 +1304,27 @@ func _count_disabled_towers() -> int:
 	return c
 
 
+## 准备阶段只读预告，与实际生成共享角度、波表数量和地形边界；不推进波次或 RNG。
+func spawn_angle(idx: int, wave: int) -> float:
+	return _TacticalCombat.spawn_theta(idx, wave, stage_id) if tactical_combat_enabled else _SpaceModel.spawn_theta(idx, wave)
+
+
+func preview_spawn_positions(wave: int) -> PackedVector2Array:
+	var points := PackedVector2Array()
+	if not _SpaceModel.is_radial() or wave < 1:
+		return points
+	if stage_waves_enabled and stage_id != "" and wave > _StageWaves.wave_count(stage_id):
+		return points
+	var count := int(_WaveSim.monster_stats(wave, cfg)["n"])
+	if stage_waves_enabled and stage_id != "":
+		var spec := _StageWaves.wave_spec(stage_id, wave, cfg, escalation)
+		if not spec.is_empty() and not bool(spec.get("neutral", false)):
+			count = int(spec["n"])
+	for i in range(count):
+		points.append(_SpaceModel.radial_pos_of_t(_SpaceModel.T_REACH, 1.0, spawn_angle(i, wave)))
+	return points
+
+
 func _spawn_one(idx: int) -> void:
 	var proto := String(_proto_seq[idx])
 	var elite := bool(_elite_flags[idx])
@@ -1315,7 +1336,7 @@ func _spawn_one(idx: int) -> void:
 	# 🆕 径向模式：注入黄金角出生角（确定性 · 零 RNG · 不碰商店发牌流，E-4/Q-R6）。
 	#   PATH 模式下 set_theta 被忽略（恒 0），位置仍走折线 → 逐位等价。
 	if _SpaceModel.mode == _SpaceModel.Mode.RADIAL:
-		m.set_theta(_TacticalCombat.spawn_theta(idx, w, stage_id) if tactical_combat_enabled else _SpaceModel.spawn_theta(idx, w))
+		m.set_theta(spawn_angle(idx, w))
 	# 🔒 T1 ⑤ Sapper：Elite 波（每5波）里沿波次均匀铺开的精英怪 = Sapper（锁塔 ×3 增伤）。
 	#   与批处理镜像 WaveSimAggro._build_sapper_flags 逐位对齐（同一 elite_indices 算法）。
 	#   🔴 金标本零改动：elite_waves_enabled=false → 不标记任何 sapper。

@@ -39,6 +39,16 @@ func run() -> void:
 		themes[profile.theme] = true
 		check(Maps.contains(map_id,Space.RADIAL_CORE),sid+" 核心在地面内")
 		check(not Grid.buildable(Space.RADIAL_CORE),sid+" 核心禁建")
+		var reserved := 0
+		for q in range(-2, 3):
+			for r in range(-2, 3):
+				if maxi(maxi(absi(q), absi(r)), absi(q+r)) <= 2:
+					reserved += 1
+					check(not Grid.buildable(Grid.cell(q,r)),sid+" 七格基地及外围十二格禁建")
+		check(reserved == 19,sid+" 基地与外圈共十九格")
+		for direction in Grid.neighbors():
+			var outside: Vector2 = Grid.cell(direction.x*3,direction.y*3)
+			check(Grid.buildable(outside),sid+" 外圈之外六方向恢复可建")
 		check(not Grid.buildable(Space.RADIAL_CORE+Vector2(73,44)*Maps.MAP_SCALE),sid+" 地块外不能建塔")
 		var cells: Array = Grid.all_cells()
 		check(cells.size()>600,sid+" 保留足够布防空间")
@@ -83,6 +93,11 @@ func run() -> void:
 		scene.director.close_shop()
 		var rt = scene.controller.runtime
 		check(rt.buy(0) and rt.begin_placement(0),sid+" 可以购买并准备放置")
+		for q in range(-2, 3):
+			for r in range(-2, 3):
+				if maxi(maxi(absi(q), absi(r)), absi(q+r)) <= 2:
+					check(not rt.confirm_placement_at(Grid.cell(q,r)),sid+" 实际放置拒绝基地及外圈")
+		check(not rt.pending.is_empty(),sid+" 禁建失败后保留背包建筑")
 		var target: Vector2 = cells[int(cells.size()/2)]
 		check(rt.confirm_placement_at(target),sid+" 可在场景地面放塔")
 		check(rt.pending.is_empty(),sid+" 放置后从背包移除")

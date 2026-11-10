@@ -346,6 +346,25 @@ func _make_slot(_i: int) -> PanelContainer:
 	p.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	p.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	p.add_theme_stylebox_override("panel", _Battle.card())
+	p.clip_contents = true
+	# 背景独立于插画带，铺满整张卡；内容仍保留原有内边距。
+	var background_layer := Control.new()
+	background_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	p.add_child(background_layer)
+	var backdrop := TextureRect.new()
+	backdrop.self_modulate = _Style.CARD_BACKDROP_TINT
+	backdrop.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	backdrop.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	backdrop.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	backdrop.visible = false
+	background_layer.add_child(backdrop)
+	backdrop.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	# 抵消容器内边距，让背景覆盖整框，文字排版仍使用原边距。
+	var card_style := p.get_theme_stylebox("panel")
+	backdrop.offset_left = -card_style.get_content_margin(SIDE_LEFT)
+	backdrop.offset_top = -card_style.get_content_margin(SIDE_TOP)
+	backdrop.offset_right = card_style.get_content_margin(SIDE_RIGHT)
+	backdrop.offset_bottom = card_style.get_content_margin(SIDE_BOTTOM)
 	var vb := VBoxContainer.new()
 	vb.add_theme_constant_override("separation", 5)
 	p.add_child(vb)
@@ -393,12 +412,6 @@ func _make_slot(_i: int) -> PanelContainer:
 	art_frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	art_frame.add_theme_stylebox_override("panel", StyleBoxEmpty.new())
 	vb.add_child(art_frame)
-	var backdrop := TextureRect.new()
-	backdrop.self_modulate = _Style.CARD_BACKDROP_TINT
-	backdrop.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
-	backdrop.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	backdrop.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	art_frame.add_child(backdrop)
 	art.set_meta("rarity_backdrop", backdrop)
 	art_frame.add_child(art)
 	_slot_art.append(art)
@@ -559,6 +572,7 @@ func _refresh_shop() -> void:
 			_slot_name[i].text = "—"
 			_slot_art[i].visible = false
 			_slot_art[i].get_parent().hide()
+			_slot_art[i].get_meta("rarity_backdrop").hide()
 			_slots[i].set_meta("rarity", "")
 			_slot_tag[i].text = ""
 			_slot_rarity[i].text = ""
@@ -599,6 +613,7 @@ func _refresh_shop() -> void:
 			_slot_name[i].text = "—"
 			_slot_art[i].visible = false
 			_slot_art[i].get_parent().hide()
+			_slot_art[i].get_meta("rarity_backdrop").hide()
 			_slots[i].set_meta("rarity", "")
 			_slot_tag[i].text = ""
 			_slot_rarity[i].text = ""
@@ -627,6 +642,7 @@ func _refresh_shop() -> void:
 			_slots[i].set_meta("rarity", rar)
 			var backdrop: TextureRect = _slot_art[i].get_meta("rarity_backdrop")
 			backdrop.texture = _Style.card_backdrop(rar, nm)
+			backdrop.visible = true
 			_slot_rarity[i].text = "▲".repeat(_Style.rarity_pips(rar))
 			_slot_rarity[i].add_theme_color_override("font_color", _Style.rarity_color(rar))
 			# 🆕 蓝图卡面（§5.5）：Tag 电路符号芯片（字形 + 颜色双通道，§9.2①）

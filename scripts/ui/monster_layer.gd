@@ -198,6 +198,8 @@ var controller: Node = null
 var placement_backpack: Control = null
 var _slot_rows: Array = []
 var _snap: Dictionary = {}
+var _spawn_preview_key: Array = []
+var _spawn_preview_points := PackedVector2Array()
 ## 🔒 V-8：塔位 → 爬起动效**剩余秒数**（纯演出计时器，UI 本地状态）。
 ##   🔴 不是游戏状态（control-manifest §5 指的是玩法状态）：它只驱动画面衰减，
 ##      不回写任何玩法数据、不参与任何判定。
@@ -1037,6 +1039,7 @@ func _draw_radial(sc: float) -> void:
 	_draw_radial_towers(sc)       # 层6：双层八边形塔
 	_draw_placement_marks(sc, "fg")   # 层6.5：⑤ 悬停格描边 + 徽标（塔之上）
 	_draw_radial_monsters(sc)     # 层7：12 边不规则 + 朝核心尖刺扇
+	_draw_next_spawn_preview()
 	_draw_structure_attacks(sc)
 	_draw_minions(sc)             # 层7.5：召唤小兵（只读快照）
 	_draw_projectiles(sc)         # 层8：字段缺失 → 零绘制（保留既有 hook）
@@ -1047,6 +1050,60 @@ func _draw_radial(sc: float) -> void:
 
 
 # ---- 纯函数工具（spec §A.9；无状态、无随机、帧间稳定）----
+## 可见入口画菱形 + 朝内箭头；镜头外入口在屏幕边缘画朝外箭头。
+## 屏幕相邻标记合并，避免一大波怪在边缘挤成一团。
+func next_spawn_preview() -> PackedVector2Array:
+	if director == null or time_director == null or time_director.sm == null:
+		return PackedVector2Array()
+	if controller != null and controller.over:
+		return PackedVector2Array()
+	if director.state != _WD.State.IDLE and director.state != _WD.State.SAFE_WINDOW:
+		return PackedVector2Array()
+	var wave: int = int(time_director.sm.wave) + 1
+	var key: Array = [director.get_instance_id(), wave, director.stage_id,
+		_SpaceModel.active_map_id, _SpaceModel.layout_enabled, _SpaceModel.uses_terrain(),
+		director.tactical_combat_enabled, director.stage_waves_enabled, director.escalation, director.cfg.hash()]
+	if key != _spawn_preview_key:
+		_spawn_preview_key = key
+		_spawn_preview_points = director.preview_spawn_positions(wave)
+	return _spawn_preview_points
+
+
+func _draw_next_spawn_preview() -> void:
+	var points := next_spawn_preview()
+	if points.is_empty():
+		return
+	var vs := get_viewport_rect().size
+	var bounds := Rect2(Vector2(32, 185), Vector2(maxf(1, vs.x - 64), maxf(1, vs.y - 390)))
+	var center := _to_screen(_SpaceModel.core_pos())
+	var seen := {}
+	for world in points:
+		var target := _to_screen(world)
+		var visible_here := bounds.has_point(target)
+		var marker := target
+		if not visible_here:
+			var origin := Vector2(clampf(center.x, bounds.position.x, bounds.end.x), clampf(center.y, bounds.position.y, bounds.end.y))
+			var delta := target - origin
+			var fraction := 1.0
+			if absf(delta.x) > 0.001:
+				fraction = minf(fraction, ((bounds.end.x if delta.x > 0 else bounds.position.x) - origin.x) / delta.x)
+			if absf(delta.y) > 0.001:
+				fraction = minf(fraction, ((bounds.end.y if delta.y > 0 else bounds.position.y) - origin.y) / delta.y)
+			marker = origin + delta * fraction
+		var bucket := Vector2i(int(marker.x / 38.0), int(marker.y / 38.0))
+		if seen.has(bucket):
+			continue
+		seen[bucket] = true
+		var direction := (center - target).normalized() if visible_here else (target - marker).normalized()
+		if direction.is_zero_approx():
+			direction = Vector2.UP
+		var side := Vector2(-direction.y, direction.x)
+		draw_circle(marker, 12.0, Color(0.04, 0.05, 0.08, 0.92))
+		if visible_here:
+			draw_polyline(_closed(PackedVector2Array([marker + Vector2(0,-12), marker + Vector2(12,0), marker + Vector2(0,12), marker + Vector2(-12,0)])), Color(P_ENEMY, 0.9), 2.0, true)
+		draw_colored_polygon(PackedVector2Array([marker + direction * 9.0, marker - direction * 6.0 + side * 6.0, marker - direction * 6.0 - side * 6.0]), P_ENEMY)
+
+
 func _dir(a: float) -> Vector2:
 	return Vector2(cos(a), sin(a))
 
@@ -1539,9 +1596,23 @@ func _draw_placement_marks(sc: float, phase: String = "bg") -> void:
 	# 🔴 2026-11-09：可建区 = 出生环以内整盘，网格外沿本身就是边界（`grid_edges()` 已裁到
 	#   `FIELD_R = 55 = 出生环`）→ 不再额外画一圈与出生环重叠的实线。
 	#   岩脊障碍不铺网格（`buildable()` 过滤）—— "没有格线的地方就是石头/核心"。
-	draw_circle(core, _BuildGrid.CORE_BAN_R * sc, Color(0.020, 0.030, 0.060, 0.60))
-	draw_arc(core, _BuildGrid.CORE_BAN_R * sc, 0.0, TAU, 48,
-		Color(P_ALERT.r, P_ALERT.g, P_ALERT.b, 0.45), maxf(1.5, 0.09 * sc), true)
+	if _SpaceModel.uses_terrain():
+		if phase == "bg":
+			for q in range(-2, 3):
+				for r in range(-2, 3):
+					var wp := _BuildGrid.cell(q, r)
+					if not _BuildGrid.core_reserved(wp):
+						continue
+					var polygon := PackedVector2Array()
+					for corner in _BuildGrid.corners(wp):
+						polygon.append(_to_screen(corner))
+					draw_colored_polygon(polygon, Color(0.020, 0.030, 0.060, 0.60))
+					polygon.append(polygon[0])
+					draw_polyline(polygon, Color(P_ALERT, 0.45), maxf(1.0, 0.045 * sc), true)
+	else:
+		draw_circle(core, _BuildGrid.CORE_BAN_R * sc, Color(0.020, 0.030, 0.060, 0.60))
+		draw_arc(core, _BuildGrid.CORE_BAN_R * sc, 0.0, TAU, 48,
+			Color(P_ALERT.r, P_ALERT.g, P_ALERT.b, 0.45), maxf(1.5, 0.09 * sc), true)
 
 	if phase == "bg":
 		_draw_placement_range(sc)
@@ -1700,9 +1771,10 @@ func _draw_radial_core(sc: float) -> void:
 	var rc := U_CORE * sc * _core_breath()
 	# 🔴 批次⑥：核心盘贴图（外环+中盘+刻齿+外描边烘焙，半边 2.2u），盘级呼吸走缩放；
 	#    缺失降级回程序化。内芯**第二频率**心跳保留运行时（贴图烘焙不了两层不同频）。
-	var core_tex := _sprite("sp_core")
+	var large_base := _SpaceModel.uses_terrain()
+	var core_tex := _sprite("sp_core_base_large" if large_base else "sp_core")
 	if core_tex != null:
-		var cs := U_CORE * sc * _core_breath() * (4.4 / U_CORE)
+		var cs := _BuildGrid.CORE_SPRITE_SIZE * sc if large_base else 4.4 * sc * _core_breath()
 		draw_texture_rect(core_tex, Rect2(c - Vector2(cs, cs) * 0.5, Vector2(cs, cs)), false)
 	else:
 		draw_arc(c, rc, 0.0, TAU, 48, P_ALLY_DARK, maxf(2.0, 0.55 * sc), true)   # 外环
@@ -1714,7 +1786,8 @@ func _draw_radial_core(sc: float) -> void:
 		draw_arc(c, rc + 0.11 * sc, 0.0, TAU, 48, P_TOWER_EDGE, maxf(1.5, 0.22 * sc), true)
 	# 🔴 内芯保留其**原有更快一层**（±6% @1.6s，spec §B.2.2）→ 两层不同频叠出"心跳/有机感"。
 	var breath := 1.0 + 0.06 * sin(_vfx_t * TAU / 1.6)                        # 呼吸内芯
-	draw_circle(c, rc * 0.32 * breath, P_CORE_HI)
+	if not large_base or core_tex == null:
+		draw_circle(c, rc * 0.32 * breath, P_CORE_HI)
 	# 🔴 P0 增强 · 受创闪（spec §A.2.3）：核心受击瞬间外环闪 #FF2E4E @α0.8，0.12s。
 	#   本地演出计时器驱动衰减，只读 `core_hp` 帧间下降（不回写玩法）。
 	if _core_flash > 0.0:

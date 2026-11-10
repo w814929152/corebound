@@ -65,6 +65,11 @@ const CELL_AREA := 2.598076211353316 * HEX_R * HEX_R
 ## 核心禁建半径（u）。核心本体外接圆 1.90u，留 2u 余量 → 贴脸堆塔不是"自由"而是"唯一解"。
 ## 核心是**障碍物**（不是可建地面），所以这一圈仍然禁建。
 const CORE_BAN_R := 4.0
+## 玩家基地占中心 + 第一圈（7 格），外围第二圈（12 格）留空禁建。
+const CORE_FOOTPRINT_RINGS := 1
+const CORE_CLEARANCE_RINGS := 1
+## 透明素材有效高度约为画布 90%，对应七格基地的三行格距。
+const CORE_SPRITE_SIZE := ROW_STEP * 3.0 / 0.90
 ## 可建外径（u）= 战场出生环半径 55：除岩脊与核心外，整个战场圆盘都可建。
 ## 🔴 旧值 44 是「中圈布防」时代留下的隐形边界：玩家看到 44–55 这段明明是平地却点不了，
 ##    与「非障碍物区域都可以摆放」直接矛盾 → 已废弃（2026-11-09）。
@@ -195,7 +200,7 @@ static func snap(p: Vector2) -> Vector2:
 static func buildable(p: Vector2) -> bool:
 	var d := p.distance_to(core())
 	if _SpaceModel.uses_terrain():
-		return d >= CORE_BAN_R and _SpaceModel.BattlefieldMaps.contains(_SpaceModel.active_map_id,p) \
+		return not core_reserved(p) and _SpaceModel.BattlefieldMaps.contains(_SpaceModel.active_map_id,p) \
 			and not _SpaceModel.BattlefieldMaps.blocked(_SpaceModel.active_map_id,p,_SpaceModel.active_ridges())
 	if d < CORE_BAN_R or d > FIELD_R:
 		return false
@@ -203,6 +208,12 @@ static func buildable(p: Vector2) -> bool:
 		if _is_obstacle(p):
 			return false
 	return true
+
+
+## 六边形距离保证整圈禁建，不用圆半径近似（六个方向一致）。
+static func core_reserved(p: Vector2) -> bool:
+	var k := cell_of(p)
+	return maxi(maxi(absi(k.x), absi(k.y)), absi(k.x + k.y)) <= CORE_FOOTPRINT_RINGS + CORE_CLEARANCE_RINGS
 
 
 static func _is_obstacle(p: Vector2) -> bool:
