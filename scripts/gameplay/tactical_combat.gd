@@ -40,7 +40,8 @@ static func apply(wd, dt: float) -> void:
 		var budget := float(row.get("dps", 0.0)) / cov * global_mult * dt if cov > 0.0 else 0.0
 		var kind := String(row.get("dmg_type", CT.PHYSICAL))
 		var reduction: float = float(wd._phys_reduct) if kind == CT.PHYSICAL else float(wd._magic_reduct)
-		apply_in_range(wd, center, radius, budget, kind, float(reduction))
+		apply_in_range(wd, center, radius, budget, kind, float(reduction),
+			bool(TD._tower_def(name).get("hunt_frozen", false)))
 		var dot := TD.tower_dot(name) * Effects.debuff_damage_mult(wd.player) * dt
 		if dot > 0.0:
 			apply_in_range(wd, center, radius, dot, CT.TRUE, 0.0)
@@ -48,14 +49,21 @@ static func apply(wd, dt: float) -> void:
 
 ## 怪物已按距核心的剩余时间稳定排序；伤害仅在本塔射程内结转，未使用伤害不储存。
 static func apply_in_range(wd, center: Vector2, radius: float, budget: float,
-		kind: String, reduction: float) -> void:
-	for m in wd.monsters:
+		kind: String, reduction: float, hunt_frozen: bool = false) -> void:
+	var targets: Array = wd.monsters
+	if hunt_frozen:
+		targets = []
+		for frozen in [true, false]:
+			for target in wd.monsters:
+				if (float(target.frozen_remaining) > 0.0) == frozen:
+					targets.append(target)
+	for m in targets:
 		if budget <= 0.0:
 			break
 		if float(m.hp) <= 0.0 or center.distance_squared_to(m.pos(wd.v0_)) > radius * radius:
 			continue
 		var factor := 1.0
-		if wd.combat_types_enabled:
+		if wd.combat_types_enabled and not (hunt_frozen and float(m.frozen_remaining) > 0.0):
 			factor -= clampf(CT.effective_resist(String(m.proto), kind, reduction), 0.0, 1.0)
 		if factor <= 0.0:
 			continue

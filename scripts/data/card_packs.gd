@@ -22,7 +22,7 @@
 ##
 ## 🔴 卡池稀释（实测依据，见 keyword-adaptation §0/§7.4）：
 ##   池 7→10 张（+43% 零效果白板）实测 A −8.0pp / B −11.0pp，pity 只是止损阀不是扩容许可。
-##   每局池 = 所选 3 包共 30 张；含新增焚星塔的熔炉包时为 31 张。
+##   每局池 = 所选 3 包共 30 张；熔炉包和霜序包各额外增加 1 张（最多 32 张）。
 ##
 ## 🔴 数据边界（control-manifest §5）：数值只在 `tower_data.gd` / `shop_ai.gd` 定义一次。
 ##   本文件只回答「谁和谁一包」「几包可用」「几波解锁」，**不写任何数值**；
@@ -49,7 +49,7 @@ const _CampaignData := preload("res://scripts/data/campaign_data.gd")
 ## 🔴 每局可携带的卡包数：3 包 × 10 张**建筑** = **30 张卡**（一卡一包，无需去重）。
 const PICKS_PER_RUN := 3
 
-## 卡包基础张数；熔炉包额外收录 Pyroclasm，共 11 张。UI 按实际卡池计数。
+## 卡包基础张数；熔炉包和霜序包各额外收录一座专属塔，共 11 张。UI 按实际卡池计数。
 ##   🔴 10 = 80 张卡 ÷ 8 包 的结果，见 `PACKS` 上方注释。
 const CARDS_PER_PACK := 10
 
@@ -111,7 +111,7 @@ const PACKS: Array = [
 	},
 	{
 		"id": "rime", "name": "霜序包", "tag_line": "冰：整备升级 · 减速控场",
-		"cards": ["Drillmaster", "Icicle", "Glacier", "Hail", "Permafrost", "Purity", "Snowfall", "Shard", "Whiteout", "Avalanche"],
+		"cards": ["Drillmaster", "Icicle", "Glacier", "Hail", "Permafrost", "Purity", "Snowfall", "Shard", "Whiteout", "Avalanche", "Icehunter"],
 		"unlock_wave": 0,
 	},
 	{
@@ -363,7 +363,7 @@ static func is_valid_selection(sel: Array, best_wave: int) -> bool:
 #  自检（数据表自身的结构错误 —— 由 `tests/run_card_pack_asserts.gd` §A 调用）
 # ---------------------------------------------------------------------------
 ## 返回错误串数组；空 = 结构合法。建筑-only 口径下的检查项：
-##   ① 基础张数 = CARDS_PER_PACK，熔炉包另加一张充能塔；
+##   ① 基础张数 = CARDS_PER_PACK，熔炉包和霜序包各另加一张专属塔；
 ##   ② 🔴 **每张卡都必须是建筑**（`TOWERS` / `TOWERS_EXT`）—— 强化卡 / 经济卡 /
 ##      全局卡混进卡包直接判错（2026-11-07 拍板：卡包只收建筑）；
 ##   ③ 每张卡都能查到权重（= 不是幽灵卡）；
@@ -381,7 +381,7 @@ static func validate() -> Array:
 			errs.append("存在缺 id 的卡包")
 			continue
 		var cards: Array = p.get("cards", [])
-		var expected := CARDS_PER_PACK + (1 if pid == "cinder" else 0)
+		var expected := CARDS_PER_PACK + (1 if pid in ["cinder", "rime"] else 0)
 		if cards.size() != expected:
 			errs.append("卡包 %s 张数 = %d（应为 %d）" % [pid, cards.size(), expected])
 		var uw := int(p.get("unlock_wave", 0))

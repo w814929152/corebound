@@ -129,6 +129,7 @@ const EXT_WEIGHTS := {
 
 ## Card-pack-only building weights; kept out of `EXT_WEIGHTS` so the legacy extended pack stays fixed.
 const CARD_PACK_WEIGHTS := {
+	"Icehunter": 0.08,
 	"Pyroclasm": 0.07,
 	"Ranger": 0.09, "Sentry": 0.08, "Catapult": 0.08, "Harrier": 0.09,
 	"Furnace": 0.09, "Wildfire": 0.08, "Ashen": 0.09, "Hellfire": 0.07,

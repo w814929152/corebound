@@ -51,7 +51,14 @@ const TAG_CN := {
 }
 
 ## 第 1 行：这张卡**做什么**（机制，不含数值）
+const NAME_CN := {"Icehunter": "碎冰猎手"}
+
+static func display_name(card_id: String) -> String:
+	return String(NAME_CN.get(card_id, card_id))
+
+
 const ROLE := {
+	"Icehunter": "优先猎杀冻结",
 	"Pyroclasm": "火焰附加时充能",
 	# ---- 建筑卡（塔）：L1 机制 / L2 数值 / L3 标记 ----
 	"Arrow": "单体，无附加",
@@ -321,6 +328,8 @@ static func describe(nm: String) -> String:
 	if _TD.tower_convert(nm) != "":
 		return "%s\n不攻击 · 占塔位\n最近 1 座塔" % r
 	# 火系身份优先显示，不能被旧 slow 属性对应的附加冰冻覆盖。
+	if nm == "Icehunter":
+		return "%s\n冻结目标无视抗性\n%s" % [r, stat_line(nm)]
 	var definition := _tower_def(nm)
 	if not definition.is_empty() and String(definition.get("tag", "")) == "fire" and float(definition.get("dps",0.0))>0.0:
 		var fire: Dictionary = _TD.FIRE_EFFECT
@@ -367,6 +376,8 @@ static func details(nm: String) -> String:
 	var charge := _TD.tower_fire_charge(nm)
 	if not charge.is_empty():
 		return "不自动攻击\n全场每附加 %d 次火焰触发一次爆发。\n爆发伤害 %s · 半径 %s" % [int(charge["capacity"]),_num(float(charge["damage"])),_num(float(charge["radius"]))]
+	if nm == "Icehunter":
+		return "优先攻击射程内完全冻结的单位。\n对冻结目标无视所有抗性；解冻后恢复正常抗性结算。\n单体魔法攻击，自身不附加冰冻。\n%s · 射程 %s" % [stat_line(nm), _num(float(definition["rng"]))]
 	var has_fire := String(definition.get("tag",""))=="fire" and float(definition.get("dps",0.0))>0.0
 	var has_frost := float(definition.get("slow",0.0))>0.0 and float(definition.get("dps",0.0))>0.0
 	if not has_fire and not has_frost:

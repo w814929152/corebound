@@ -48,6 +48,7 @@ const DAMAGE_TYPES: Array = [PHYSICAL, MAGIC, TRUE]
 ##
 ## 🔴 默认全物理不影响结算：类型只有在 `combat_types_enabled` 时被消费。
 const TOWER_DMG_TYPE := {
+	"Icehunter": MAGIC,
 	"Arrow":  PHYSICAL,
 	"Cannon": PHYSICAL,
 	"Frost":  MAGIC,

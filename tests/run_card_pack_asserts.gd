@@ -175,7 +175,7 @@ func _test_a_table() -> void:
 			else:
 				seen_pack[s] = String(p["id"])
 	_ok("A6c 一张卡只属于一个包%s" % ("" if dup.is_empty() else " → " + str(dup)), dup.is_empty())
-	_eq_int("A6d 卡位总数 = 81 张", seen_pack.size(), 81)
+	_eq_int("A6d 卡位总数 = 82 张", seen_pack.size(), 82)
 	_ok("A7 不含 RerollD", not all.has("RerollD"))
 	# 塔与强化成对（每个包内至少有一座塔）
 	var bad_pairs: Array = []

@@ -55,6 +55,7 @@ const TestSuiteUIStyle := preload("res://tests/run_ui_style_asserts.gd")
 const TestSuiteTowerLevel := preload("res://tests/run_tower_level_asserts.gd")
 const TestSuiteCardPack := preload("res://tests/run_card_pack_asserts.gd")
 const TestSuiteCampaign := preload("res://tests/run_campaign_asserts.gd")
+const TestSuiteIcehunter := preload("res://tests/run_icehunter_asserts.gd")
 const TestSuiteFrost := preload("res://tests/run_frost_asserts.gd")
 const TestSuiteFireCharge := preload("res://tests/run_fire_charge_asserts.gd")
 const TestSuiteCombatTypes := preload("res://tests/run_combat_types_asserts.gd")
@@ -237,6 +238,8 @@ func _initialize() -> void:
 	if only == "" or only == "campaign":
 		ok = _run_suite(TestSuiteCampaign) and ok
 	# 🆕 战斗类型（2026-11-07）：物理/魔法/真实三类型 + 抗性 + 破甲（纯逻辑 + 一次真 runtime，秒级）。
+	if only == "":
+		ok = _run_suite(TestSuiteIcehunter) and ok
 	if only == "" or only == "frost":
 		ok = _run_suite(TestSuiteFrost) and ok
 	if only == "" or only == "firecharge":
