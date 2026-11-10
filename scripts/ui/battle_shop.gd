@@ -50,6 +50,7 @@ func _ready() -> void:
 	controller.name = "ShopController"
 	add_child(controller)
 	controller.setup("B")
+	controller.runtime.preparation_actions_enabled = true
 	controller.bind_director(director)
 
 	# ---- 玩法侧：波次导演（切片5 · 真实刷怪战斗循环）----

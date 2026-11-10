@@ -37,6 +37,8 @@ GODOT="C:/Program Files (x86)/Steam/steamapps/common/Godot Engine/godot.windows.
 
 ## 当前状态（2026-11-10，详见 handoff-2026-11-10-gameplay.md）
 
+- 准备阶段：玩家路线全塔复活回血、基地满血；可拖拽已部署防御塔免费移位，基地固定，非法落点/战斗/退出暂停拒绝移位。仅含本轮暂存文件的独立版本默认完整回归 exit 0，world PASS（22.6s）；见 `docs/phase6/preparation-recovery-relocation.md`。并行 UI、火焰、出生预告和基地美术未纳入本批。
+
 - 本批美术：确认的俯视箭塔 + 八包独立卡面背景（含包色基座、暗化与轻虚化），卡面保留原版塔插图；接线、预览和验证见 `docs/phase6/arrow-art-rarity-2026-11-10.md`。其他会话的 UI / 关卡图及旧 AI 试稿仍保留未提交。
 - 本批提交前验证：当前工作区与仅含暂存文件的独立快照均完成默认完整回归，退出码 0；world 分别 PASS（23.9s / 24.3s）。独立快照商店专项也通过，证明无未提交试稿依赖；退出仍有既有资源清理警告。未推送。
 

@@ -213,6 +213,9 @@ func _refresh_hint() -> void:
 	if placing:
 		_hint_label.text = "点格子放置 · 中键拖动地图 · 滚轮缩放 · Esc 取消"
 		_hint_label.add_theme_color_override("font_color", C_TEXT)
+	elif director != null and director.sm != null and int(director.sm.state) == _TSM.State.SAFE_WINDOW:
+		_hint_label.text = "准备阶段 · 拖拽防御塔调整位置 · 基地不可移动"
+		_hint_label.add_theme_color_override("font_color", C_TEXT)
 	else:
 		_hint_label.text = HINT_DEFAULT
 		_hint_label.add_theme_color_override("font_color", C_TEXT_DIM)

@@ -289,6 +289,10 @@ func bind_runtime(rt) -> void:
 		return
 	setup(rt.player, rt.cfg, rt.geo)
 
+func recover_preparation_buildings() -> void:
+	if runtime != null and runtime.recover_preparation_buildings():
+		core_hp = float(player.core_hp)
+
 
 func bind_director(d: Node) -> void:
 	director = d

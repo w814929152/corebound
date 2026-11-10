@@ -113,6 +113,14 @@ func bind_director(d: Node) -> void:
 	#  🆕 自由摆放：MonsterLayer 点地图任意格（带格点世界坐标）→ confirm_placement_at
 	if not d.is_connected("place_at_requested", _on_place_at_requested):
 		d.place_at_requested.connect(_on_place_at_requested)
+	if not d.is_connected("tower_relocate_requested", _on_tower_relocate_requested):
+		d.tower_relocate_requested.connect(_on_tower_relocate_requested)
+
+func _on_tower_relocate_requested(slot: int, position: Vector2) -> void:
+	if over or runtime == null or not runtime.relocate_tower(slot, position):
+		return
+	_emit_shop()
+	_emit_run()
 
 
 ## 切片5：`WaveDirector` 注入。波次推进（刷怪 / 伤害 / 漏怪 / 结束判定）由它负责。
@@ -274,6 +282,7 @@ func _on_place_at_requested(pos: Vector2) -> void:
 		return
 	# confirm_placement_at 已消费卡牌；只退出模式，并广播新的背包状态。
 	director.finish_placement()
+	_recover_preparation_buildings()
 	_emit_shop()
 
 
@@ -441,6 +450,8 @@ func _on_wave_ended(w: int) -> void:
 	if runtime.player != null and float(runtime.player.core_hp) <= 0.0 and not over:
 		over = true
 		print("[shop_controller] 核心 HP 归零（W%d）→ 停止推进" % w)
+	if not over:
+		_recover_preparation_buildings()
 	_emit_shop()
 	_emit_run()
 
@@ -465,6 +476,7 @@ func start_run(w: int = 1) -> void:
 	_prepared_wave = w
 	runtime.start_wave(w)
 	director.prepare_run(w)
+	_recover_preparation_buildings()
 	_emit_shop()
 	_emit_run()
 
@@ -472,6 +484,12 @@ func start_run(w: int = 1) -> void:
 # ---------------------------------------------------------------------------
 #  广播（UI 订阅后只读 `runtime.snapshot()`）
 # ---------------------------------------------------------------------------
+func _recover_preparation_buildings() -> void:
+	if wave_director != null:
+		wave_director.recover_preparation_buildings()
+	else:
+		runtime.recover_preparation_buildings()
+
 func _emit_shop() -> void:
 	emit_signal("shop_changed")
 

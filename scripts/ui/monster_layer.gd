@@ -244,6 +244,66 @@ var _grid_scr := PackedVector2Array()
 ##   实测 warp 后 `get_mouse_position()` 落在完全无关的位置，截图会拍到"错的格子"。
 ##   语义等价于"把鼠标移到这个格上"，只影响 `_draw_placement_marks` 的高亮。
 var probe_hover_world = null
+var _moving_slot := -1
+var _move_origin := Vector2.ZERO
+var _move_pointer := Vector2.ZERO
+var _move_dragging := false
+
+func _input(event: InputEvent) -> void:
+	if _moving_slot < 0:
+		return
+	if event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE:
+		_moving_slot = -1
+		_move_dragging = false
+		queue_redraw()
+		get_viewport().set_input_as_handled()
+	elif event is InputEventMouseMotion:
+		_move_pointer = event.position
+		_move_dragging = _move_dragging or _move_pointer.distance_to(_move_origin) >= 5.0
+		queue_redraw()
+		get_viewport().set_input_as_handled()
+	elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and not event.pressed:
+		var slot := _moving_slot
+		_moving_slot = -1
+		var hovered := get_viewport().gui_get_hovered_control()
+		if _move_dragging and (hovered == null or hovered.mouse_filter == Control.MOUSE_FILTER_IGNORE):
+			time_director.emit_signal("tower_relocate_requested", slot, _BuildGrid.snap(_to_world(event.position)))
+		_move_dragging = false
+		queue_redraw()
+		get_viewport().set_input_as_handled()
+
+func _begin_tower_drag(point: Vector2) -> bool:
+	if time_director.sm == null or int(time_director.sm.state) != _TSM.State.SAFE_WINDOW:
+		return false
+	if controller.over or time_director.external_pause or not controller.runtime.preparation_actions_enabled:
+		return false
+	if _to_world(point).distance_to(_SpaceModel.core_pos()) <= U_CORE:
+		return false
+	var hit := _hit_slot_screen(point, true)
+	if hit < 0:
+		return false
+	_moving_slot = hit
+	_move_origin = point
+	_move_pointer = point
+	_move_dragging = false
+	time_director.emit_signal("tower_select_requested", hit)
+	return true
+
+func _draw_relocation_preview(sc: float) -> void:
+	if _moving_slot < 0 or not _move_dragging:
+		return
+	var destination := _BuildGrid.snap(_to_world(_move_pointer))
+	var valid: bool = controller.runtime.can_relocate_tower(_moving_slot, destination)
+	var center := _to_screen(destination)
+	var color := P_ALLY if valid else P_ALERT
+	draw_circle(center, 2.2 * sc, Color(color, 0.22))
+	draw_arc(center, 2.2 * sc, 0.0, TAU, 32, color, 2.0)
+	for tower in controller.runtime.player.towers:
+		if int(tower.slot) == _moving_slot:
+			var texture := _sprite("sp_tower_" + String(tower.ctype).to_lower())
+			if texture != null:
+				draw_texture_rect(texture, Rect2(center - Vector2.ONE * 2.0 * sc, Vector2.ONE * 4.0 * sc), false, Color(1, 1, 1, 0.65))
+			break
 
 
 func _ready() -> void:
@@ -293,6 +353,9 @@ func bind_controller(c: Node) -> void:
 
 ## state_changed（TimeDirector）携带 (from, to) 两参。
 func _on_state_changed(_from: int, _to: int) -> void:
+	if _to != _TSM.State.SAFE_WINDOW:
+		_moving_slot = -1
+		_move_dragging = false
 	queue_redraw()
 
 
@@ -476,6 +539,9 @@ func _unhandled_input(event: InputEvent) -> void:
 	if not mb.pressed or mb.button_index != MOUSE_BUTTON_LEFT:
 		return
 	if controller == null or controller.runtime == null or time_director == null:
+		return
+	if _begin_tower_drag(mb.global_position):
+		get_viewport().set_input_as_handled()
 		return
 
 	# ---- ⑤ 放置模式：点地图**任意格**落子（自由摆放）----
@@ -872,11 +938,13 @@ func _draw() -> void:
 		_draw_frost_states(sc)
 		_draw_fire_stacks(sc)
 		_draw_fire_blasts(sc)
+		_draw_relocation_preview(sc)
 		return
 	_draw_legacy(sc)
 	_draw_frost_states(sc)
 	_draw_fire_stacks(sc)
 	_draw_fire_blasts(sc)
+	_draw_relocation_preview(sc)
 
 
 ## PATH 模式渲染 —— 🔴 与改前**逐位等价**（含路径/核心/塔位/暴露图标/被攻击环/塔/怪，一行未改）。

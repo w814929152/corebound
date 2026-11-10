@@ -47,6 +47,7 @@ signal slot_place_requested(slot: int)
 ##      （回归对照 / 探针）；玩家自由摆放走这条，带的是**吸附后的格点世界坐标**。
 ##      吸附由渲染层做（它知道 `sc` 和鼠标位置），runtime 会再吸附一次（幂等，防手抖）。
 signal place_at_requested(pos: Vector2)
+signal tower_relocate_requested(slot: int, pos: Vector2)
 signal placement_cancelled()
 
 

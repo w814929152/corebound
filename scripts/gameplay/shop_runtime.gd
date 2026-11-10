@@ -51,6 +51,45 @@ const _WaveSim := preload("res://scripts/engine/wave_sim.gd")
 const _Geo6 := preload("res://scripts/geo/geo6.gd")
 const _Geo := preload("res://scripts/geo/geo.gd")
 const _BuildGrid := preload("res://scripts/geo/build_grid.gd")
+const _PreparationMonsterData := preload("res://scripts/data/monster_data.gd")
+var preparation_actions_enabled := false
+
+func recover_preparation_buildings() -> bool:
+	if not preparation_actions_enabled or player == null or not _in_safe_window():
+		return false
+	for tower in player.towers:
+		tower.disabled = false
+	var multiplier := 1.0 + _TowerEffects.def_bonus(player)
+	var exponent := float(cfg.get("tower_stack_exp", 0.6))
+	for tower in player.towers:
+		tower.hp_max = _PreparationMonsterData.tower_hp(int(tower.h), exponent) * multiplier
+		tower.hp = tower.hp_max
+		tower.revive_t_disabled = 0.0
+	player.core_hp = player.core_hp_max
+	return true
+
+func can_relocate_tower(slot: int, position: Vector2) -> bool:
+	if not preparation_actions_enabled or player == null or geo == null:
+		return false
+	if director == null or director.sm == null or not _in_safe_window() or director.external_pause:
+		return false
+	if _placing_index >= 0 or slot < 0 or slot >= geo.slots.size() or _tower_index(slot) < 0:
+		return false
+	var destination := _BuildGrid.snap(position)
+	if not _BuildGrid.buildable(destination):
+		return false
+	var existing := _slot_at(destination)
+	return existing == slot or existing < 0 or _tower_index(existing) < 0
+
+func relocate_tower(slot: int, position: Vector2) -> bool:
+	if not can_relocate_tower(slot, position):
+		return false
+	var destination := _BuildGrid.snap(position)
+	var existing := _slot_at(destination)
+	if existing >= 0 and existing != slot:
+		geo.slots[existing] = geo.slots[slot]
+	geo.slots[slot] = destination
+	return true
 const _TSM := preload("res://scripts/engine/time_state_machine.gd")
 ## 🆕 触发型建筑（2026-11-07）：登场时加等级。
 const _TowerEffects := preload("res://scripts/engine/tower_effects.gd")
