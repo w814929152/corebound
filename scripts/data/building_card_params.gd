@@ -36,9 +36,9 @@ const TOWERS := {
 ##      新塔各带**独立 tag** ⇒ 天然形成新构筑流派，而不是旧卡的上位替代。
 const TOWERS_EXT := {
 	"Icehunter": {"dps": 7.0, "attack_speed": 0.80, "tag": "frost", "aoe": false, "slow": 0.0, "rng": 22.0, "hunt_frozen": true},
-	# 焚星塔：只由全场火焰附加事件充能，不参与自动攻击。
+	# 焚星塔：只由全场火焰十层引爆事件充能，不参与自动攻击。
 	"Pyroclasm": {"dps": 0.0, "tag": "fire", "aoe": true, "slow": 0.0, "rng": 28.0,
-		"fire_charge": 12, "charge_blast": 120.0, "charge_radius": 28.0},
+		"fire_charge": 10, "charge_blast": 120.0, "charge_radius": 28.0},
 	# 远程狙击：rng 26 > Arrow 22，dps 11 > Arrow 10。
 	# 代价 = 独立 tag "pierce" ⇒ 不与 fire / frost 共享 tag 投资，κ 只能靠自己堆。
 	"Lance": {"dps": 11.0, "tag": "pierce", "aoe": false, "slow": 0.00, "rng": 26.0, "pierce": 2},

@@ -158,7 +158,7 @@ static func display_name(card_id: String) -> String:
 
 
 const ROLE := {
-	"Pyroclasm": "火焰附加时充能",
+	"Pyroclasm": "火焰引爆时充能",
 	"Icehunter": "优先猎杀冻结",
 	# ---- 建筑卡（塔）：L1 机制 / L2 数值 / L3 标记 ----
 	"Arrow": "单体，无附加",
@@ -416,7 +416,7 @@ static func describe(nm: String) -> String:
 		return ""
 	var charge := _TD.tower_fire_charge(nm) if (_TD.TOWERS.has(nm) or _TD.TOWERS_EXT.has(nm)) else {}
 	if not charge.is_empty():
-		return "不自动攻击\n火焰 %d 次充满\n密集区爆发 %s" % [int(charge["capacity"]), _num(float(charge["damage"]))]
+		return "不自动攻击\n引爆 %d 次充满\n密集区爆发 %s" % [int(charge["capacity"]), _num(float(charge["damage"]))]
 	# 🆕 经济建筑：不攻击，每波按比例补贴废料（不能用「伤害 0 · 射程 0」那行）。
 	if _TD.tower_income(nm) > 0.0:
 		return "%s\n每波 +%d%% 废料\n占 1 个塔位" % [r, int(round(_TD.tower_income(nm) * 100.0))]
@@ -475,7 +475,7 @@ static func details(nm: String) -> String:
 		return describe(nm)
 	var charge := _TD.tower_fire_charge(nm)
 	if not charge.is_empty():
-		return "不自动攻击\n全场每附加 %d 次火焰触发一次爆发。\n爆发伤害 %s · 半径 %s" % [int(charge["capacity"]),_num(float(charge["damage"])),_num(float(charge["radius"]))]
+		return "不自动攻击\n全场每触发一次火焰十层引爆，充能一次；累计 %d 次后发射。\n爆发伤害 %s · 半径 %s" % [int(charge["capacity"]),_num(float(charge["damage"])),_num(float(charge["radius"]))]
 	if nm == "Icehunter":
 		return "优先攻击射程内完全冻结的单位。\n对冻结目标无视所有抗性；解冻后恢复正常抗性结算。\n单体魔法攻击，自身不附加冰冻。\n%s · 射程 %s" % [stat_line(nm), _num(float(definition["rng"]))]
 	var has_fire := String(definition.get("tag",""))=="fire" and float(definition.get("dps",0.0))>0.0

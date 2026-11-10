@@ -32,7 +32,7 @@ func run() -> void:
 	check(Text.details("Wildfire").contains("持续伤害") and Text.details("Wildfire").contains("火焰："),"复合火焰建筑不遗漏持续伤害")
 	check(Text.details("Coil").contains("弹射 2 次"),"冰冻不覆盖弹射信息")
 	check(Text.details("Avalanche").contains("溅射 1 个"),"冰冻不覆盖溅射信息")
-	check(Text.details("Pyroclasm").contains("不自动攻击") and Text.details("Pyroclasm").contains("12") and Text.details("Pyroclasm").contains("半径 28"),"充能塔独立说明触发与范围")
+	check(Text.details("Pyroclasm").contains("不自动攻击") and Text.details("Pyroclasm").contains("累计 10 次") and Text.details("Pyroclasm").contains("半径 28"),"充能塔独立说明触发与范围")
 	check(Text.details("Unknown")=="" and Text.details("")=="","未知卡不编造效果")
 	var hover := Hover.new()
 	root.add_child(hover)

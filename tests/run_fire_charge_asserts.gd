@@ -57,6 +57,13 @@ func tower_blasts(d) -> Array:
 func apply_many(d, target, count: int) -> void:
 	for i in count:
 		d.apply_fire_effect(target)
+func finish_charge(d, target) -> void:
+	for tower in d.player.towers:
+		if String(tower.ctype) == "Pyroclasm":
+			d._fire_charge[int(tower.slot)] = 9
+	target.burn_stacks = 9
+	d.apply_fire_effect(target)
+
 func _initialize() -> void:
 	quit(0 if run_all() else 1)
 func run_all() -> bool:
@@ -67,23 +74,23 @@ func run_all() -> bool:
 	d.free()
 	d = make_battle()
 	var target = d.monsters[0]
-	apply_many(d, target, 11)
-	check("同一敌人重复附加每次 +1", d._fire_charge[0] == 11 and near(target.hp, 960.0))
+	apply_many(d, target, 99)
+	check("九次引爆充九次，未满层不充能", d._fire_charge[0] == 9 and near(target.hp, 640.0) and tower_blasts(d).is_empty())
 	check("附加后目标具有火焰状态", target.burn_remaining > 0.0 and d.snapshot()["monsters"][0]["burning"])
 	d.apply_fire_effect(target)
-	check("满 12 点立即清空", d._fire_charge[0] == 0)
-	check("爆发对范围内每只敌人各造成 120", near(target.hp, 840.0) and near(d.monsters[1].hp, 840.0))
+	check("第十次引爆满充清空", d._fire_charge[0] == 0)
+	check("爆发对范围内每只敌人各造成 120", near(target.hp, 480.0) and near(d.monsters[1].hp, 480.0))
 	check("爆发不伤害范围外敌人", near(d.monsters[2].hp, 1000.0))
 	check("爆发自身不施加火焰、不递归充能", d._fire_charge[0] == 0)
-	check("快照导出容量及爆发演出", d.snapshot()["towers"][0]["fire_capacity"] == 12 and tower_blasts(d).size() == 1)
+	check("快照导出容量及爆发演出", d.snapshot()["towers"][0]["fire_capacity"] == 10 and tower_blasts(d).size() == 1)
 	d._tick_fire_effects(2.1)
 	check("状态到期与持续跳数不充能", near(target.burn_remaining, 0.0) and d._fire_charge[0] == 0)
 	check("爆发特效按战斗时间结束", d._fire_blasts.is_empty())
 	d.player.towers[0].disabled = true
-	d.apply_fire_effect(target)
+	apply_many(d, target, 10)
 	check("停机塔不充能", d._fire_charge[0] == 0)
 	d.player.towers[0].disabled = false
-	d.apply_fire_effect(target)
+	apply_many(d, target, 10)
 	check("恢复后继续接收事件", d._fire_charge[0] == 1)
 	target.hp = 0.0
 	d.apply_fire_effect(target)
@@ -97,28 +104,32 @@ func run_all() -> bool:
 	d.free()
 
 	d = make_battle(["Pyroclasm", "Pyroclasm"])
-	apply_many(d, d.monsters[0], 12)
+	finish_charge(d, d.monsters[0])
 	check("多座充能塔独立计数且同时爆发", d._fire_charge[0] == 0 and d._fire_charge[1] == 0 and tower_blasts(d).size() == 2)
 	check("多塔爆发分别结算", near(d.monsters[0].hp, 720.0))
-	d.apply_fire_effect(d.monsters[0])
-	check("充满后下一次从 1 点开始", d._fire_charge[0] == 1 and d._fire_charge[1] == 1)
+	apply_many(d, d.monsters[0], 10)
+	check("充满后下一次引爆从 1 点开始", d._fire_charge[0] == 1 and d._fire_charge[1] == 1)
 	d.free()
 
 	d = make_battle(["Pyroclasm", "Cinder"])
 	d._tick_fire_effects(0.9)
 	check("未到攻击间隔不施加火焰", d._fire_charge.is_empty())
 	d._tick_fire_effects(0.1)
-	check("单体火塔实际附加只充一次", d._fire_charge[0] == 1 and d.monsters[0].burn_remaining > 0.0 and near(d.monsters[1].burn_remaining, 0.0))
+	check("单体附加未引爆不充能", d._fire_charge.is_empty() and d.monsters[0].burn_remaining > 0.0 and near(d.monsters[1].burn_remaining, 0.0))
 	d.player.towers[1].disabled = true
 	d._tick_fire_effects(1.0)
-	check("停机的火系来源不产生事件", d._fire_charge[0] == 1)
+	check("停机的火系来源不产生事件", d._fire_charge.is_empty())
 	d.free()
 
 	d = make_battle(["Pyroclasm", "Ember"])
 	d._tick_fire_effects(1.0)
-	check("群体火焰按实际附加的敌人数充能", d._fire_charge[0] == 2)
+	check("群体附加未引爆不充能", d._fire_charge.is_empty())
 	d._tick_fire_effects(1.0)
-	check("群体重复附加继续充能", d._fire_charge[0] == 4)
+	check("群体重复附加未引爆不充能", d._fire_charge.is_empty())
+	d.monsters[0].burn_stacks = 9
+	d.monsters[1].burn_stacks = 9
+	d._tick_fire_effects(1.0)
+	check("群体攻击触发两次引爆充两次，不按爆炸命中数计数", d._fire_charge[0] == 2 and tower_blasts(d).is_empty())
 	d.free()
 
 	d = make_battle(["Pyroclasm", "Frost"])
@@ -127,7 +138,9 @@ func run_all() -> bool:
 	d.free()
 
 	d = make_battle(["Pyroclasm", "Cinder"], 100.0)
-	d._fire_charge[0] = 11
+	d._fire_charge[0] = 9
+	d.monsters[0].burn_stacks = 9
+	d.monsters[0].burn_remaining = 2.0
 	d._fire_attack_clock[1] = 0.9
 	d._substep()
 	check("爆发击杀各结算一次（普攻不重复记账）", d.kills == 2 and near(d.scrap_earned, d.spk * 2.0))
@@ -137,19 +150,19 @@ func run_all() -> bool:
 	d = make_battle()
 	d.combat_types_enabled = true
 	d.monsters[0].proto = "Rush"
-	apply_many(d, d.monsters[0], 12)
+	finish_charge(d, d.monsters[0])
 	check("爆发魔法伤害正确计算魔抗", near(d.monsters[0].hp, 872.0))
 	d.free()
 
 	d = make_battle()
 	d.player.towers[0].h = 4
-	apply_many(d, d.monsters[0], 12)
+	finish_charge(d, d.monsters[0])
 	check("等级提升增加爆发伤害", d.monsters[0].hp < 880.0)
 	d.free()
 	d = make_battle()
 	check("半径边界计入覆盖数量", d._fire_coverage(Vector2.ZERO, PackedVector2Array([Vector2(28.0, 0.0)]), 784.0) == 1)
 	check("刚超过半径不计入覆盖数量", d._fire_coverage(Vector2.ZERO, PackedVector2Array([Vector2(28.01, 0.0)]), 784.0) == 0)
-	apply_many(d, d.monsters[0], 12)
+	finish_charge(d, d.monsters[0])
 	var foreign = preload("res://scripts/gameplay/monster.gd").new()
 	foreign.setup(99, "Swarm", false, 100.0, 1.0, 10.0)
 	d.apply_fire_effect(foreign)
@@ -165,7 +178,7 @@ func run_all() -> bool:
 	d = make_battle()
 	set_positions(d, [Vector2.ZERO, Vector2(200, 200), Vector2(205, 200), Vector2(210, 205)])
 	d.geo.slots[0] = Vector2.ZERO
-	apply_many(d, d.monsters[0], 12)
+	finish_charge(d, d.monsters[0])
 	var cluster_center: Vector2 = tower_blasts(d)[0]["pos"]
 	check("优先轰炸远处三人敌群，不以塔或触发目标为中心", cluster_center.distance_to(Vector2(205, 200)) <= 28.0 and near(d.monsters[0].hp, 960.0))
 	check("密集区全部受伤，稀疏区不受伤", near(d.monsters[1].hp, 880.0) and near(d.monsters[2].hp, 880.0) and near(d.monsters[3].hp, 880.0))
@@ -176,7 +189,7 @@ func run_all() -> bool:
 	# 三角形的边长超过爆发半径，但可以用非敌人位置的爆心覆盖三人。
 	set_positions(d, [Vector2.ZERO, Vector2(40, 0), Vector2(20, 34.641)])
 	var optimal: Vector2 = d._fire_blast_center(28.0)["pos"]
-	apply_many(d, d.monsters[0], 12)
+	finish_charge(d, d.monsters[0])
 	check("搜索敌人之间的区域，不仅以某个敌人为爆心", optimal != d.monsters[0].pos(0.0) and optimal != d.monsters[1].pos(0.0) and optimal != d.monsters[2].pos(0.0))
 	check("最优圆同时命中三角形三名敌人", near(d.monsters[0].hp, 840.0) and near(d.monsters[1].hp, 880.0) and near(d.monsters[2].hp, 880.0))
 	d.free()
@@ -187,7 +200,7 @@ func run_all() -> bool:
 	d.monsters[2].hp = 0.0
 	d.monsters[3].state = WD.MState.LEAKED
 	d.monsters[4].state = WD.MState.LEAKED
-	apply_many(d, d.monsters[0], 12)
+	finish_charge(d, d.monsters[0])
 	check("死亡和已漏出的敌人不影响最密集区域", tower_blasts(d)[0]["pos"] == Vector2.ZERO and near(d.monsters[0].hp, 840.0))
 	check("已漏出的敌人不受到爆发", near(d.monsters[3].hp, 1000.0))
 	d.monsters[0].hp = 0.0
@@ -199,10 +212,10 @@ func run_all() -> bool:
 	d.monsters[0].hp = 100.0
 	d.monsters[1].hp = 100.0
 	d.monsters[2].hp = 100.0
-	apply_many(d, d.monsters[0], 12)
+	finish_charge(d, d.monsters[0])
 	check("多塔连续爆发会重新选取存活敌群", d.kills == 3 and tower_blasts(d).size() == 2 and tower_blasts(d)[0]["pos"].distance_to(tower_blasts(d)[1]["pos"]) > 28.0)
 	d.free()
-	check("卡面明确被动、充能次数和爆发伤害", TEXT.describe("Pyroclasm").contains("不自动攻击") and TEXT.describe("Pyroclasm").contains("12") and TEXT.describe("Pyroclasm").contains("120"))
+	check("卡面明确被动、充能次数和爆发伤害", TEXT.describe("Pyroclasm").contains("不自动攻击") and TEXT.describe("Pyroclasm").contains("引爆 10 次") and TEXT.describe("Pyroclasm").contains("120"))
 	test_fire_stacks()
 	print("Fire charge: %d PASS, %d FAIL" % [passed, failed])
 	return failed == 0
@@ -258,7 +271,7 @@ func test_fire_stacks() -> void:
 	target.proto = "Rush"
 	apply_many(d, target, 10)
 	check("小爆炸魔法伤害受魔抗减免", near(target.hp, 968.0))
-	check("十次附加给焚星塔十点充能，爆炸不额外充能", d._fire_charge[0] == 10 and tower_blasts(d).is_empty())
+	check("一次引爆充一次，不按受伤敌人数计数", d._fire_charge[0] == 1 and tower_blasts(d).is_empty())
 	d.free()
 
 	d = make_battle()
@@ -267,7 +280,7 @@ func test_fire_stacks() -> void:
 	d.monsters[1].hp = 40.0
 	apply_many(d, target, 10)
 	check("引爆击杀正常计入击杀及废料奖励", d.kills == 2 and near(d.scrap_earned, 2.0 * d.spk))
-	check("致死的第十次附加仍然为焚星塔充能", d._fire_charge[0] == 10)
+	check("致死引爆仍然充能一次", d._fire_charge[0] == 1)
 	d._substep()
 	check("引爆击杀不会被后续普攻重复记账", d.kills == 2 and near(d.scrap_earned, 2.0 * d.spk))
 	d.free()
@@ -278,7 +291,7 @@ func test_fire_stacks() -> void:
 	target.burn_remaining = 2.0
 	target.hp = 40.0
 	d.monsters[1].hp = 40.0
-	d._fire_charge[0] = 11
+	d._fire_charge[0] = 9
 	d.apply_fire_effect(target)
 	check("同一次附加能同时触发十层引爆和满充爆发", target.burn_stacks == 0 and d._fire_charge[0] == 0 and d._fire_blasts.size() == 2)
 	check("满层引爆后焚星塔选择剩余敌群", d.kills == 2 and near(d.monsters[2].hp, 880.0) and tower_blasts(d)[0]["pos"] == d.monsters[2].pos(d.v0_))

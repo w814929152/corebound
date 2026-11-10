@@ -823,7 +823,7 @@ func _tick_fire_effects(dt: float) -> void:
 		_fire_attack_clock[int(source.slot)] = maxf(0.0, elapsed)
 
 
-## 唯一火焰附加入口：同一敌人重复附加也充能；死亡、漏出、非战斗事件不计。
+## 唯一火焰附加入口：仅十层引爆充能；死亡、漏出、非战斗事件不计。
 func apply_fire_effect(target) -> void:
 	if player == null or target == null or not monsters.has(target):
 		return
@@ -838,6 +838,9 @@ func apply_fire_effect(target) -> void:
 	if ignite:
 		target.burn_stacks = 0
 		target.burn_remaining = 0.0
+	# Only a ten-stack ignition grants one charge, regardless of victims hit.
+	if not ignite:
+		return
 	var ready: Array = []
 	# 先给所有塔结算同一次事件，再释放爆发，避免击杀/升级改变计数顺序。
 	for tower in player.towers:
@@ -851,7 +854,7 @@ func apply_fire_effect(target) -> void:
 			ready.append({"tower": tower, "params": params})
 		else:
 			_fire_charge[slot] = charge
-	# 附加本身先给所有焚星塔充能，再处理这次附加触发的满层引爆。
+	# 引爆事件先为所有焚星塔充能，再结算引爆伤害与满充发射。
 	if ignite:
 		_apply_fire_area_damage(ignite_pos, float(_TD.FIRE_EFFECT["blast_radius"]),
 			float(_TD.FIRE_EFFECT["blast_damage"]), "ignition")
