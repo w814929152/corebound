@@ -29,6 +29,23 @@ func run() -> void:
 			assert(hud._shop_btn.visible)
 			hud._shop_btn.pressed.emit()
 			assert(shop.visible and not hud._shop_btn.visible)
+			await process_frame
+			await process_frame
+			await process_frame
+			var viewport: Vector2 = root.get_visible_rect().size
+			assert(is_equal_approx(shop.get_global_rect().get_center().x, viewport.x * 0.5))
+			assert(shop._panel.get_theme_stylebox("panel") is StyleBoxEmpty)
+			assert(not shop._title.is_visible_in_tree())
+			assert(not shop._budget_row.is_visible_in_tree())
+			assert(not shop._heavy_panel.is_visible_in_tree())
+			var first_size: Vector2 = shop._slots[0].size
+			assert(first_size.y > first_size.x)
+			for card in shop._slots:
+				assert(absf(card.size.x - first_size.x) <= 1.0)
+				assert(is_equal_approx(card.size.y, first_size.y))
+				assert(card.get_global_rect().position.x >= shop.position.x)
+				assert(card.get_global_rect().end.x <= shop.position.x + shop.size.x)
+
 			assert(ml._xform() == baseline)
 			assert(fx._to_screen(Vector2(28, 28)).is_equal_approx(effect_origin))
 			assert(bg._battlefield_width() == background_width)
