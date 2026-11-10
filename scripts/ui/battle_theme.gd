@@ -17,13 +17,17 @@ static func panel(accent: Color = Style.C_ALLY, padding: float = 16.0) -> StyleB
 	box.shadow_offset = Vector2(0, 6)
 	return box
 
-static func card(active: bool = false) -> StyleBoxFlat:
+static func card(active: bool = false, rarity: String = "") -> StyleBoxFlat:
 	var box := panel(Style.C_ALLY if active else Style.C_STEEL, 12.0)
 	box.bg_color = SURFACE.lightened(0.035) if active else SURFACE
 	box.border_color.a = 0.7 if active else 0.22
 	box.border_width_top = 1
 	box.shadow_size = 0
 	box.set_corner_radius_all(8)
+	if rarity != "":
+		var accent := Style.rarity_color(rarity)
+		box.bg_color = box.bg_color.lerp(accent, 0.16 if active else 0.10)
+		box.border_color = Color(accent, 0.85 if active else 0.48)
 	return box
 
 static func well() -> StyleBoxFlat:

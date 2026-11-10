@@ -284,6 +284,68 @@ static func pack_emblem(pack_id: String) -> Texture2D:
 const CARD_ART_DIR := "res://art/2d/cards/"
 
 static var _card_art_cache: Dictionary = {}
+static var _card_backdrop_cache: Dictionary = {}
+const CARD_BACKDROP_TINT := Color(0.40, 0.44, 0.50, 1.0)
+const _BackdropPacks := preload("res://scripts/data/card_packs.gd")
+static var _card_pack_cache: Dictionary = {}
+
+static func card_pack_id(card_name: String) -> String:
+	if _card_pack_cache.has(card_name):
+		return _card_pack_cache[card_name]
+	for pack in _BackdropPacks.PACKS:
+		if pack["cards"].has(card_name):
+			_card_pack_cache[card_name] = String(pack["id"])
+			return String(pack["id"])
+	return "core"
+
+static func card_backdrop(_tier: String, card_name: String = "") -> Texture2D:
+	var pack_id := card_pack_id(card_name)
+	var scenery_path := "res://art/2d/cards/card_background_%s_v1.png" % pack_id
+	var cache_key := "pack:" + pack_id
+	if _card_backdrop_cache.has(cache_key):
+		return _card_backdrop_cache[cache_key]
+	if ResourceLoader.exists(scenery_path):
+		var scenery: Texture2D = load(scenery_path)
+		if scenery != null:
+			var image := scenery.get_image()
+			if image != null and not image.is_empty():
+				if image.is_compressed():
+					image.decompress()
+				image.resize(96, 96, Image.INTERPOLATE_LANCZOS)
+				var accent := pack_color(pack_id)
+				for pixel_y in range(64, 96):
+					var amount := smoothstep(64.0, 82.0, float(pixel_y)) * 0.38
+					for pixel_x in range(96):
+						var pixel := image.get_pixel(pixel_x, pixel_y)
+						var brightness := pixel.get_luminance()
+						var tinted := Color(accent.r, accent.g, accent.b) * brightness * 1.6
+						tinted.a = pixel.a
+						image.set_pixel(pixel_x, pixel_y, pixel.lerp(tinted, amount))
+				image.resize(256, 256, Image.INTERPOLATE_BILINEAR)
+				scenery = ImageTexture.create_from_image(image)
+			_card_backdrop_cache[cache_key] = scenery
+			return scenery
+	var key := "fallback:" + pack_id
+	if _card_backdrop_cache.has(key):
+		return _card_backdrop_cache[key]
+	var accent := pack_color(pack_id)
+	var gradient := Gradient.new()
+	gradient.offsets = PackedFloat32Array([0.0, 0.48, 1.0])
+	gradient.colors = PackedColorArray([
+		Color(0.055, 0.075, 0.11).lerp(accent, 0.48),
+		Color(0.045, 0.06, 0.09).lerp(accent, 0.20),
+		Color(0.025, 0.035, 0.055),
+	])
+	var texture := GradientTexture2D.new()
+	texture.gradient = gradient
+	texture.width = 256
+	texture.height = 256
+	texture.fill = GradientTexture2D.FILL_RADIAL
+	texture.fill_from = Vector2(0.5, 0.42)
+	texture.fill_to = Vector2(1.0, 1.0)
+	_card_backdrop_cache[key] = texture
+	return texture
+
 
 static func card_art(card_name: String) -> Texture2D:
 	var key := card_name.to_lower()

@@ -48,6 +48,7 @@ func show_card(nm: String, anchor: Rect2, context: String = "", above: bool = fa
 	var key := nm + context
 	if key != _key:
 		_key = key
+		panel.add_theme_stylebox_override("panel", Battle.card(false, Text.rarity(nm)))
 		title.text = Text.display_name(nm)
 		var tag := Text.tag_of(nm)
 		body.text = "建筑卡 · %s\n\n%s" % [Text.tag_cn(tag), Text.details(nm)]

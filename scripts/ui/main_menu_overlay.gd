@@ -455,7 +455,18 @@ func _make_card(pack_id: String, nm: String) -> Control:
 		art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 		art.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		row.add_child(art)
+		var art_frame := PanelContainer.new()
+		art_frame.add_theme_stylebox_override("panel", StyleBoxEmpty.new())
+		art_frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var backdrop := TextureRect.new()
+		backdrop.self_modulate = _Style.CARD_BACKDROP_TINT
+		backdrop.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+		backdrop.texture = _Style.card_backdrop(rar, nm)
+		backdrop.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		backdrop.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		art_frame.add_child(backdrop)
+		art_frame.add_child(art)
+		row.add_child(art_frame)
 
 	var v := VBoxContainer.new()
 	v.add_theme_constant_override("separation", 2)

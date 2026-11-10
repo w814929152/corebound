@@ -1,11 +1,31 @@
 extends SceneTree
 
 const Space := preload("res://scripts/geo/space_model.gd")
+const Style := preload("res://scripts/ui/ui_style.gd")
+const Packs := preload("res://scripts/data/card_packs.gd")
 
 func _initialize() -> void:
 	call_deferred("run")
 
 func run() -> void:
+	var backdrops: Array = []
+	for tier in Style.RARITY:
+		var backdrop := Style.card_backdrop(tier)
+		assert(backdrop == Style.card_backdrop(tier))
+		assert(backdrop != null)
+		backdrops.append(backdrop)
+	assert(Style.card_backdrop("missing") == Style.card_backdrop("common"))
+	var pack_textures: Array = []
+	for pack in Packs.PACKS:
+		var first_name := String(pack["cards"][0])
+		var texture := Style.card_backdrop("common", first_name)
+		assert(texture is ImageTexture)
+		assert(not pack_textures.has(texture))
+		pack_textures.append(texture)
+		for card_name in pack["cards"]:
+			assert(Style.card_pack_id(String(card_name)) == String(pack["id"]))
+			assert(Style.card_backdrop("rare", String(card_name)) == texture)
+	assert(Style.card_pack_id("unknown-card") == "core")
 	var scene = load("res://scenes/battle_shop.tscn").instantiate()
 	root.add_child(scene)
 	await process_frame
@@ -39,6 +59,15 @@ func run() -> void:
 			assert(not shop._budget_row.is_visible_in_tree())
 			assert(not shop._heavy_panel.is_visible_in_tree())
 			var first_size: Vector2 = shop._slots[0].size
+			shop._set_hovered_slot(0)
+			for index in shop._slots.size():
+				var tier: String = shop._slots[index].get_meta("rarity", "")
+				if tier != "":
+					var backdrop: TextureRect = shop._slot_art[index].get_meta("rarity_backdrop")
+					var names: Array = scene.controller.runtime.offers
+					assert(backdrop.texture == Style.card_backdrop(tier, String(names[index])))
+					var box: StyleBoxFlat = shop._slots[index].get_theme_stylebox("panel")
+					assert(box.border_color.is_equal_approx(Color(Style.rarity_color(tier), 0.85 if index == 0 else 0.48)))
 			assert(first_size.y > first_size.x)
 			for card in shop._slots:
 				assert(absf(card.size.x - first_size.x) <= 1.0)

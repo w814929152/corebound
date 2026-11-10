@@ -186,6 +186,7 @@ func _draw() -> void:
 		var art := _Style.card_art(nm)
 		if art != null:
 			var area := Rect2(rect.position + Vector2(8.0, 4.0), Vector2(CARD_W - 16.0, 96.0))
+			draw_texture_rect(_Style.card_backdrop(_CardText.rarity(nm), nm), area, false, _Style.CARD_BACKDROP_TINT)
 			var art_size := art.get_size()
 			var factor := minf(area.size.x / art_size.x, area.size.y / art_size.y)
 			var target := art_size * factor

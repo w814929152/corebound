@@ -393,6 +393,13 @@ func _make_slot(_i: int) -> PanelContainer:
 	art_frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	art_frame.add_theme_stylebox_override("panel", StyleBoxEmpty.new())
 	vb.add_child(art_frame)
+	var backdrop := TextureRect.new()
+	backdrop.self_modulate = _Style.CARD_BACKDROP_TINT
+	backdrop.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	backdrop.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	backdrop.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	art_frame.add_child(backdrop)
+	art.set_meta("rarity_backdrop", backdrop)
 	art_frame.add_child(art)
 	_slot_art.append(art)
 
@@ -551,6 +558,8 @@ func _refresh_shop() -> void:
 		for i in SLOT_COUNT:
 			_slot_name[i].text = "—"
 			_slot_art[i].visible = false
+			_slot_art[i].get_parent().hide()
+			_slots[i].set_meta("rarity", "")
 			_slot_tag[i].text = ""
 			_slot_rarity[i].text = ""
 			_slot_kind[i].text = "—"
@@ -589,6 +598,8 @@ func _refresh_shop() -> void:
 		if nm == "":
 			_slot_name[i].text = "—"
 			_slot_art[i].visible = false
+			_slot_art[i].get_parent().hide()
+			_slots[i].set_meta("rarity", "")
 			_slot_tag[i].text = ""
 			_slot_rarity[i].text = ""
 			_slot_kind[i].text = "此位无卡"
@@ -609,9 +620,13 @@ func _refresh_shop() -> void:
 			var art_tex := _Style.card_art(nm)
 			_slot_art[i].texture = art_tex
 			_slot_art[i].visible = art_tex != null
+			_slot_art[i].get_parent().visible = art_tex != null
 			# 🆕 稀有度（§2.3 · P1-6）：边框色/粗细 + ▲ 角标数 —— 双通道，不只靠颜色。
 			#    稀有度由 card_text 只读派生自抽取权重（SSOT），改权重卡面自动跟随。
 			var rar := _CardText.rarity(nm)
+			_slots[i].set_meta("rarity", rar)
+			var backdrop: TextureRect = _slot_art[i].get_meta("rarity_backdrop")
+			backdrop.texture = _Style.card_backdrop(rar, nm)
 			_slot_rarity[i].text = "▲".repeat(_Style.rarity_pips(rar))
 			_slot_rarity[i].add_theme_color_override("font_color", _Style.rarity_color(rar))
 			# 🆕 蓝图卡面（§5.5）：Tag 电路符号芯片（字形 + 颜色双通道，§9.2①）
@@ -642,7 +657,7 @@ func _refresh_shop() -> void:
 			_set_price_color(i, C_ACCENT if _aff else C_DIM)
 			# 卡片描边 = 稀有度色（§2.3）；可购性由 ✓/✗ + 价格色 + 角刻线表达（第二通道）
 			_slots[i].add_theme_stylebox_override("panel",
-				_Battle.card(i == _hovered_slot))
+				_Battle.card(i == _hovered_slot, rar))
 			_set_chrome_accent(i, "affordable" if _aff else "normal")
 			var note := String(s["notes"][i])
 			if note == "" and bool(s["at_cap"][i]):
@@ -835,4 +850,4 @@ func _set_hovered_slot(index: int) -> void:
 	if _hover != null:
 		_hover.clear()
 	for i in _slots.size():
-		_slots[i].add_theme_stylebox_override("panel", _Battle.card(i == index))
+		_slots[i].add_theme_stylebox_override("panel", _Battle.card(i == index, String(_slots[i].get_meta("rarity", ""))))
