@@ -91,9 +91,7 @@ func _build() -> void:
 	panel.custom_minimum_size = Vector2(
 		n_packs * TILE_SIZE.x + (n_packs - 1) * TILE_GAP + PANEL_PAD_X * 2.0, 0.0)
 	panel.add_theme_stylebox_override("panel", _Style.panel(_Style.C_ALLY, 2, PANEL_PAD_X, 22.0))
-	# 🆕 §5.5 蓝图语言：外沿四角 L 刻线（辉金 accent，与主标题同极）
-	_Style.attach_corner_chrome(panel)
-	_Style.set_chrome_accent(panel, _Style.C_GOLD)
+	# 🆕 2026-11-10 「少边框」：四角 L 刻线停用（原 attach_corner_chrome + 辉金 accent）
 	holder.add_child(panel)
 
 	var vbox := VBoxContainer.new()

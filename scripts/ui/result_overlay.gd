@@ -100,7 +100,7 @@ func _build() -> void:
 	# 🆕 补面板样式（原先走 Godot 默认主题 → 一块无描边的灰色方块，与战场语言断裂）
 	_panel.add_theme_stylebox_override("panel", _Style.panel(_Style.C_ALLY, 2, 26.0, 22.0))
 	# 🆕 §5.5 蓝图语言：外沿四角 L 刻线，accent 随胜负切换（show_result 内 set_chrome_accent）
-	_Style.attach_corner_chrome(_panel)
+	# 🆕 2026-11-10 「少边框」：四角刻线停用（原 _Style.attach_corner_chrome(_panel)）
 	add_child(_panel)
 
 	var margin := MarginContainer.new()

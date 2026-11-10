@@ -49,10 +49,11 @@ const MOTION_SEC := 0.12
 #  StyleBox 工厂
 # ---------------------------------------------------------------------------
 static func _base(bg: Color, border: Color, border_w: int, radius: int) -> StyleBoxFlat:
+	# 🆕 2026-11-10 「少边框」方向：所有面统一**零描边**，层级靠色块明度差 + 文字表达。
+	#    border/border_w 参数保留（API 兼容，调用方无需改动），内部一律不画。
 	var sb := StyleBoxFlat.new()
 	sb.bg_color = bg
-	sb.set_border_width_all(border_w)
-	sb.border_color = border
+	sb.set_border_width_all(0)
 	sb.set_corner_radius_all(radius)
 	return sb
 
@@ -143,30 +144,23 @@ static func _close(a: Color, b: Color, eps: float = 0.004) -> bool:
 
 static func panel(border: Color = C_ALLY, border_w: int = BORDER_W_EMPH,
 		h: float = 16.0, v: float = 14.0) -> StyleBox:
+	# 🆕 2026-11-10 v4 收敛：本层服务**菜单 / 选关 / 选包 / 结算 / 弹窗**，保持 v3 半透明
+	#    深色块（零描边）；「仅文字」只作用于关卡内持久 UI（由 battle_theme 层承担）。
 	var sb := _base(Color(C_BG.r, C_BG.g, C_BG.b, 0.94), border, border_w, RADIUS)
-	var sb_out: StyleBox = _pad(sb, h, v)
-	# 🆕 九宫格渐进替换（批次④）：描边为已登记强调色且不透明 → 贴图；
-	#    半透明语义 / 未知色 / 资产缺失 → 保持 StyleBoxFlat，行为与改前逐位一致。
-	if border.a >= 0.9:
-		var tex := _panel_tex(border)
-		if tex != null:
-			sb_out = _panel_9slice(tex, h, v)
-	return sb_out
+	return _pad(sb, h, v)
 
 
-## 商品卡 / 信息卡：比面板略亮一档（层次 §5.6 双焦点），描边用钢灰（非活动）——
+## 商品卡 / 信息卡：比面板略亮一档（层次 §5.6 双焦点）——
 ##   🔴 X3：三个商品位**必须**传同一个 state，样式永远一致。
 static func card(state: String = "normal") -> StyleBoxFlat:
-	var bg := Color(0.118, 0.137, 0.196, 1.0)     # 比面板底亮一档 → 卡片"浮起来"
-	var border := Color(C_STEEL.r, C_STEEL.g, C_STEEL.b, 0.55)
-	var bw := BORDER_W
+	# v3 色块（可购性 = 底色提亮 + ✓/✗ 字形 + 价格色）；关卡内卡片走 battle_theme（透明）。
+	var bg := Color(0.118, 0.137, 0.196, 1.0)
 	match state:
-		"affordable":                              # 买得起：描边提亮（颜色**不是唯一通道**，
-			border = C_ALLY                        #   可购性另有 ✓/✗ 字形冗余，见 §9.2 红线1）
-			bw = BORDER_W_EMPH
-		"dim":                                     # 买不起 / 无卡：整体压暗
+		"affordable":
+			bg = bg.lightened(0.05)
+		"dim":
 			bg = Color(0.098, 0.113, 0.161, 1.0)
-	return _pad(_base(bg, border, bw, RADIUS), 10.0, 10.0)
+	return _pad(_base(bg, C_STEEL, BORDER_W, RADIUS), 10.0, 10.0)
 
 
 # ---------------------------------------------------------------------------
@@ -229,22 +223,21 @@ static func rarity_pips(tier: String) -> int:
 
 ## 蓝图卡面 · 稀有度变体：`rarity` 非空时边框 = 稀有度色 / 粗细（§2.3），
 ##   `state` 仍管明暗（dim 压暗底色）。`rarity` 为空时行为与改前逐位一致（兼容）。
+## 蓝图卡面 · 稀有度变体：🆕 2026-11-10 「少边框」后稀有度**不走边框**，
+##   改为**底色微染稀有度色**（色块，lerp 0.08 保持可读）+ 角标 ▲ 数（调用方渲染）双通道。
+##   `state` 仍管明暗（dim 压暗底色）。`rarity` 为空时行为与普通卡面一致（兼容）。
 static func card_blueprint(state: String = "normal", rarity: String = "") -> StyleBoxFlat:
-	var bg := Color(0.118, 0.137, 0.196, 1.0)      # 与 card() 同底（比面板亮一档）
-	var border := Color(C_STEEL.r, C_STEEL.g, C_STEEL.b, 0.45)
-	var bw := BORDER_W
+	# v3：稀有度 = 底色微染色块 + ▲ 数（1–5）双通道。
+	var bg := Color(0.118, 0.137, 0.196, 1.0)
 	if rarity != "":
 		var rd: Dictionary = RARITY.get(rarity, RARITY["common"])
-		border = rd["col"]
-		bw = int(rd["bw"])
+		bg = bg.lerp(rd["col"], 0.08)
 	match state:
 		"affordable":
-			if rarity == "":
-				border = C_ALLY
-				bw = BORDER_W_EMPH
+			bg = bg.lightened(0.05)
 		"dim":
 			bg = Color(0.098, 0.113, 0.161, 1.0)
-	return _pad(_base(bg, border, bw, 2), 10.0, 10.0)
+	return _pad(_base(bg, C_STEEL, BORDER_W, 2), 10.0, 10.0)
 
 
 # ---------------------------------------------------------------------------
@@ -346,7 +339,6 @@ static func card_backdrop(_tier: String, card_name: String = "") -> Texture2D:
 	_card_backdrop_cache[key] = texture
 	return texture
 
-
 static func card_art(card_name: String) -> Texture2D:
 	var key := card_name.to_lower()
 	if _card_art_cache.has(key):
@@ -438,37 +430,42 @@ static func button(b: Button, variant: String = "normal") -> void:
 	var col := C_ALLY
 	var font_col := C_TEXT
 	var bg := Color(C_BG.r, C_BG.g, C_BG.b, 0.92)
-	var bw := BORDER_W
 	var radius := RADIUS
+	# 🆕 2026-11-10 v4 收敛：本层按钮保持 v3「底色块染色」——primary 金块金字 /
+	#    normal 青块白字 / danger 红块红字 / unavail 暗块灰字 / ghost 下划线。
+	#    「仅文字」按钮只在关卡内（battle_theme.button 覆写为透明）。
 	match variant:
 		"primary":
 			col = C_GOLD
 			font_col = C_GOLD
-			bw = BORDER_W_EMPH
+			bg = Color(C_GOLD.r, C_GOLD.g, C_GOLD.b, 0.16)
 		"ghost":
 			col = Color(0, 0, 0, 0)
-			bw = 0
 			bg = Color(0, 0, 0, 0)
 			font_col = C_TEXT_DIM
 		"danger":
 			col = C_ALERT
 			font_col = C_ALERT
+			bg = Color(C_ALERT.r, C_ALERT.g, C_ALERT.b, 0.14)
 		"unavail":
 			col = Color(C_STEEL.r, C_STEEL.g, C_STEEL.b, 0.35)
 			font_col = Color(C_TEXT_DIM.r, C_TEXT_DIM.g, C_TEXT_DIM.b, 0.85)
 			bg = Color(C_BG.r, C_BG.g, C_BG.b, 0.55)
+		"normal":
+			col = C_ALLY
+			bg = Color(C_ALLY.r, C_ALLY.g, C_ALLY.b, 0.12)
 
-	var normal: StyleBox = _base(bg, col, bw, radius)
+	var normal: StyleBox = _base(bg, col, 0, radius)
 	_pad(normal, 12.0, 8.0)
 
-	# 悬停：底提亮 + 描边加粗（沿 §5.1「悬停抬起」，位移由 _attach_motion 负责）
-	var hover: StyleBox = _base(bg.lightened(0.08) if bg.a > 0.0 else Color(1, 1, 1, 0.06),
-		col.lightened(0.12) if col.a > 0.0 else Color(0, 0, 0, 0), bw, radius)
+	# 悬停：底色块提亮（沿 §5.1「悬停抬起」，位移由 _attach_motion 负责）
+	var hover: StyleBox = _base(bg.lightened(0.06) if bg.a > 0.0 else Color(1, 1, 1, 0.06),
+		col, 0, radius)
 	_pad(hover, 12.0, 8.0)
 
 	# 按下：微下沉（视觉上压暗，配合 scale 0.97）
 	var pressed: StyleBox = _base(bg.darkened(0.18) if bg.a > 0.0 else Color(0, 0, 0, 0.12),
-		col, bw, radius)
+		col, 0, radius)
 	_pad(pressed, 12.0, 8.0)
 
 	var dis: StyleBox = _base(Color(C_BG.r, C_BG.g, C_BG.b, 0.55),
@@ -484,16 +481,8 @@ static func button(b: Button, variant: String = "normal") -> void:
 		pressed = _ghost_box(Color(C_ALLY_DARK.r, C_ALLY_DARK.g, C_ALLY_DARK.b, 1.0))
 		dis = _ghost_box(Color(C_STEEL.r, C_STEEL.g, C_STEEL.b, 0.22))
 
-	# 🆕 九宫格渐进替换（资产包 v1 批次②）：贴图存在 → 四态全部走 StyleBoxTexture
-	#   （hover/pressed 用 modulate_color 提亮/压暗，复刻旧路径的明度差）；
-	#   贴图缺失（headless / ghost）→ 保持上面刚算好的 StyleBoxFlat，行为与改前逐位一致。
-	var tex := _btn_tex(variant)
-	if tex != null:
-		normal = _btn_9slice(tex, Color(1, 1, 1, 1))
-		hover = _btn_9slice(tex, Color(1.14, 1.14, 1.14, 1.0))
-		pressed = _btn_9slice(tex, Color(0.72, 0.72, 0.72, 1.0))
-		dis = _btn_9slice(tex, Color(1, 1, 1, 0.45))
-
+	# 🆕 2026-11-10 「少边框」：ui_btn_* 九宫格贴图自带烘焙描边 → 不再套用，
+	#    四态全部走上面的色块 StyleBoxFlat（hover/pressed 用明度差保留动态手感）。
 	b.add_theme_stylebox_override("normal", normal)
 	b.add_theme_stylebox_override("hover", hover)
 	b.add_theme_stylebox_override("pressed", pressed)

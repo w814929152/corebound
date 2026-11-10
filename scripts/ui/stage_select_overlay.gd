@@ -36,14 +36,65 @@ const _CampaignData := preload("res://scripts/data/campaign_data.gd")
 ## 设计基准（与 `project.godot` 的逻辑视口一致；无树的 headless 断言也用它算点）。
 const DESIGN_SIZE := Vector2(1920.0, 1080.0)
 
-const RING_FRAC: Array = [0.40, 0.31, 0.22, 0.14, 0.0]
-const ANGLE_START := 200.0
-const ANGLE_STEP := 66.0
+const RING_FRAC: Array = [0.42, 0.31, 0.20, 0.10, 0.0]
 const MAP_SPREAD := Vector2(1.25, 1.0)
 
-const NODE_R := 27.0        # 六边形节点外接圆半径
-const HIT_R := 38.0         # 点击 / 悬停命中半径（比视觉略大，手好点）
+## 节点方位角（°，Godot 屏幕坐标：0°=右 / 90°=下 / 270°=上）。
+##   🔴 按**解锁链路平面嵌入**规划（2026-11-10 二次重排）：
+##   半径仍走 RING_FRAC[chapter-1]（向心序由 run_campaign_asserts 钉死），角度手工排布，
+##   使每条 prereq 边都是**短放射线/短弧且零交叉**（v1 表的 0-1→3-1 长弦从 6-1 卡片
+##   底下穿过，与 2-1→5-1 / 2-1→6-1 视觉纠缠，被误读成「6-1 解锁 3-1」）：
+##   · 0-1 居顶，3-1 径向贴其正下方（0→3 只剩一段短竖线）；
+##   · 1-1 居左、2-1 居右下，夹在两者之间的 5-1 落在底部中央（1→5 / 2→5 双短弧）；
+##   · 4-1 / 7-1 径向贴各自父节点（1-1 / 3-1）；6-1 收进 0→2 航线内侧
+##     （四边形 0-2-6-3 内部），2→6 / 3→6 均为短边且不与 0→2 相交；
+##   · 8-1 落左内环（210°），8→9 短斜线进核心；9-1 正中（核心底座）。
+##   环距同步放宽（0.42/0.20/0.10）：同角度相邻环的「卡片+标签」占位 ≈97px，
+##   环距 118.8px 才留得出 ~22px 空隙（0-1→3-1→7-1 的纵向堆叠靠它）。
+##   表外 id 回落等角度步进（headless 断言兜底，实际 10 关全覆盖）。
+const STAGE_ANGLES := {
+	"0-1": 270.0,
+	"1-1": 180.0,
+	"2-1": 30.0,
+	"3-1": 270.0,
+	"4-1": 180.0,
+	"5-1": 105.0,
+	"6-1": 285.0,
+	"7-1": 250.0,
+	"8-1": 210.0,
+	"9-1": 210.0,      # RING_FRAC[4] = 0 → 正中心，角度只影响 8→9 进核心的方向
+}
+const ANGLE_FALLBACK_START := 200.0
+const ANGLE_FALLBACK_STEP := 66.0
+
+const NODE_R := 27.0        # 六边形节点外接圆半径（场景图缺失时的回落路径）
+const HIT_R := 46.0         # 点击 / 悬停命中半径（场景卡半宽 44 之上略加余量，手好点）
 const LABEL_GAP := 30.0     # 节点 → 关卡名 的径向间距（留够空隙，标签不压六边形）
+
+## 🆕 场景图缩略卡（2026-11-10 · stage-scene-prompts-v1）：
+##   航图节点 = 该关场景图。资产在 `art/2d/stages/`，缺失（headless / 未导入）
+##   → 逐节点回落六边形旧路径，画面与贴图前逐位一致（资产包 v3 降级纪律）。
+##   文件版本号以 art/2d/stages/ 实际交付为准（9-1 为重出 v2）。
+const STAGE_SCENE_TEX: Dictionary = {
+	"0-1": "stage_scene_0_1_v1.png",
+	"1-1": "stage_scene_1_1_v1.png",
+	"2-1": "stage_scene_2_1_v1.png",
+	"3-1": "stage_scene_3_1_v1.png",
+	"4-1": "stage_scene_4_1_v1.png",
+	"5-1": "stage_scene_5_1_v1.png",
+	"6-1": "stage_scene_6_1_v1.png",
+	"7-1": "stage_scene_7_1_v1.png",
+	"8-1": "stage_scene_8_1_v1.png",
+	"9-1": "stage_scene_9_1_v2.png",
+}
+
+## 缩略卡尺寸：场景图原始 1536×960 = 1.6:1，按同比例缩到节点档（16px 下限不涉及）。
+const SCENE_W := 88.0
+const SCENE_H := 55.0
+
+## 链路能量脉冲：沿已通关 / 可挑战航线匀速流动的光点（隐藏时不重绘，零开销）。
+const FLOW_SPEED := 0.18    # 循环 / 秒
+const PULSE_COUNT := 2      # 每条航线上的光点数
 
 ## 画布文字字号（🔴 全部 ≥16，与 UI 样式层的下限同口径；绘制侧不受 Label 兜底保护，
 ##   所以在这里单独钉成常量，`run_ui_style_asserts` §C 直接读这组值）。
@@ -84,6 +135,21 @@ func _ht(fname: String) -> Texture2D:
 	if _tex_cache.has(fname):
 		return _tex_cache[fname]
 	var path := "res://art/2d/ui/" + fname
+	var t: Texture2D = null
+	if ResourceLoader.exists(path):
+		t = load(path) as Texture2D
+	_tex_cache[fname] = t
+	return t
+
+
+## 🆕 场景图贴图加载（`art/2d/stages/`）：判空降级同 `_ht`；缓存键 = 文件名
+##   （两目录文件名不重叠；命中失败也算缓存，避免每帧 load + exists）。
+func _ht_stage(fname: String) -> Texture2D:
+	if fname == "":
+		return null
+	if _tex_cache.has(fname):
+		return _tex_cache[fname]
+	var path := "res://art/2d/stages/" + fname
 	var t: Texture2D = null
 	if ResourceLoader.exists(path):
 		t = load(path) as Texture2D
@@ -151,6 +217,7 @@ func _build() -> void:
 	_canvas.resized.connect(_on_canvas_resized)
 	_canvas.mouse_exited.connect(_on_canvas_mouse_exited)
 	add_child(_canvas)
+	# 🆕 2026-11-10 「少边框」：画布四角刻线停用（原 attach_corner_chrome(_canvas, 14, 2)）
 
 	_build_header()
 	_build_ember()
@@ -185,6 +252,12 @@ func _input(event: InputEvent) -> void:
 	if visible and event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_ESCAPE:
 		get_viewport().set_input_as_handled()
 		return_to_menu()
+
+
+func _process(_delta: float) -> void:
+	# 航图可见时逐帧重绘：驱动链路能量脉冲与悬停呼吸（隐藏时零开销）。
+	if visible and _canvas != null:
+		_canvas.queue_redraw()
 
 
 func _build_header() -> void:
@@ -281,8 +354,7 @@ func _build_detail_panel() -> void:
 	_panel = PanelContainer.new()
 	_panel.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_panel.add_theme_stylebox_override("panel", _Style.panel(_Style.C_ALLY, 2, 20.0, 16.0))
-	_Style.attach_corner_chrome(_panel)
-	_Style.set_chrome_accent(_panel, _Style.C_GOLD)
+	# 🆕 2026-11-10 「少边框」：详情卡四角刻线停用
 	_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	wrap.add_child(_panel)
 
@@ -316,8 +388,9 @@ func layout_points(sz: Vector2) -> Dictionary:
 	for i in range(_CampaignData.STAGE_ORDER.size()):
 		var sid := String(_CampaignData.STAGE_ORDER[i])
 		var ch := int(_CampaignData.STAGES[sid].get("chapter", 1))
-		var angle := deg_to_rad(ANGLE_START + ANGLE_STEP * float(i))
-		out[sid] = center + Vector2.from_angle(angle) * MAP_SPREAD * unit * float(RING_FRAC[ch - 1])
+		var angle_deg: float = float(STAGE_ANGLES.get(
+			sid, ANGLE_FALLBACK_START + ANGLE_FALLBACK_STEP * float(i)))
+		out[sid] = center + Vector2.from_angle(deg_to_rad(angle_deg)) * MAP_SPREAD * unit * float(RING_FRAC[ch - 1])
 	return out
 
 
@@ -507,8 +580,9 @@ func _paint(ci: Control) -> void:
 		sz = DESIGN_SIZE
 	_points = layout_points(sz)
 	_draw_backdrop(ci, sz)
+	_draw_guides(ci, sz)
 	_draw_tracks(ci, sz)
-	_draw_paths(ci)
+	_draw_paths(ci, sz)
 	_draw_nodes(ci, sz)
 
 
@@ -533,19 +607,44 @@ func _draw_backdrop(ci: Control, sz: Vector2) -> void:
 		var a := 0.05 + 0.07 * fmod(float(i) * 0.37, 1.0)
 		ci.draw_circle(Vector2(x, y), 1.1, Color(0.78, 0.85, 1.0, a))
 
+
+## 蓝图参考系（§5.5 工程图语言）：最外环内侧罗盘刻度，填住 keyart 之外的空场。
+##   🔴 中央不放准星 / 参考圆：中央是主脑节点区（核心底座 r50 + 脉冲环 r62），
+##   任何装饰线都会压进脉冲环或与节点抢视觉焦点，只保留外围刻度。
+func _draw_guides(ci: Control, sz: Vector2) -> void:
+	var center := Vector2(sz.x * 0.59, sz.y * 0.48)
+	var unit := minf(sz.y, sz.x * 0.62)
+	# 最外环内侧罗盘刻度：每 30° 一枚短刻度，读作「航图罗盘」。
+	#   🔴 轨道是椭圆（MAP_SPREAD 为 Vector2）：刻度点走分量乘，内缩沿方向单位向量。
+	var outer := MAP_SPREAD * unit * float(RING_FRAC[0])
+	var tick := Color(_Style.C_STEEL.r, _Style.C_STEEL.g, _Style.C_STEEL.b, 0.16)
+	for k in range(12):
+		var d := Vector2.from_angle(TAU * float(k) / 12.0)
+		var dn := d.normalized()
+		var pt := center + d * outer
+		ci.draw_line(pt - dn * 6.0, pt - dn * 14.0, tick, 1.0, true)
+
 func _draw_tracks(ci: Control, sz: Vector2) -> void:
 	var center := Vector2(sz.x * 0.59, sz.y * 0.48)
 	var unit := minf(sz.y, sz.x * 0.62)
 	for ch in range(1, 5):
+		var radii := MAP_SPREAD * unit * float(RING_FRAC[ch - 1])
 		var orbit := PackedVector2Array()
 		for k in range(129):
-			orbit.append(center + Vector2.from_angle(TAU * float(k) / 128.0) * MAP_SPREAD * unit * float(RING_FRAC[ch - 1]))
-		ci.draw_polyline(orbit, Color(_chapter_color(ch), 0.10), 1.0, true)
+			orbit.append(center + Vector2.from_angle(TAU * float(k) / 128.0) * radii)
+		ci.draw_polyline(orbit, Color(_chapter_color(ch), 0.13), 1.0, true)
+		# 环刻度（§5.5）：每 15° 一枚内向短刻度，五环结构可读（椭圆轨道同上管法）
+		var tick := Color(_chapter_color(ch), 0.20)
+		for k in range(24):
+			var d := Vector2.from_angle(TAU * float(k) / 24.0)
+			var dn := d.normalized()
+			var pt := center + d * radii
+			ci.draw_line(pt - dn * 2.0, pt - dn * 5.5, tick, 1.0, true)
 
 
-func _draw_paths(ci: Control) -> void:
+func _draw_paths(ci: Control, sz: Vector2) -> void:
 	for edge in route_edges():
-		_draw_route(ci, String(edge["source"]), String(edge["target"]), bool(edge["gate"]))
+		_draw_route(ci, sz, String(edge["source"]), String(edge["target"]), bool(edge["gate"]))
 
 
 ## 展示真实解锁关系。地区数量门槛不伪造为某一条必经航线。
@@ -561,7 +660,7 @@ func route_edges() -> Array:
 	return edges
 
 
-func _draw_route(ci: Control, source: String, target: String, gate: bool) -> void:
+func _draw_route(ci: Control, sz: Vector2, source: String, target: String, gate: bool) -> void:
 	var direction: Vector2 = (_points[target] - _points[source]).normalized()
 	var p0: Vector2 = _points[source] + direction * (NODE_R + 8.0)
 	var p1: Vector2 = _points[target] - direction * (NODE_R + 8.0)
@@ -569,24 +668,38 @@ func _draw_route(ci: Control, source: String, target: String, gate: bool) -> voi
 	var active: bool = _campaign_ref != null and _campaign_ref.is_unlocked(target)
 	var col := _Style.C_GOLD if done else (_Style.C_ALLY if active else _Style.C_STEEL)
 	var emphasis := source == _hovered or target == _hovered
-	var alpha := 0.8 if done or emphasis else 0.30
+	var alpha := 0.85 if done else (0.70 if active or emphasis else 0.28)
+	# 弧线贴地 + 统一凸向外侧：航线绕开中央核心区（地铁图式绕行），交叉锐减、
+	#   中央保持干净；弯曲幅度取边长 0.09，短线近似直线、长弧外绕不过拱。
 	var curve := Curve2D.new()
-	var bend := p0.distance_to(p1) * 0.18
-	var normal := Vector2(-direction.y, direction.x)
+	var bend := p0.distance_to(p1) * 0.09
+	var center := Vector2(sz.x * 0.59, sz.y * 0.48)
+	var outward := ((p0 + p1) * 0.5 - center)
+	var normal := outward.normalized() if outward.length() > 1.0 else Vector2(1.0, 0.0)
 	curve.add_point(p0, Vector2.ZERO, direction * bend - normal * bend)
 	curve.add_point(p1, -direction * bend - normal * bend, Vector2.ZERO)
 	var line := curve.get_baked_points()
-	ci.draw_polyline(line, Color(_Style.C_BG, 0.9), 7.0, true)
+	var baked_len := curve.get_baked_length()
+	ci.draw_polyline(line, Color(_Style.C_BG, 0.9), 5.0, true)
 	if done or emphasis:
-		ci.draw_polyline(line, Color(col, 0.08), 9.0, true)
+		ci.draw_polyline(line, Color(col, 0.10), 8.0, true)
 	if gate or not active:
+		# 门槛 / 锁定：细虚线压暗，让视觉重量集中在已推进的链路上。
 		for k in range(line.size() - 1):
 			if k % 4 < 2:
-				ci.draw_line(line[k], line[k + 1], Color(col, alpha), 2.0, true)
+				ci.draw_line(line[k], line[k + 1], Color(col, alpha), 1.6, true)
 	else:
 		ci.draw_polyline(line, Color(col, alpha), 2.0, true)
-	var tip := curve.sample_baked(curve.get_baked_length() * 0.60)
-	var ahead := curve.sample_baked(curve.get_baked_length() * 0.60 + 2.0)
+		# 能量脉冲：沿已通关（金）/ 可挑战（青）航线匀速流动的光点。
+		var t := float(Time.get_ticks_msec()) * 0.001 * FLOW_SPEED
+		for k in range(PULSE_COUNT):
+			var u := fmod(t + float(k) / float(PULSE_COUNT), 1.0)
+			var pos := curve.sample_baked(baked_len * u)
+			ci.draw_circle(pos, 4.0, Color(col, 0.20))
+			ci.draw_circle(pos, 2.0, Color(col, 0.85))
+	# 箭头贴近目标节点（读出推进方向），不再悬在航线中段。
+	var tip := curve.sample_baked(baked_len * 0.94)
+	var ahead := curve.sample_baked(baked_len * 0.94 + 2.0)
 	var d := (ahead - tip).normalized()
 	var n := Vector2(-d.y, d.x)
 	ci.draw_polyline(PackedVector2Array([tip - d * 6 + n * 4, tip, tip - d * 6 - n * 4]), Color(col, alpha), 1.5, true)
@@ -621,61 +734,104 @@ func _draw_nodes(ci: Control, sz: Vector2) -> void:
 			ring = Color(_Style.C_STEEL.r, _Style.C_STEEL.g, _Style.C_STEEL.b, 0.45)
 			ring_w = 1.6
 
+		# 🆕 场景图缩略卡：节点 = 该关场景图（stage-scene-prompts-v1）。
+		#    视觉半尺寸 half：缩略卡 = 卡片半宽高；旧路径 = 六边形外接圆半径。
+		#    标签 / 符号 / 光环偏移统一走 half，两路径下与原版逐位一致。
+		var scene_tex: Texture2D = _ht_stage(String(STAGE_SCENE_TEX.get(sid, "")))
+		var half := Vector2(r, r)
+		if scene_tex != null:
+			half = Vector2(SCENE_W, SCENE_H) * 0.5 * (1.08 if hov else 1.0)
+
 		# 终局核心底座（资产包 v3）：画在本节点所有层之下，只给 chapter≥4 的节点。
 		#   生成器锚点：底座外接圆 r=50（< 脉冲环 62，不抢脉冲）。
 		if ch >= 4 and core_tex != null:
 			var seat := 2.0 * 50.0
 			ci.draw_texture_rect(core_tex, Rect2(p - Vector2(seat, seat) * 0.5, Vector2(seat, seat)), false)
 
-		# 悬停 / 当前：外侧光环。贴图环 r=36 == 旧路径 NODE_R+9；悬停 tint 白 α0.65
+		# 悬停 / 当前：外侧光环。缩略卡时环随卡片尺寸放大；悬停 tint 白 α0.65
 		#   （0.40×0.65≈0.26）、当前 tint 章节色（0.40），与旧 draw_arc 同观感。
 		if hov or cur:
 			if halo_tex != null:
-				var hs := (NODE_R + 9.0) * 2.0
+				var hs: Vector2 = half * 2.0 + Vector2(18.0, 18.0)
 				var tint := Color(1, 1, 1, 0.65) if hov else Color(col.r, col.g, col.b, 1.0)
-				ci.draw_texture_rect(halo_tex, Rect2(p - Vector2(hs, hs) * 0.5, Vector2(hs, hs)), false, tint)
+				ci.draw_texture_rect(halo_tex, Rect2(p - hs * 0.5, hs), false, tint)
 			elif hov:
-				ci.draw_arc(p, r + 9.0, 0.0, TAU, 48, Color(1, 1, 1, 0.26), 1.5, true)
+				ci.draw_arc(p, half.y + 9.0, 0.0, TAU, 48, Color(1, 1, 1, 0.26), 1.5, true)
 			elif cur:
-				ci.draw_arc(p, r + 7.0, 0.0, TAU, 48, Color(col.r, col.g, col.b, 0.40), 1.5, true)
+				ci.draw_arc(p, half.y + 7.0, 0.0, TAU, 48, Color(col.r, col.g, col.b, 0.40), 1.5, true)
 
-		# 节点本体：贴图生效时按状态走主件（modulate 染章节色 / 辉金）或锁定专件
-		#   （🔴 锁定不能给主件减 alpha —— 整图半透明会让填充透出星点；锁定专件
-		#   缺失时直接落旧 _hex，不用主件凑数）；缺失 → 旧 _hex。
-		var used_tex := false
-		if not unlocked:
-			if node_lk_tex != null:
-				ci.draw_texture_rect(node_lk_tex, Rect2(p - Vector2(r, r), Vector2(r * 2.0, r * 2.0)), false)
+		if scene_tex != null:
+			_draw_scene_node(ci, p, scene_tex, half, ring, ring_w, unlocked)
+		else:
+			# —— 旧六边形路径（逐位保留；场景图缺失 / headless 时走这里）——
+			# 节点本体：贴图生效时按状态走主件（modulate 染章节色 / 辉金）或锁定专件
+			#   （🔴 锁定不能给主件减 alpha —— 整图半透明会让填充透出星点；锁定专件
+			#   缺失时直接落旧 _hex，不用主件凑数）；缺失 → 旧 _hex。
+			var used_tex := false
+			if not unlocked:
+				if node_lk_tex != null:
+					ci.draw_texture_rect(node_lk_tex, Rect2(p - Vector2(r, r), Vector2(r * 2.0, r * 2.0)), false)
+					used_tex = true
+			elif node_tex != null:
+				ci.draw_texture_rect(node_tex, Rect2(p - Vector2(r, r), Vector2(r * 2.0, r * 2.0)), false, ring)
 				used_tex = true
-		elif node_tex != null:
-			ci.draw_texture_rect(node_tex, Rect2(p - Vector2(r, r), Vector2(r * 2.0, r * 2.0)), false, ring)
-			used_tex = true
-		if not used_tex:
-			_hex(ci, p, r, fill, ring, ring_w)
-
-		# 保持节点坐标、贴图与命中范围不变，只叠加机械装甲细节。
-		_draw_node_armor(ci, p, r, ring, unlocked, hov, cur)
+			if not used_tex:
+				_hex(ci, p, r, fill, ring, ring_w)
+			# 保持节点坐标、贴图与命中范围不变，只叠加机械装甲细节。
+			_draw_node_armor(ci, p, r, ring, unlocked, hov, cur)
 
 		# 状态符号（形状通道）：可挑战节点不再空心。
+		#   🆕 缩略卡下符号压在场景图上，先垫一枚深色底衬保证 1 秒可读（§9.2 红线 1）。
 		if cleared:
+			if scene_tex != null:
+				ci.draw_circle(p, 13.0, Color(0.031, 0.039, 0.063, 0.88))
 			_draw_check(ci, p, r * 0.40, _Style.C_GOLD)
 		elif not unlocked:
+			if scene_tex != null:
+				ci.draw_circle(p, 12.0, Color(0.031, 0.039, 0.063, 0.88))
 			_draw_lock(ci, p + Vector2(0.0, -2.0), r * 0.35, Color(_Style.C_STEEL.r, _Style.C_STEEL.g, _Style.C_STEEL.b, 0.85))
 		elif unlocked:
+			if scene_tex != null:
+				ci.draw_circle(p, 12.0, Color(0.031, 0.039, 0.063, 0.88))
 			_draw_play(ci, p + Vector2(1.0, 0.0), r * 0.38, _Style.C_GOLD if hov else col)
 
 		# 标签统一位于节点下方，避免跨越线路；编号独立放在左侧。
-		var name_pos := p + Vector2(0, r + 27.0)
-		_draw_center_text(ci, p + Vector2(-r - 26.0, -12.0), sid, 16, ring)
-		var label_width := 150.0
-		ci.draw_style_box(_Style.panel(Color(ring, 0.25), 1, 8.0, 4.0),
-			Rect2(name_pos - Vector2(label_width * 0.5, 15), Vector2(label_width, 30)))
+		#   chip 宽度按关卡名实测（不再定宽 150），描边提亮保证压线时可读。
+		#   🆕 偏移基准 = half（缩略卡用卡片半宽高，六边形用外接圆）。
+		var name_txt := String(st.get("name", ""))
+		var name_pos := p + Vector2(0, half.y + 27.0)
+		_draw_center_text(ci, p + Vector2(-half.x - 26.0, -12.0), sid, 16, ring)
+		var name_font: Font = _Style.font_medium()
+		var text_w := 60.0
+		if name_font != null:
+			text_w = name_font.get_string_size(name_txt, HORIZONTAL_ALIGNMENT_LEFT, -1, NODE_LABEL_FONT).x
+		var chip_w := maxf(text_w + 22.0, 64.0)
+		ci.draw_style_box(_Style.panel(Color(ring, 0.45), 1, 8.0, 4.0),
+			Rect2(name_pos - Vector2(chip_w * 0.5, 15), Vector2(chip_w, 30)))
 		var name_col := _Style.C_WHITE
 		if cleared:
 			name_col = _Style.C_GOLD
 		elif not unlocked:
-			name_col = Color(_Style.C_STEEL.r, _Style.C_STEEL.g, _Style.C_STEEL.b, 0.72)
-		_draw_center_text(ci, name_pos, String(st.get("name", "")), NODE_LABEL_FONT, name_col)
+			name_col = Color(_Style.C_STEEL.r, _Style.C_STEEL.g, _Style.C_STEEL.b, 0.85)
+		_draw_center_text(ci, name_pos, name_txt, NODE_LABEL_FONT, name_col)
+
+
+## 🆕 场景图缩略卡节点：深色底板遮线 + 场景图 + 状态描边。
+##   · 锁定整卡压灰去饱和：贴图自身不透明，不存在旧路径「减 alpha 透星点」问题；
+##   · 边框走颜色通道（金 = 已通关 / 章节 = 可挑战 / 钢灰 = 锁定），
+##     形状通道（勾 / 锁 / 三角）由调用方统一画在卡心，两通道缺一不可（§9.2 红线 1）。
+func _draw_scene_node(ci: Control, p: Vector2, tex: Texture2D, half: Vector2,
+		ring: Color, ring_w: float, unlocked: bool) -> void:
+	var rect := Rect2(p - half, half * 2.0)
+	# 深色底板：遮住穿过节点的航线 / 轨道（与旧路径 ink 同职责），兼作工程图卡片衬边。
+	var pad := 4.0
+	ci.draw_rect(Rect2(rect.position - Vector2(pad, pad), rect.size + Vector2(pad * 2.0, pad * 2.0)),
+		Color(0.031, 0.039, 0.063, 0.97))
+	var mod := Color(1, 1, 1, 1.0)
+	if not unlocked:
+		mod = Color(0.40, 0.43, 0.50, 1.0)
+	ci.draw_texture_rect(tex, rect, false, mod)
+	ci.draw_rect(rect, ring, false, ring_w)
 
 
 ## 小尺寸机械站标：倒角装甲、内嵌面板、六向触点；均沿用原外接圆。

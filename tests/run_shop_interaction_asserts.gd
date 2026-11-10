@@ -35,8 +35,10 @@ func run() -> void:
 	rt.toggle_lock(0)
 	var before: Array = rt.offers.duplicate()
 	var cost: float = rt.price_at(0)
-	shop._slot_buy[0].grab_focus()
-	shop._slot_buy[0].pressed.emit()
+	# 🆕 2026-11-10 参考图布局：独立购买按钮取消，点击整卡触发 buy_requested
+	#    （原 shop._slot_buy[0].grab_focus()/pressed.emit()，成员已改名为 _slot_can_buy 布尔态）
+	shop._slots[0].grab_focus()
+	mouse_button(shop._slots[0].get_global_rect().get_center(), true)
 	assert(rt.offers[0] != before[0])
 	assert(rt.offers.slice(1) == before.slice(1))
 	assert(rt.scrap == 100.0 - cost and rt.rerolls == 0)
@@ -49,7 +51,7 @@ func run() -> void:
 	assert(td.sm.state == TSM.State.SAFE_WINDOW and paused)
 	key_tab()
 	assert(shop.visible)
-	shop._slot_buy[0].pressed.emit()
+	mouse_button(shop._slots[0].get_global_rect().get_center(), true)
 	assert(rt.pending.size() == 2 and backpack._pending.size() == 2)
 	# 从关闭的商店状态拖放，成功后仅消费所拖的那一张，界面同步更新。
 	key_tab()

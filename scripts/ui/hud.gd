@@ -33,6 +33,9 @@ const C_TEXT_DIM := Color(0.545, 0.580, 0.647)  # #8B94A5
 const C_WHITE := Color(1.0, 1.0, 1.0)
 const C_PANEL := Color(0.078, 0.090, 0.149, 0.92)
 const C_PANEL_SOFT := Color(0.078, 0.090, 0.149, 0.85)
+## 🆕 星紫（art-bible §2.2 表内色 · ui_style.PACK_COLORS["arc"] 同值）：
+##    放置模式「时间 × 0.25」徽标专用 —— 时间减速信号，避开青（玩家极）/ 红（危险）语义。
+const C_ARC := Color(0.478, 0.361, 1.0)
 
 const WAVE_BAR_W := 300.0
 const WAVE_BAR_H := 10.0
@@ -63,6 +66,7 @@ var _hint_label: Label
 var _shop_btn: Button
 var _start_wave_btn: Button
 var _banner: Label
+var _place_badge: PanelContainer   # 🆕 ⑤ 放置模式「时间 × 0.25 · 部署中」徽标（只读快照）
 var _debug_panel: PanelContainer
 ## 🆕 缓存 StyleBox（`_draw` 每帧调用，不得在绘制里 new StyleBoxFlat → 每帧分配）。
 var _box_score: StyleBox
@@ -159,6 +163,10 @@ func _layout() -> void:
 		_banner.position = Vector2.ZERO
 		_banner.size = vs
 		_banner.pivot_offset = Vector2(vw * 0.5, vh * 0.5)
+	if _place_badge != null:
+		# 波次仪表正下方居中（准备态仪表高 108 → 底沿 130，徽标再让出 12px）
+		_place_badge.position = Vector2(vw * 0.5 - 92.0, 142.0)
+		_place_badge.size = Vector2(184.0, 32.0)
 
 
 func bind_director(d: Node) -> void:
@@ -262,12 +270,10 @@ func _build() -> void:
 	# 🆕 L0 区缓存样式：积分卡面板 + 波次条轨道 / 填充（避免 `_draw` 每帧 new）
 	_box_score = _Battle.panel(C_GOLD, 0.0)
 	_box_wave = _Battle.panel(C_ALLY, 0.0)
-	# 🔴 轨道不能直接复用 `_Style.inset()`：它的底色（#0E111B）比场地圆（#1E2C46）更暗，
-	#    叠在上面的结果就是「看不见轨道，只看见一条橙线」。改用半透明黑 + 细描边，深浅底都成立。
+	# 🔴 轨道不能直接复用 `_Style.inset()`：它的底色（#0E111B）比场地圆（#1E2C46）更暗。
+	#    🆕 v4 统一关卡内风格：轨道底块取消（alpha 0），进度只靠填充条 + 游标表达。
 	_box_bar_track = StyleBoxFlat.new()
-	_box_bar_track.bg_color = Color(0.0, 0.0, 0.0, 0.42)
-	_box_bar_track.set_border_width_all(1)
-	_box_bar_track.border_color = Color(1.0, 1.0, 1.0, 0.14)
+	_box_bar_track.bg_color = Color(0.0, 0.0, 0.0, 0.0)
 	_box_bar_track.set_corner_radius_all(WAVE_BAR_H * 0.5)
 	_box_bar_fill = _Style.bar_fill(C_ENEMY)
 	_box_bar_fill_elite = _Style.bar_fill(C_ALERT)
@@ -343,6 +349,28 @@ func _build() -> void:
 	_banner.visible = false
 	add_child(_banner)
 
+	# 🆕 放置模式徽标（设计稿 v1 §4.3）：「时间 × 0.25 · 部署中」星紫描边小面板。
+	#    🔴 只读 `TimeDirector.snapshot()["time_scale"]` 呈现，**禁直写 time_scale**
+	#    （time_scale 唯一写入者 = TimeDirector，control-manifest §5）。
+	var badge := PanelContainer.new()
+	badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var bsb := StyleBoxFlat.new()
+	bsb.bg_color = C_PANEL
+	# 🆕 v3 少边框：徽标零描边，星紫语义由文字颜色承担
+	bsb.set_corner_radius_all(6)
+	bsb.content_margin_left = 14.0
+	bsb.content_margin_right = 14.0
+	bsb.content_margin_top = 5.0
+	bsb.content_margin_bottom = 5.0
+	badge.add_theme_stylebox_override("panel", bsb)
+	var blb := _Style.label("时间 × 0.25 · 部署中", _Style.FONT_MIN, C_ARC)
+	_Style.apply_font(blb, "medium")
+	blb.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	badge.add_child(blb)
+	badge.visible = false
+	add_child(badge)
+	_place_badge = badge
+
 	_build_debug_panel()
 
 
@@ -404,6 +432,12 @@ func _process(delta: float) -> void:
 	var s: Dictionary = director.snapshot()
 	_wave_label.text = "准备阶段" if int(s["wave"]) == 0 else "第 %d 波" % int(s["wave"])
 	_start_wave_btn.text = "开始战斗" if int(s["wave"]) == 0 else "开始下一波"
+	# 🆕 放置模式徽标：状态 = PLACEMENT_MODE 时显示，倍率实时读快照（只读）。
+	if _place_badge != null:
+		var placing := int(s["state"]) == _TSM.State.PLACEMENT_MODE
+		_place_badge.visible = placing
+		if placing:
+			(_place_badge.get_child(0) as Label).text = "时间 × %.2f · 部署中" % float(s["time_scale"])
 	_refresh_score()
 	_refresh_wave_progress()
 	_start_wave_btn.disabled = (int(s["state"]) != _TSM.State.SAFE_WINDOW)

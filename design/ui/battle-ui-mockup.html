@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>守核 Corebound · 战斗场景 UI 设计稿 v1</title>
+<style>
+/* ============================================================
+   守核 Corebound · 战斗场景 UI 设计稿
+   色板逐字取自 design/art/art-bible.md §2.2 / scripts/ui/ui_style.gd
+   字体：Noto Sans SC（500/700/900）+ JetBrains Mono（等宽数字）
+   ============================================================ */
+@font-face {
+  font-family: "NotoSansSC";
+  src: url("../../assets/fonts/NotoSansSC.ttf") format("truetype");
+  font-weight: 100 900;
+}
+@font-face {
+  font-family: "JBMono";
+  src: url("../../assets/fonts/JetBrainsMono.ttf") format("truetype");
+  font-weight: 100 900;
+}
+:root {
+  /* art-bible §2.2 主色板 —— 不新增任何未登记色 */
+  --bg:        #141726;   /* 夜幕紫 · 面板底 */
+  --bg-deep:   #0E101B;   /* 内嵌槽 */
+  --field-a:   #232838;   /* 深岩蓝 · 场地 */
+  --field-b:   #1B2030;   /* 暗岩蓝 · 环带 */
+  --card:      #1E2332;   /* 卡面底（比面板亮一档） */
+  --card-dim:  #191D29;   /* 卡面压暗 */
+  --ally:      #3ED0E8;   /* 耀青 · 玩家极 */
+  --ally-dark: #1A6B7D;   /* 深青 */
+  --gold:      #FFC94A;   /* 辉金 · 资源/收益 */
+  --enemy:     #FF6B3D;   /* 熔橙 · 敌人极 */
+  --elite:     #E8437F;   /* 噬品红 · 精英 */
+  --alert:     #FF2E4E;   /* 警报红 */
+  --purple:    #7A5CFF;   /* 星紫 */
+  --text:      #C8CFDA;   /* 正文 */
+  --dim:       #8B94A5;   /* 辅助 */
+  --steel:     #9AA5B1;   /* 钢灰 · 非活动 */
+  --white:     #FFFFFF;
+  --r-panel: 6px;         /* ui_style.RADIUS */
+  --r-card: 2px;          /* 蓝图卡直角语言 */
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+html,body { height:100%; background:#0A0C14; overflow:hidden;
+  font-family:"NotoSansSC","Noto Sans SC","Microsoft YaHei",sans-serif; }
+.num { font-family:"JBMono","JetBrains Mono",Consolas,monospace; font-weight:700; }
+
+/* ---------- 页面工具条（非设计稿内容） ---------- */
+#toolbar { position:fixed; top:0; left:0; right:0; height:44px; z-index:99;
+  display:flex; align-items:center; gap:10px; padding:0 16px;
+  background:#0D0F1A; border-bottom:1px solid rgba(154,165,177,.18); }
+#toolbar .t { color:var(--dim); font-size:13px; margin-right:6px; }
+#toolbar button { background:#161A2A; color:var(--text); border:1px solid rgba(154,165,177,.35);
+  padding:5px 14px; font-size:13px; cursor:pointer; font-family:inherit; border-radius:3px; }
+#toolbar button.on { border-color:var(--ally); color:var(--ally); }
+#toolbar .sp { flex:1; }
+
+/* ---------- 舞台 1920×1080 等比缩放 ---------- */
+#stage { position:absolute; top:44px; left:50%; width:1920px; height:1080px;
+  transform-origin:top left; background:var(--bg); overflow:hidden; }
+
+/* ---------- 战场（层0-2） ---------- */
+#field { position:absolute; inset:0;
+  background: radial-gradient(circle at 50% 50%, var(--field-a) 0 30.5%, var(--field-b) 30.5% 34%,
+    var(--field-a) 34% 47%, var(--field-b) 47% 50.5%, var(--field-a) 50.5% 63%,
+    var(--field-b) 63% 66.5%, #1A1E2E 66.5% 72%, var(--bg) 72%); }
+#rings { position:absolute; inset:0; }
+#core-dot { position:absolute; left:940px; top:520px; width:40px; height:40px; border-radius:50%;
+  background:radial-gradient(circle at 42% 38%, #BFF3FC 0 22%, var(--ally) 40% 62%, var(--ally-dark) 80%);
+  box-shadow:0 0 26px rgba(62,208,232,.75), 0 0 70px rgba(62,208,232,.28); }
+
+/* 塔（八边形 · 玩家极） */
+.tw { position:absolute; width:56px; height:56px; }
+.tw svg { width:100%; height:100%; }
+/* 怪（不规则 blob · 敌人极） */
+.mob { position:absolute; width:26px; height:26px; background:var(--enemy);
+  border:2px solid #2E1008; border-radius:58% 42% 55% 45%/48% 60% 40% 52%;
+  box-shadow:2px 3px 0 rgba(0,0,0,.35); }
+.mob.elite { width:34px; height:34px; background:var(--elite);
+  outline:2px solid rgba(232,67,127,.5); outline-offset:3px; }
+
+/* ---------- 通用面板（§5.1 深色底+亮描边） ---------- */
+/* 🆕 v4 仅文字：面板底色块取消，内容直接落在战场上 */
+.panel { background:transparent; border-radius:var(--r-panel); position:relative; }
+/* 四角 L 刻线停用（v3 少边框方向） */
+.cr { display:none; }
+
+/* ---------- 按钮（§5.1 五变体） ---------- */
+.btn { display:inline-flex; align-items:center; justify-content:center; gap:8px;
+  height:44px; padding:0 22px; font-size:16px; font-weight:700; font-family:inherit;
+  border:none; outline:none; border-radius:var(--r-panel); cursor:pointer; letter-spacing:.5px;
+  background:transparent; transition:transform .12s cubic-bezier(.34,1.56,.64,1); }
+.btn:hover { transform:translateY(-1px) scale(1.05); }
+.btn:active { transform:scale(.97); }
+/* 🆕 v4：变体只靠文字颜色区分（对应实装 _Style.button v4） */
+.btn.pri  { color:var(--gold); }
+.btn.nor  { color:var(--white); }
+.btn.gho  { border:none; background:transparent; color:var(--dim);
+  border-bottom:2px solid rgba(154,165,177,.62); border-radius:0; height:38px; }
+.btn.dng  { color:var(--alert); }
+.btn .k { font-size:14px; color:var(--dim); font-weight:500; }
+.btn.pri .k { color:rgba(255,201,74,.7); }
+
+/* ---------- HUD · 废料（左上 · L0） ---------- */
+#scrap { position:absolute; left:24px; top:24px; width:188px; height:72px;
+  display:flex; align-items:center; gap:14px; padding:0 18px; --c:var(--gold); }
+#scrap .coin { width:34px; height:34px; border-radius:50%; flex:none;
+  background:radial-gradient(circle at 40% 35%, #FFE9B0 0 25%, var(--gold) 55%, #B98A1E 90%);
+  box-shadow:0 0 12px rgba(255,201,74,.45); position:relative; }
+#scrap .coin::after { content:""; position:absolute; inset:8px; border-radius:50%;
+  border:2px solid rgba(122,74,10,.55); }
+#scrap .lb { font-size:16px; color:var(--dim); line-height:1.1; }
+#scrap .val { font-size:34px; color:var(--gold); line-height:1.1; letter-spacing:1px; }
+
+/* ---------- HUD · 波次模块（顶中） ---------- */
+#wave { position:absolute; left:50%; top:24px; transform:translateX(-50%);
+  width:430px; padding:12px 20px 14px; text-align:center; --c:var(--steel); }
+#wave .wt { font-size:26px; font-weight:900; color:var(--white); letter-spacing:6px; }
+#wave .wt.en { color:var(--alert); }
+#wave .bar { display:flex; gap:5px; margin-top:10px; }
+#wave .bar i { flex:1; height:10px; border-radius:2px; background:rgba(154,165,177,.22); }
+#wave .bar i.done { background:var(--ally); }
+#wave .bar i.cur  { background:var(--ally); box-shadow:0 0 8px var(--ally); animation:pulse 1.6s ease-in-out infinite; }
+#wave .bar i.elit { background:var(--elite); box-shadow:0 0 8px var(--elite); }
+#wave .cnt { margin-top:8px; font-size:16px; color:var(--dim); letter-spacing:2px; }
+#wave .cnt b { color:var(--text); }
+/* 🆕 v2：准备阶段卡组占据顶中，波次仪表只露标题行（进度/读数在战斗态才有内容） */
+[data-state="prep"] #wave .bar, [data-state="prep"] #wave .cnt { display:none; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.45} }
+
+/* ---------- HUD · 右上按钮簇 ---------- */
+#tr { position:absolute; right:24px; top:24px; display:flex; gap:12px; align-items:center; }
+
+/* ---------- 双焦点（§5.6）：商店开 → 战场压暗 ---------- */
+#dimmer { position:absolute; inset:0; background:rgba(8,10,18,.35); opacity:0;
+  transition:opacity .25s; pointer-events:none; }
+[data-state="prep"] #dimmer { opacity:1; }
+/* 🆕 v2 参考图语言：战场保持可见可玩，压暗从 55% 降到 35%（仅衬卡） */
+
+/* ---------- 波次横幅（开波演出，战斗态展示） ---------- */
+#wavebig { position:absolute; left:0; right:0; top:300px; text-align:center; pointer-events:none; }
+#wavebig .b1 { font-size:88px; font-weight:900; color:var(--white); letter-spacing:14px;
+  text-shadow:0 0 30px rgba(62,208,232,.35); }
+#wavebig .b2 { width:220px; height:3px; background:var(--ally); margin:14px auto 0;
+  box-shadow:0 0 10px var(--ally); }
+
+/* ---------- 商店浮层（🆕 v2 参考图布局 · 2026-11-10 实装口径）----------
+   大卡横排顶部居中、无抽屉底板（StyleBoxEmpty 透明浮层）、战场保持可见；
+   卡组下一行选牌提示 + 信息带（刷新 / 决策预算 / 模式徽标）。 */
+#shop { position:absolute; left:50%; top:88px; transform:translateX(-50%);
+  width:700px; display:flex; flex-direction:column; gap:12px; }
+[data-state="combat"] #shop, [data-state="place"] #shop { display:none; }
+#cards { display:grid; grid-template-columns:repeat(3, 210px); gap:10px; justify-content:center; }
+
+/* 蓝图卡面（🆕 v4 仅文字）：底色透明，稀有度由 ▲ 数 + 颜色承担 */
+.cbd { background:transparent; border-radius:var(--r-card); padding:12px 12px 12px; position:relative;
+  display:flex; flex-direction:column; gap:8px; }
+.cbd .top { display:flex; justify-content:space-between; align-items:center; }
+.cbd .idx { font-size:16px; color:var(--dim); }
+.cbd .name { font-size:19px; font-weight:700; color:var(--white); }
+/* Tag 电路符号芯片（🆕 v4：染色底取消，字形 + 颜色承担） */
+.tag { display:inline-flex; align-items:center; gap:5px; font-size:16px; line-height:1;
+  padding:4px 9px; border-radius:2px; }
+.cbd .art { height:118px; background:var(--bg-deep);
+  border-radius:2px; display:flex; align-items:center; justify-content:center; }
+.cbd .art svg { width:86px; height:86px; }
+.cbd .mech { font-size:16px; color:var(--text); }
+.cbd .stat { font-size:16px; color:var(--text); }
+.cbd .stat .n { color:var(--gold); }
+.cbd .buyrow { margin-top:auto; display:flex; flex-direction:column; gap:8px; }
+.cbd .price { display:flex; align-items:center; gap:8px; font-size:16px; color:var(--dim); }
+.cbd .price .ok { color:var(--gold); font-weight:900; }
+.cbd .price .v { font-size:20px; color:var(--gold); letter-spacing:1px; }
+.cbd .btn { width:100%; height:38px; font-size:16px; }
+.cbd .btn.lock { border:none; background:transparent; color:var(--dim);
+  border-bottom:2px solid rgba(154,165,177,.62); border-radius:0; }
+
+/* 商店信息带 + 提示行（v2） */
+.cbd { min-height:340px; }
+#prompt { text-align:center; font-size:16px; color:var(--dim); letter-spacing:1px; }
+#info { display:flex; align-items:center; gap:16px; justify-content:center; }
+#info .budget { width:240px; height:14px; background:var(--bg-deep);
+  border-radius:4px; position:relative; overflow:hidden; }
+#info .budget i { position:absolute; inset:0; right:auto; width:100%; background:var(--ally); }
+#info .bval { font-size:16px; color:var(--text); }
+#info .mode { font-size:16px; color:var(--gold); font-weight:700; letter-spacing:2px; }
+#shophint { font-size:16px; color:var(--dim); text-align:center; }
+
+/* ---------- 建筑背包（🆕 实装口径：底部居中，宽 ≤1120） ---------- */
+#pack { position:absolute; left:50%; bottom:24px; transform:translateX(-50%);
+  width:820px; height:96px;
+  padding:12px 16px; display:flex; align-items:center; gap:16px; --c:var(--steel); }
+[data-state="prep"] #pack { display:none; }
+#pack .pl { flex:none; }
+#pack .pl .t1 { font-size:16px; font-weight:700; color:var(--white); }
+#pack .pl .t2 { font-size:16px; color:var(--dim); margin-top:3px; }
+#pack .slots { display:flex; gap:10px; flex:1; }
+.pslot { width:72px; height:72px; background:transparent;
+  border-radius:2px; position:relative;
+  display:flex; align-items:center; justify-content:center; cursor:pointer; }
+.pslot:hover { transform:translateY(-2px); }
+.pslot svg { width:44px; height:44px; }
+.pslot .cn { position:absolute; right:3px; bottom:1px; font-size:16px; color:var(--gold); }
+.pslot.empty { opacity:.35; cursor:default; }
+.pslot.empty::after { content:"+"; position:absolute; font-size:24px; color:var(--steel); }
+
+/* ---------- 核心 HP（🆕 实装口径：左列信息栈 废料→核心HP→关卡简报） ---------- */
+#hp { position:absolute; left:24px; top:116px; width:322px; height:84px;
+  display:flex; flex-direction:column; gap:6px; padding:10px 16px 12px;
+  --c:var(--ally); }
+#hp .hp-top { display:flex; justify-content:space-between; align-items:baseline; }
+#hp .lb { font-size:16px; font-weight:700; color:var(--white); flex:none; }
+#hp .segs { display:flex; gap:3px; flex:1; }
+#hp .segs i { flex:1; height:14px; border-radius:2px; background:var(--ally);
+  box-shadow:inset 0 -4px 0 rgba(26,107,125,.55); }
+#hp .segs i.lo { background:rgba(154,165,177,.2); box-shadow:none; }
+#hp .segs i.hit { background:var(--alert); box-shadow:0 0 10px rgba(255,46,78,.6); }
+#hp .val { font-size:20px; color:var(--text); flex:none; letter-spacing:1px; }
+#hp .val b { color:var(--white); }
+
+/* ---------- 教程提示条 ---------- */
+#hint { position:absolute; left:50%; bottom:150px; transform:translateX(-50%);
+  min-width:560px; height:44px; padding:0 20px; display:flex; align-items:center;
+  justify-content:space-between; gap:24px; background:transparent;
+  border-radius:var(--r-panel);
+  font-size:16px; color:var(--text); }
+#hint .sk { font-size:16px; color:var(--dim); cursor:pointer; }
+#hint .sk:hover { color:var(--ally); }
+
+/* ---------- 放置模式（⑤） ---------- */
+#placeui { display:none; }
+[data-state="place"] #placeui { display:block; }
+[data-state="place"] #wave, [data-state="place"] #hint { display:none; }
+#hexes { position:absolute; left:600px; top:220px; width:640px; height:480px; pointer-events:none; }
+#place-cursor { position:absolute; left:918px; top:498px; width:0; height:0; pointer-events:none; }
+.hex { position:absolute; width:88px; height:98px; }
+#slowbadge { position:absolute; left:50%; top:104px; transform:translateX(-50%);
+  display:flex; align-items:center; gap:10px; padding:8px 18px;
+  background:transparent;
+  font-size:16px; color:var(--purple); font-weight:700; letter-spacing:1px; }
+#slowbadge .num { color:var(--white); }
+#placehint { position:absolute; left:820px; bottom:130px;
+  font-size:16px; color:var(--dim); letter-spacing:1px; }
+#placehint b { color:var(--ally); font-weight:700; }
+
+/* ---------- 威胁脉冲（§8.6-4 边缘红光示意） ---------- */
+#threat { position:absolute; inset:0; pointer-events:none; opacity:0;
+  box-shadow:inset 0 0 120px rgba(255,46,78,.55), inset 0 0 40px rgba(255,46,78,.35); }
+[data-state="combat"] #threat { opacity:.6; animation:threat 1.6s ease-in-out infinite; }
+@keyframes threat { 0%,100%{opacity:.15} 50%{opacity:.6} }
+
+/* ---------- 标注层 ---------- */
+#notes { display:none; }
+body.notes #notes { display:block; }
+.nt { position:absolute; z-index:50; width:26px; height:26px; border-radius:50%;
+  background:var(--gold); color:#3A2A00; font-size:15px; font-weight:900;
+  display:flex; align-items:center; justify-content:center; cursor:default;
+  box-shadow:0 0 0 3px rgba(255,201,74,.25); }
+#legend { position:absolute; left:24px; top:120px; width:330px; z-index:51;
+  background:rgba(14,16,27,.96); border-radius:var(--r-panel);
+  padding:14px 16px; font-size:15px; color:var(--text); line-height:1.55; }
+#legend h3 { font-size:16px; color:var(--gold); letter-spacing:2px; margin-bottom:8px; }
+#legend p b { color:var(--gold); font-weight:900; margin-right:6px; }
+
+/* ---------- 状态切换 ---------- */
+[data-state="prep"] .only-combat, [data-state="prep"] .only-place,
+[data-state="combat"] .only-prep, [data-state="combat"] .only-place,
+[data-state="place"] .only-prep, [data-state="place"] .only-combat { display:none !important; }
+/* combat + place 两态共显 */
+[data-state="prep"] .vis-cp { display:none !important; }
+</style>
+</head>
+<body data-state="prep">
+
+<div id="toolbar">
+  <span class="t">战斗场景 UI 设计稿 v1 · 状态：</span>
+  <button data-s="prep" class="on">① 准备阶段（商店开）</button>
+  <button data-s="combat">② 战斗中（抽屉收起）</button>
+  <button data-s="place">③ 放置模式</button>
+  <span class="sp"></span>
+  <button id="noteBtn">显示设计标注</button>
+</div>
+
+<div id="stage">
+  <!-- 层0 战场 -->
+  <div id="field"></div>
+  <svg id="rings" width="1920" height="1080" viewBox="0 0 1920 1080">
+    <g stroke="rgba(154,165,177,.14)" fill="none">
+      <circle cx="960" cy="540" r="330" stroke-dasharray="6 10"/>
+      <circle cx="960" cy="540" r="500" stroke-dasharray="6 10"/>
+    </g>
+    <circle cx="960" cy="540" r="552" fill="none" stroke="rgba(255,107,61,.35)" stroke-width="3" stroke-dasharray="60 220"/>
+    <!-- 地形走廊（异形地块示意） -->
+    <path d="M 700 190 L 780 330 L 745 345 L 665 205 Z" fill="#181C2B" stroke="#2E3448" stroke-width="2"/>
+    <path d="M 1230 200 L 1170 340 L 1205 352 L 1268 214 Z" fill="#181C2B" stroke="#2E3448" stroke-width="2"/>
+    <path d="M 620 850 L 760 760 L 780 792 L 648 886 Z" fill="#181C2B" stroke="#2E3448" stroke-width="2"/>
+    <path d="M 1300 860 L 1180 765 L 1160 797 L 1278 894 Z" fill="#181C2B" stroke="#2E3448" stroke-width="2"/>
+  </svg>
+  <div id="core-dot"></div>
+
+  <!-- 塔 -->
+  <div class="tw" style="left:820px;top:380px"><svg viewBox="0 0 56 56"><polygon points="28,4 44,12 52,28 44,44 28,52 12,44 4,28 12,12" fill="#1A6B7D" stroke="#0E2430" stroke-width="3"/><polygon points="28,14 38,20 38,34 28,42 18,34 18,20" fill="#3ED0E8"/><rect x="24" y="2" width="8" height="14" rx="2" fill="#3ED0E8" stroke="#0E2430" stroke-width="2"/></svg></div>
+  <div class="tw" style="left:1080px;top:400px"><svg viewBox="0 0 56 56"><polygon points="28,4 44,12 52,28 44,44 28,52 12,44 4,28 12,12" fill="#1A6B7D" stroke="#0E2430" stroke-width="3"/><polygon points="28,16 36,22 36,34 28,40 20,34 20,22" fill="#3ED0E8"/><circle cx="28" cy="28" r="9" fill="#BFF3FC"/></svg></div>
+  <div class="tw" style="left:760px;top:640px"><svg viewBox="0 0 56 56"><polygon points="28,4 44,12 52,28 44,44 28,52 12,44 4,28 12,12" fill="#1A6B7D" stroke="#0E2430" stroke-width="3"/><polygon points="28,15 39,36 17,36" fill="#3ED0E8"/></svg></div>
+  <div class="tw" style="left:1120px;top:660px"><svg viewBox="0 0 56 56"><polygon points="28,4 44,12 52,28 44,44 28,52 12,44 4,28 12,12" fill="#1A6B7D" stroke="#0E2430" stroke-width="3"/><polygon points="28,14 38,20 38,34 28,42 18,34 18,20" fill="#3ED0E8"/><rect x="24" y="2" width="8" height="14" rx="2" fill="#3ED0E8" stroke="#0E2430" stroke-width="2"/></svg></div>
+
+  <!-- 怪（战斗态） -->
+  <div class="mob only-combat" style="left:930px;top:250px"></div>
+  <div class="mob only-combat" style="left:1010px;top:300px"></div>
+  <div class="mob only-combat" style="left:880px;top:210px"></div>
+  <div class="mob only-combat" style="left:1080px;top:230px"></div>
+  <div class="mob only-combat" style="left:840px;top:300px"></div>
+  <div class="mob elite only-combat" style="left:975px;top:160px"></div>
+
+  <!-- 双焦点压暗 -->
+  <div id="dimmer"></div>
+
+  <!-- 威胁脉冲（战斗态示意） -->
+  <div id="threat"></div>
+
+  <!-- 波次横幅 -->
+  <div id="wavebig" class="only-combat">
+    <div class="b1">WAVE 2</div>
+    <div class="b2"></div>
+  </div>
+
+  <!-- HUD · 废料 -->
+  <div id="scrap" class="panel">
+    <span class="cr" style="--c:var(--gold)"></span>
+    <span class="coin"></span>
+    <div><div class="lb">废料</div><div class="val num only-prep">30</div><div class="val num vis-cp">42</div></div>
+  </div>
+
+  <!-- HUD · 波次模块 -->
+  <div id="wave" class="panel">
+    <div class="wt only-prep">准备阶段</div>
+    <div class="wt only-combat">WAVE 2</div>
+    <div class="wt only-place">准备阶段</div>
+    <div class="bar">
+      <i class="done"></i><i class="cur"></i><i></i><i></i><i class="elit" title="精英波"></i>
+      <i></i><i></i><i></i><i></i><i class="elit" title="精英波"></i>
+    </div>
+    <div class="cnt num only-prep"><b>1</b> / 10 · 安全窗推进中</div>
+    <div class="cnt num only-combat"><b>2</b> / 10 · 第 2 波来袭</div>
+  </div>
+
+  <!-- HUD · 右上按钮簇 -->
+  <div id="tr">
+    <span class="only-prep">
+      <button class="btn nor">商店 <span class="k">Tab</span></button>
+      <button class="btn pri">开始战斗 <span class="k">Space</span></button>
+    </span>
+    <span class="only-combat" style="display:inline-flex;gap:12px;align-items:center">
+      <button class="btn gho">总览</button>
+      <button class="btn gho">回到核心 <span class="k">F</span></button>
+      <button class="btn nor">商店 <span class="k">Tab</span></button>
+      <button class="btn dng">退出关卡 <span class="k">Esc</span></button>
+    </span>
+    <span class="only-place">
+      <button class="btn dng">退出关卡 <span class="k">Esc</span></button>
+    </span>
+  </div>
+
+  <!-- 商店浮层（v2 参考图布局：顶部居中大卡 + 提示行 + 信息带，无抽屉底板） -->
+  <div id="shop">
+    <div id="cards">
+      <!-- 卡1 Cannon -->
+      <div class="cbd">
+        <span class="cr"></span>
+        <div class="top"><span class="idx num">1</span><span class="tag fire">◇ 火</span></div>
+        <div class="name">Cannon</div>
+        <div class="art"><svg viewBox="0 0 56 56"><polygon points="28,4 44,12 52,28 44,44 28,52 12,44 4,28 12,12" fill="#1A6B7D" stroke="#0E2430" stroke-width="3"/><polygon points="28,16 36,22 36,34 28,40 20,34 20,22" fill="#3ED0E8"/><circle cx="28" cy="28" r="9" fill="#BFF3FC"/><rect x="24" y="2" width="8" height="14" rx="2" fill="#3ED0E8" stroke="#0E2430" stroke-width="2"/></svg></div>
+        <div class="mech">重炮 · 群体溅射</div>
+        <div class="stat">伤害 <span class="n num">7</span> · 射程 <span class="n num">18</span></div>
+        <div class="buyrow">
+          <div class="price"><span class="ok">✓</span> 价格 <span class="v num">12</span></div>
+          <button class="btn pri">购买 <span class="k">1</span></button>
+          <button class="btn lock">锁定</button>
+        </div>
+      </div>
+      <!-- 卡2 Frost -->
+      <div class="cbd">
+        <span class="cr"></span>
+        <div class="top"><span class="idx num">2</span><span class="tag frost">● 霜</span></div>
+        <div class="name">Frost</div>
+        <div class="art"><svg viewBox="0 0 56 56"><polygon points="28,4 44,12 52,28 44,44 28,52 12,44 4,28 12,12" fill="#1A6B7D" stroke="#0E2430" stroke-width="3"/><polygon points="28,15 39,22 39,34 28,41 17,34 17,22" fill="#3ED0E8"/><polygon points="28,22 33,31 23,31" fill="#BFF3FC"/></svg></div>
+        <div class="mech">霜环 · 范围减速</div>
+        <div class="stat">伤害 <span class="n num">4</span> · 射程 <span class="n num">14</span></div>
+        <div class="buyrow">
+          <div class="price"><span class="ok">✓</span> 价格 <span class="v num">10</span></div>
+          <button class="btn pri">购买 <span class="k">2</span></button>
+          <button class="btn lock">锁定</button>
+        </div>
+      </div>
+      <!-- 卡3 Arrow（买不起 → dim 态演示） -->
+      <div class="cbd" style="opacity:.75">
+        <span class="cr" style="--c:rgba(154,165,177,.5)"></span>
+        <div class="top"><span class="idx num">3</span><span class="tag pierce">△ 穿</span></div>
+        <div class="name" style="color:var(--text)">Arrow</div>
+        <div class="art" style="opacity:.75"><svg viewBox="0 0 56 56"><polygon points="28,4 44,12 52,28 44,44 28,52 12,44 4,28 12,12" fill="#1A6B7D" stroke="#0E2430" stroke-width="3"/><polygon points="28,15 39,36 17,36" fill="#3ED0E8"/></svg></div>
+        <div class="mech" style="color:var(--dim)">速射 · 单体高频</div>
+        <div class="stat" style="color:var(--dim)">伤害 <span class="n num">5</span> · 射程 <span class="n num">22</span></div>
+        <div class="buyrow">
+          <div class="price"><span style="color:var(--alert);font-weight:900">✗</span> 价格 <span class="v num" style="color:var(--steel)">24</span></div>
+          <button class="btn" style="color:var(--dim)">废料不足</button>
+          <button class="btn lock">锁定</button>
+        </div>
+      </div>
+    </div>
+    <div id="prompt">点击卡牌购买 · 1 / 2 / 3 快捷购买 · 建筑卡进入待放置队列，拖上战场落子</div>
+    <div id="info">
+      <span class="btn nor" style="height:36px;padding:0 16px">⟳ 刷新 · R · <span class="num" style="color:var(--gold)">5</span></span>
+      <span class="budget"><i></i></span>
+      <span class="bval num">20.0 / 20 s</span>
+      <span class="mode">重决策 · 安全窗</span>
+    </div>
+  </div>
+
+  <!-- 建筑背包（抽屉收起） -->
+  <div id="pack" class="panel">
+    <span class="cr"></span>
+    <div class="pl">
+      <div class="t1">建筑背包</div>
+      <div class="t2">拖动部署</div>
+    </div>
+    <div class="slots">
+      <div class="pslot"><svg viewBox="0 0 56 56"><polygon points="28,4 44,12 52,28 44,44 28,52 12,44 4,28 12,12" fill="#1A6B7D" stroke="#0E2430" stroke-width="3"/><polygon points="28,16 36,22 36,34 28,40 20,34 20,22" fill="#3ED0E8"/><circle cx="28" cy="28" r="9" fill="#BFF3FC"/></svg><span class="cn num">×2</span></div>
+      <div class="pslot"><svg viewBox="0 0 56 56"><polygon points="28,4 44,12 52,28 44,44 28,52 12,44 4,28 12,12" fill="#1A6B7D" stroke="#0E2430" stroke-width="3"/><polygon points="28,15 39,36 17,36" fill="#3ED0E8"/></svg><span class="cn num">×1</span></div>
+      <div class="pslot empty"></div>
+      <div class="pslot empty"></div>
+    </div>
+  </div>
+
+  <!-- 核心 HP（左列信息栈） -->
+  <div id="hp" class="panel">
+    <span class="cr"></span>
+    <div class="hp-top">
+      <span class="lb">核心</span>
+      <span class="val num"><b>850</b> / 1000</span>
+    </div>
+    <div class="segs">
+      <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+      <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i class="hit"></i><i class="lo"></i><i class="lo"></i>
+    </div>
+  </div>
+
+  <!-- 教程提示条 -->
+  <div id="hint" class="only-prep">
+    <span>点击上方「开始战斗」按钮，迎击敌人</span>
+    <span class="sk">跳过</span>
+  </div>
+
+  <!-- 放置模式 -->
+  <div id="placeui">
+    <div id="slowbadge">时间 × <span class="num">0.25</span> · 部署中</div>
+    <div id="hexes">
+      <svg width="640" height="480" viewBox="0 0 640 480">
+        <g fill="none" stroke="rgba(62,208,232,.28)" stroke-width="1.5">
+          <polygon points="120,80 176,48 232,80 232,144 176,176 120,144"/>
+          <polygon points="232,80 288,48 344,80 344,144 288,176 232,144"/>
+          <polygon points="344,80 400,48 456,80 456,144 400,176 344,144"/>
+          <polygon points="120,208 176,176 232,208 232,272 176,304 120,272"/>
+          <polygon points="344,208 400,176 456,208 456,272 400,304 344,272"/>
+          <polygon points="232,208 288,176 344,208 344,272 288,304 232,272"/>
+          <polygon points="232,336 288,304 344,336 344,400 288,432 232,400"/>
+        </g>
+        <g>
+          <polygon points="232,208 288,176 344,208 344,272 288,304 232,272"
+            fill="rgba(62,208,232,.16)" stroke="#3ED0E8" stroke-width="2.5"/>
+          <line x1="282" y1="240" x2="294" y2="240" stroke="#3ED0E8" stroke-width="3"/>
+          <line x1="288" y1="234" x2="288" y2="246" stroke="#3ED0E8" stroke-width="3"/>
+        </g>
+        <polygon points="120,208 176,176 232,208 232,272 176,304 120,272"
+          fill="rgba(154,165,177,.06)" stroke="rgba(154,165,177,.4)" stroke-width="1.5"/>
+        <polygon points="344,208 400,176 456,208 456,272 400,304 344,272"
+          fill="none" stroke="rgba(154,165,177,.25)" stroke-width="1.5" stroke-dasharray="4 6"/>
+      </svg>
+    </div>
+    <div id="placehint"><b>左键</b> 落子 · <b>Esc</b> 退出放置 · 灰格为禁建区无反应</div>
+  </div>
+
+  <!-- 标注层 -->
+  <div id="notes">
+    <span class="nt" style="left:150px;top:52px">1</span>
+    <span class="nt" style="left:800px;top:40px">2</span>
+    <span class="nt" style="right:300px;top:34px">3</span>
+    <span class="nt" style="left:420px;top:480px">4</span>
+    <span class="nt" style="left:620px;top:100px">5</span>
+    <span class="nt" style="left:1030px;top:110px">6</span>
+    <span class="nt" style="left:1230px;top:420px">7</span>
+    <span class="nt" style="left:130px;top:130px">8</span>
+    <span class="nt vis-cp" style="left:580px;top:1000px">9</span>
+    <div id="legend">
+      <h3>设计标注 · 图例（v2 参考图布局）</h3>
+      <p><b>1</b>废料读数：辉金 L0 等宽数字 34px，变化时滚动+脉冲（§5.2）</p>
+      <p><b>2</b>波次仪表：display 900 标题；准备阶段只露标题行，卡组是主角</p>
+      <p><b>3</b>按钮五变体：primary 金 / normal 青 / ghost 下划线 / danger 红 / unavail 灰（§5.1）</p>
+      <p><b>4</b>双焦点降档：压暗 35% 衬卡，战场保持可见可玩（参考图语言）</p>
+      <p><b>5</b>蓝图卡面：直角 2px + 细描边 + 四角 L 刻线，可购性提亮耀青（§5.5）</p>
+      <p><b>6</b>Tag 电路芯片 + ✓/✗ 字形冗余：可购性不只靠颜色（§9.2 红线1）</p>
+      <p><b>7</b>信息带（参考图）：刷新 · 决策预算 · 模式徽标一行收拢，读数等宽 JetBrains Mono 700</p>
+      <p><b>8</b>核心 HP：左列信息栈（废料→核心HP→关卡简报），受击段闪警报红 0.3s（§5.3）</p>
+      <p><b>9</b>建筑背包：底部居中 ≤1120，悬停芯片上浮 3px（§5.1）</p>
+    </div>
+  </div>
+</div>
+
+<script>
+// 状态切换（支持 ?state=combat / place 直达）
+var qs = new URLSearchParams(location.search).get("state");
+if (qs === "combat" || qs === "place") {
+  document.body.dataset.state = qs;
+}
+if (new URLSearchParams(location.search).get("notes") === "1") {
+  document.body.classList.add("notes");
+}
+document.querySelectorAll("#toolbar button[data-s]").forEach(function(b){
+  if (b.dataset.s === document.body.dataset.state) {
+    document.querySelectorAll("#toolbar button[data-s]").forEach(function(x){ x.classList.remove("on"); });
+    b.classList.add("on");
+  }
+  b.addEventListener("click", function(){
+    document.body.dataset.state = b.dataset.s;
+    document.querySelectorAll("#toolbar button[data-s]").forEach(function(x){ x.classList.remove("on"); });
+    b.classList.add("on");
+  });
+});
+// 标注开关
+document.getElementById("noteBtn").addEventListener("click", function(){
+  document.body.classList.toggle("notes");
+  this.classList.toggle("on");
+});
+// 舞台等比缩放
+function fit(){
+  var s = Math.min((innerWidth) / 1920, (innerHeight - 44) / 1080);
+  var st = document.getElementById("stage");
+  st.style.transform = "scale(" + s + ")";
+  st.style.left = ((innerWidth - 1920 * s) / 2) + "px";}
+addEventListener("resize", fit); fit();
+</script>
+</body>
+</html>

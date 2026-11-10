@@ -56,7 +56,8 @@ func run() -> void:
 			assert(is_equal_approx(shop.get_global_rect().get_center().x, viewport.x * 0.5))
 			assert(shop._panel.get_theme_stylebox("panel") is StyleBoxEmpty)
 			assert(not shop._title.is_visible_in_tree())
-			assert(not shop._budget_row.is_visible_in_tree())
+			# 🆕 2026-11-10 参考图布局：预算读数从隐藏的独立行收进可见信息带（刷新/预算/模式徽标）
+			assert(shop._info_row.is_visible_in_tree())
 			assert(not shop._heavy_panel.is_visible_in_tree())
 			var first_size: Vector2 = shop._slots[0].size
 			shop._set_hovered_slot(0)
@@ -67,7 +68,10 @@ func run() -> void:
 					var names: Array = scene.controller.runtime.offers
 					assert(backdrop.texture == Style.card_backdrop(tier, String(names[index])))
 					var box: StyleBoxFlat = shop._slots[index].get_theme_stylebox("panel")
-					assert(box.border_color.is_equal_approx(Color(Style.rarity_color(tier), 0.85 if index == 0 else 0.48)))
+					# 🆕 2026-11-10 v4「仅文字」：底色透明，稀有度由 ▲ 数（1–5）+ 颜色承担
+					assert(box.bg_color.a < 0.01)
+					var pips_label: Label = shop._slot_rarity[index]
+					assert(pips_label.text == "▲".repeat(Style.rarity_pips(tier)))
 			assert(first_size.y > first_size.x)
 			for card in shop._slots:
 				assert(absf(card.size.x - first_size.x) <= 1.0)
@@ -87,6 +91,37 @@ func run() -> void:
 			assert(ml._xform() == baseline)
 			td.close_shop()
 			assert(ml._xform() == baseline)
+	# 实际 GUI 派发：点锁头只切换锁定，点插画穿透到牌面且只买一次。
+	td.open_shop()
+	await process_frame
+	await process_frame
+	var intents := {"buy": 0, "lock": 0}
+	td.buy_requested.connect(func(_index: int) -> void: intents["buy"] += 1)
+	td.lock_toggled.connect(func(_index: int) -> void: intents["lock"] += 1)
+	var lock_point: Vector2 = shop._slot_lock[0].get_global_rect().get_center()
+	_click(lock_point)
+	assert(intents["lock"] == 1 and intents["buy"] == 0)
+	_click(lock_point)
+	assert(intents["lock"] == 2 and intents["buy"] == 0)
+	scene.controller.runtime.scrap = 1000.0
+	shop._refresh_shop()
+	var art_point: Vector2 = shop._slot_art[0].get_global_rect().get_center()
+	_click(art_point)
+	assert(intents["buy"] == 1 and intents["lock"] == 2)
+	scene.controller.runtime.scrap = 0.0
+	shop._refresh_shop()
+	_click(art_point)
+	assert(intents["buy"] == 1)
 	print("Shop overlay passed: 3 window sizes, PATH/RADIAL, buttons, placement, map/VFX positions and scale")
 	paused = false
 	quit()
+
+
+func _click(point: Vector2) -> void:
+	for pressed in [true, false]:
+		var event := InputEventMouseButton.new()
+		event.button_index = MOUSE_BUTTON_LEFT
+		event.position = point
+		event.pressed = pressed
+		root.push_input(event, true)
+

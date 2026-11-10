@@ -26,7 +26,7 @@ var _hover_time := 0.0
 const _Runtime := preload("res://scripts/gameplay/shop_runtime.gd")
 const _Hover := preload("res://scripts/ui/card_hover.gd")
 var _inner: VBoxContainer
-var _budget_row: HBoxContainer
+var _info_row: HBoxContainer
 var _hover: CanvasLayer
 var _pointer := Vector2(-1000.0, -1000.0)
 
@@ -49,8 +49,9 @@ const C_DIM := Color(0.55, 0.57, 0.60, 1.0)    # H1 买不起：价格灰（🔴
 const C_TEXT := Color(0.88, 0.90, 0.92, 1.0)
 const C_WARN := Color(0.86, 0.20, 0.20, 1.0)   # E5：刷新买不起 → 价格标红
 
-# 三张竖版商品卡共用尺寸；窄屏保留滚动，购买与锁定入口始终可达。
-const SLOT_SIZE := Vector2(184.0, 306.0)       # 🔴 三个位完全一致（X3）
+# 三张竖版商品卡共用尺寸；🆕 2026-11-10 参考图布局重排：卡是主角，整体放大
+# （184×306 → 210×340），仍恒 3 位同尺寸（X3），窄屏保留滚动，购买与锁定入口始终可达。
+const SLOT_SIZE := Vector2(210.0, 340.0)       # 🔴 三个位完全一致（X3）
 ## 描述块行数（恒 3 行 → 三个位等高同构）；
 ## 16px 字号实测行高 25px（Godot 默认字体 ascent+descent），3 行 = 75px。
 const DESC_LINES := 3
@@ -78,7 +79,7 @@ var _slot_price_unit: Array = []   # 🆕 「分」单位
 var _slot_price_row: Array = []    # 价格 HBox（颜色统一改写用）
 var _slot_desc: Array = []    # 🆕 效果描述块（恒 3 行，`card_text.gd` 派生）
 var _slot_note: Array = []
-var _slot_buy: Array = []     # Array[Button]
+var _slot_can_buy: Array = [] # 牌面购买可用状态
 var _slot_lock: Array = []
 var _stat_vals: Array = []    # Array[Label]
 var _budget_fill: Panel
@@ -144,13 +145,14 @@ func _runtime_snapshot() -> Dictionary:
 # ---------------------------------------------------------------------------
 func _refresh_size() -> void:
 	var vs := get_viewport().get_visible_rect().size
-	# 上方居中的卡牌浮层；地图坐标始终使用完整视口。
-	var w := minf(640.0, vs.x - 32.0)
+	# 🆕 2026-11-10 参考图布局：大卡横排顶部居中，战场保持可见可玩；
+	#   卡组加宽（700 容 3×210 卡），上移贴顶（104 → 88）给下方提示行与信息带留白。
+	var w := minf(700.0, vs.x - 32.0)
 	var height := 394.0
 	if _inner != null:
 		height = _inner.get_combined_minimum_size().y + 20.0
 	height = minf(height, maxf(220.0, vs.y - 276.0))
-	position = Vector2((vs.x - w) * 0.5, 104.0)
+	position = Vector2((vs.x - w) * 0.5, 88.0)
 	size = Vector2(w, height)
 
 
@@ -192,10 +194,6 @@ func _build() -> void:
 	_title = _Style.label("建筑商店", 24, _Style.C_WHITE)
 	_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	title_row.add_child(_title)
-	_mode_tag = _Style.label("轻决策", _Style.FONT_MIN, _Style.C_TEXT_DIM)
-	_mode_tag.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	title_row.add_child(_mode_tag)
-	_mode_tag.hide()
 	var close := Button.new()
 	close.text = "收起 · Tab"
 	_Battle.button(close)
@@ -206,30 +204,7 @@ func _build() -> void:
 
 
 
-	# 保留预算读数绑定；卡牌展示模式不显示额外工具栏。
-	var budget_row := HBoxContainer.new()
-	_budget_row = budget_row
-	budget_row.add_theme_constant_override("separation", 10)
-	inner.add_child(budget_row)
-	var budget_cap := _Style.label("减速预算", _Style.FONT_MIN, _Style.C_TEXT_DIM)
-	budget_cap.custom_minimum_size = Vector2(72.0, 0.0)
-	budget_row.add_child(budget_cap)
-	var budget_bg := Panel.new()
-	budget_bg.custom_minimum_size = Vector2(0.0, 16.0)
-	budget_bg.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	budget_bg.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	budget_bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	budget_bg.add_theme_stylebox_override("panel", _Style.inset())
-	budget_row.add_child(budget_bg)
-	_budget_fill = Panel.new()
-	_budget_fill.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_budget_fill.set_anchors_preset(Control.PRESET_FULL_RECT)
-	_budget_fill.add_theme_stylebox_override("panel", _Style.bar_fill(C_BUDGET))
-	budget_bg.add_child(_budget_fill)
-	_budget_label = _Style.label("--", _Style.FONT_MIN, _Style.C_TEXT)
-	_budget_label.custom_minimum_size = Vector2(96.0, 0.0)
-	_budget_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	budget_row.add_child(_budget_label)
+	# （🆕 2026-11-10）决策预算 / 刷新 / 模式徽标收拢进卡组下方信息带 —— 见 slots_row 之后。
 
 	# ---- 槽位占用读数（3 列网格；原为一行 5 组数字拼接，难以扫读）----
 	var grid := GridContainer.new()
@@ -265,7 +240,20 @@ func _build() -> void:
 		slots_row.add_child(slot)
 		_slots.append(slot)
 
-	# ---- 刷新按钮（E5：买不起置灰 + 价格标红）----
+	# ---- 🆕 2026-11-10 参考图布局：卡组下方一行选牌提示（居中 · L2 辅助）----
+	#    对齐参考图「请选择 N 张卡牌」的语言：提示收拢成一行，不再堆叠多段说明。
+	var prompt := _Style.label("点击卡牌购买 · 1 / 2 / 3 快捷购买 · 建筑卡进入待放置队列，拖上战场落子",
+		_Style.FONT_MIN, _Style.C_TEXT_DIM)
+	prompt.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	inner.add_child(prompt)
+
+	# ---- 🆕 信息带：刷新 · 决策预算 · 模式徽标（原先三者两个隐藏一个在标题行，可见性混乱）----
+	var info_row := HBoxContainer.new()
+	_info_row = info_row
+	info_row.add_theme_constant_override("separation", 14)
+	inner.add_child(info_row)
+
+	# 刷新按钮（E5：买不起置灰 + 价格标红）
 	_reroll_btn = Button.new()
 	_reroll_btn.text = "刷新"
 	_reroll_btn.tooltip_text = "R 刷新商店"
@@ -278,8 +266,30 @@ func _build() -> void:
 	_reroll_btn.pressed.connect(func() -> void:
 		if director != null:
 			director.emit_signal("reroll_requested"))
-	title_row.add_child(_reroll_btn)
-	title_row.move_child(close, -1)
+	info_row.add_child(_reroll_btn)
+
+	# 决策预算（减速预算）—— 只读 TimeDirector 快照的呈现，恢复可见（参考图：信息一行收拢）
+	var budget_bg := Panel.new()
+	budget_bg.custom_minimum_size = Vector2(240.0, 14.0)
+	budget_bg.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	budget_bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	budget_bg.add_theme_stylebox_override("panel", _Style.inset())
+	info_row.add_child(budget_bg)
+	_budget_fill = Panel.new()
+	_budget_fill.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_budget_fill.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_budget_fill.add_theme_stylebox_override("panel", _Style.bar_fill(C_BUDGET))
+	budget_bg.add_child(_budget_fill)
+	_budget_label = _Style.label("--", _Style.FONT_MIN, _Style.C_TEXT)
+	_budget_label.custom_minimum_size = Vector2(96.0, 0.0)
+	_budget_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	info_row.add_child(_budget_label)
+
+	# 模式徽标（轻决策 / 重决策 · 安全窗）—— 靠右收尾
+	_mode_tag = _Style.label("轻决策", _Style.FONT_MIN, _Style.C_TEXT_DIM)
+	_mode_tag.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_mode_tag.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	info_row.add_child(_mode_tag)
 
 	# ---- 待放置队列（Q-SR5 跨波保留 · E2 角标持续提醒）----
 	_pending_label = _Style.label("待放置队列（0）", _Style.FONT_MIN, _Style.C_TEXT_DIM)
@@ -403,7 +413,7 @@ func _make_slot(_i: int) -> PanelContainer:
 	#    🔴 构建时只建空带：卡名在 `_refresh_shop` 刷新时才落到槽位（此处 `nm` 是占位
 	#    Label，不是卡名字符串），纹理由刷新链路按卡名填充（`_slot_art`）。
 	var art := TextureRect.new()
-	art.custom_minimum_size = Vector2(0.0, 108.0)
+	art.custom_minimum_size = Vector2(0.0, 136.0)
 	art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	art.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -495,28 +505,29 @@ func _make_slot(_i: int) -> PanelContainer:
 	gap.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	vb.add_child(gap)
 
-	var buy := Button.new()
-	buy.text = "购买"
-	_Battle.button(buy, true)
-	buy.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	buy.pressed.connect(func() -> void:
-		if director != null:
-			director.emit_signal("buy_requested", _i))
-	var actions := VBoxContainer.new()
-	actions.add_theme_constant_override("separation", 6)
-	vb.add_child(actions)
-	actions.add_child(buy)
-	_slot_buy.append(buy)
-
-	var lock := Button.new()
-	lock.text = "锁定"
-	_Battle.button(lock)
-	lock.custom_minimum_size.x = 66.0
-	lock.pressed.connect(func() -> void:
-		if director != null:
-			director.emit_signal("lock_toggled", _i))
-	actions.add_child(lock)
+	# 锁头是卡面上的独立图标热区，不占底部按钮行。
+	var lock := Control.new()
+	lock.custom_minimum_size = Vector2(28.0, 28.0)
+	lock.mouse_filter = Control.MOUSE_FILTER_STOP
+	lock.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	lock.set_meta("enabled", false)
+	lock.set_meta("locked", false)
+	lock.draw.connect(func() -> void: _draw_lock(lock))
+	lock.gui_input.connect(func(event: InputEvent) -> void:
+		if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
+			lock.accept_event()
+			if director != null and bool(lock.get_meta("enabled", false)):
+				director.emit_signal("lock_toggled", _i))
+	idx_row.add_child(lock)
 	_slot_lock.append(lock)
+	_slot_can_buy.append(false)
+	_ignore_card_content(vb, lock)
+	p.mouse_filter = Control.MOUSE_FILTER_STOP
+	p.gui_input.connect(func(event: InputEvent) -> void:
+		if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
+			p.accept_event()
+			if director != null and _slot_can_buy[_i]:
+				director.emit_signal("buy_requested", _i))
 
 	# 🆕 蓝图 chrome（§5.5）：四角刻线，**后于** vb 加入 → 画在内容之上。
 	#    accent 存 meta，`_refresh_shop` 按可购性改写并 queue_redraw（不在 _draw 里 new）。
@@ -529,6 +540,29 @@ func _make_slot(_i: int) -> PanelContainer:
 	chrome.hide()
 	_slot_chrome.append(chrome)
 	return p
+
+
+func _ignore_card_content(node: Control, lock: Control) -> void:
+	if node == lock:
+		return
+	node.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	for child in node.get_children():
+		if child is Control:
+			_ignore_card_content(child, lock)
+
+
+func _draw_lock(icon: Control) -> void:
+	var locked := bool(icon.get_meta("locked", false))
+	var color := C_ACCENT if locked else C_TEXT
+	if not bool(icon.get_meta("enabled", false)):
+		color = C_DIM
+	# 闭合 / 打开的锁梁以形状区分状态，避免依赖字体字形。
+	var center := Vector2(14.0, 11.0) if locked else Vector2(19.0, 8.0)
+	icon.draw_arc(center, 5.0, PI, TAU, 20, color, 2.0, true)
+	icon.draw_line(center + Vector2(-5, 0), Vector2(center.x - 5, 15), color, 2.0, true)
+	icon.draw_line(center + Vector2(5, 0), center + Vector2(5, 4), color, 2.0, true)
+	icon.draw_rect(Rect2(7, 14, 14, 11), color, false, 2.0)
+	icon.draw_circle(Vector2(14, 19), 1.5, color)
 
 
 ## §5.5 蓝图 chrome：四角 L 形刻线（工程图角标语言）。
@@ -583,13 +617,14 @@ func _refresh_shop() -> void:
 				_slot_price_mark[i].text = ""
 			_slot_price_num[i].text = "--"
 			_slot_price_unit[i].text = ""
+			_slot_price_row[i].hide()
 			_set_price_color(i, C_DIM)
 			_slot_desc[i].text = ""
 			_slot_note[i].text = ""
 			_slots[i].add_theme_stylebox_override("panel", _Battle.card())
 			_set_chrome_accent(i, "dim")
-			_slot_buy[i].disabled = true
-			_slot_lock[i].disabled = true
+			_slot_can_buy[i] = false
+			_slot_lock[i].set_meta("enabled", false)
 		_reroll_btn.disabled = true
 		_clear_children(_pending_box)
 		return
@@ -624,6 +659,7 @@ func _refresh_shop() -> void:
 				_slot_price_mark[i].text = ""
 			_slot_price_num[i].text = "--"
 			_slot_price_unit[i].text = ""
+			_slot_price_row[i].hide()
 			_set_price_color(i, C_DIM)
 			_slot_desc[i].text = ""
 			_slot_note[i].text = String(s["notes"][i])
@@ -670,6 +706,9 @@ func _refresh_shop() -> void:
 				_slot_price_mark[i].text = "✓" if _aff else "✗"
 			_slot_price_num[i].text = "%.0f" % price
 			_slot_price_unit[i].text = "分"
+			# 🆕 2026-11-10 接手修：价格行在 _make_slot 里默认隐藏，取消底部「购买」按钮后
+			#    卡面必须自己显示价格（原点击式布局漏了 show()，实机卡面完全看不到售价）。
+			_slot_price_row[i].show()
 			_set_price_color(i, C_ACCENT if _aff else C_DIM)
 			# 卡片描边 = 稀有度色（§2.3）；可购性由 ✓/✗ + 价格色 + 角刻线表达（第二通道）
 			_slots[i].add_theme_stylebox_override("panel",
@@ -691,13 +730,14 @@ func _refresh_shop() -> void:
 			if not extra.is_empty():
 				note = (note + " · " if note != "" else "") + " · ".join(extra)
 			_slot_note[i].text = note
-		_slot_buy[i].disabled = not ok
-		_slot_buy[i].text = "购买" if nm == "" else "购买 · %.0f" % price
+		_slot_can_buy[i] = ok and nm != ""
+		_slots[i].mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND if _slot_can_buy[i] else Control.CURSOR_ARROW
 		# 锁定：3 位中可锁 1；锁定位显示"已锁"
 		var locked := (int(s["lock_index"]) == i)
-		_slot_lock[i].text = "已锁定" if locked else "锁定"
-		_slot_lock[i].disabled = (nm == "")
-		_slot_lock[i].tooltip_text = "保留此商品，下次刷新不替换"
+		_slot_lock[i].set_meta("locked", locked)
+		_slot_lock[i].queue_redraw()
+		_slot_lock[i].set_meta("enabled", nm != "")
+		_slot_lock[i].tooltip_text = "已锁定，点击解锁" if locked else "点击锁定：下次刷新保留此商品"
 
 	# ---- 刷新按钮：显示 5+3n 的实时成本（E5：买不起置灰 + 标红）----
 	var rc := float(s["reroll_cost"])
@@ -810,7 +850,6 @@ func _refresh_mode(drawer: int) -> void:
 	# 🔴 T-C1 / E16：重决策入口**仅**安全窗可用，其余态置灰 + 不响应
 	var heavy_on := (drawer == _TSM.Drawer.HEAVY)
 	_heavy_panel.hide()
-	_budget_row.hide()
 	_discard_btn.disabled = not heavy_on
 	_detach_btn.disabled = not heavy_on
 	_salvage_btn.disabled = not heavy_on

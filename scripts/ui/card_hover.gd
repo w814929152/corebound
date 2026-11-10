@@ -12,7 +12,11 @@ func _ready() -> void:
 	layer = 136
 	panel = PanelContainer.new()
 	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	panel.add_theme_stylebox_override("panel", Battle.panel())
+	# 🆕 v4 统一关卡内风格：浮卡底块取消（纯文字）。可读性改由**深色文字描边**承担——
+	#    描边只作用于字形周围，不产生任何面板块，与「仅文字」方向一致。
+	var floating: StyleBoxFlat = Battle.panel()
+	floating.bg_color = Color(0, 0, 0, 0)
+	panel.add_theme_stylebox_override("panel", floating)
 	add_child(panel)
 	var margin := MarginContainer.new()
 	margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -35,6 +39,10 @@ func _ready() -> void:
 	body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	body.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	vb.add_child(body)
+	# 🆕 v4：深色描边保证文字压在战场/插画上仍可读（无底块的替代方案）
+	for l: Label in [title, body]:
+		l.add_theme_constant_override("outline_size", 6)
+		l.add_theme_color_override("font_outline_color", Color(0.02, 0.03, 0.05, 0.9))
 	panel.hide()
 
 func clear() -> void:
@@ -48,7 +56,9 @@ func show_card(nm: String, anchor: Rect2, context: String = "", above: bool = fa
 	var key := nm + context
 	if key != _key:
 		_key = key
-		panel.add_theme_stylebox_override("panel", Battle.card(false, Text.rarity(nm)))
+		var floating: StyleBoxFlat = Battle.card(false, Text.rarity(nm))
+		floating.bg_color = Color(0, 0, 0, 0)
+		panel.add_theme_stylebox_override("panel", floating)
 		title.text = Text.display_name(nm)
 		var tag := Text.tag_of(nm)
 		body.text = "建筑卡 · %s\n\n%s" % [Text.tag_cn(tag), Text.details(nm)]

@@ -29,8 +29,9 @@ const BOTTOM_MARGIN := 26.0    # 🆕 28 → 46：原设计贴屏幕底边（108
 const PAD := 10.0
 const SEG_RADIUS := 3          # 🆕 段圆角（直角方块在暗底上过于生硬）
 const CORE_CAP := "核心"       # 🆕 血条左侧说明（原来只有一串裸数字，读不出是什么）
-# P1 增强（spec §C.2）：段碎裂演出时长（满→空时短促闪白再隐没）。
-const SHATTER_SEC := 0.18
+# P1 增强（spec §C.2）：段碎裂演出时长（满→空时短促闪红再隐没）。
+# 🆕 2026-11-10 设计稿 v1 对齐：闪色由白改**警报红**（受击因果更直读）、时长 0.18 → 0.30。
+const SHATTER_SEC := 0.30
 
 const _Battle := preload("res://scripts/ui/battle_theme.gd")
 var _box_health: StyleBoxFlat
@@ -64,7 +65,8 @@ func _ready() -> void:
 func _build_boxes() -> void:
 	# 底槽：深色底 + 亮色描边 + 圆角（§5.1「面板 = 深底 + 亮描边」）
 	_box_slot = _Style.panel(Color(C_BORDER.r, C_BORDER.g, C_BORDER.b, 0.75), 2, 0.0, 0.0)
-	_box_slot.bg_color = C_BG
+	# 🆕 v4 统一关卡内风格：底槽承托块取消（透明），段位本身即数据编码
+	_box_slot.bg_color = Color(C_BG.r, C_BG.g, C_BG.b, 0.0)
 	_box_slot.set_corner_radius_all(SEG_RADIUS + 4)
 	_box_seg = _seg_box(C_FILL)
 	_box_seg_low = _seg_box(C_FILL_LOW)
@@ -199,7 +201,8 @@ func _draw() -> void:
 		else:
 			draw_rect(r, Color(C_FILL.r, C_FILL.g, C_FILL.b, 0.16))
 
-	# P1 增强：段碎裂演出 —— 由满→空的段短促闪白（#FFFFFF）再隐没（不参与玩法）。
+	# P1 增强：段碎裂演出 —— 由满→空的段短促闪**警报红**（#FF2E4E）再隐没（不参与玩法）。
+	#   🆕 2026-11-10 设计稿 v1：白 → 警报红，与 ≤25% 告警同色（危险语义一致）。
 	for i in _shatter:
 		if i < 0 or i >= SEG_COUNT:
 			continue
@@ -208,8 +211,8 @@ func _draw() -> void:
 		var sr := Rect2(x0 + float(i) * (SEG_W + SEG_GAP), y0, SEG_W, SEG_H)
 		var gr := Rect2(sr.position.x - grow, sr.position.y - grow,
 			sr.size.x + 2.0 * grow, sr.size.y + 2.0 * grow)
-		# 闪白用直角矩形（碎裂瞬间），避免每帧 duplicate StyleBox 产生分配
-		draw_rect(gr, Color(1.0, 1.0, 1.0, 0.85 * sp))
+		# 闪红用直角矩形（碎裂瞬间），避免每帧 duplicate StyleBox 产生分配
+		draw_rect(gr, Color(C_FILL_LOW.r, C_FILL_LOW.g, C_FILL_LOW.b, 0.90 * sp))
 
 	# 数字（L0）：720 / 1000 —— 🆕 字号 30 → 22，抬到血条上方留白区，不再压住条顶
 	#   🔴 §5.4：血量读数 = 等宽数字字体（受击抖动时不再左右跳）；「核心」= Medium

@@ -39,6 +39,8 @@ GODOT="C:/Program Files (x86)/Steam/steamapps/common/Godot Engine/godot.windows.
 
 - 基地美术 / 十九格禁建区、准备阶段下一波出怪预告、商店背景铺满卡框：见 `docs/phase6/base-and-card-art-2026-11-10.md` 与 `spawn-preview.md`。出怪预告专项已加入默认 world 门禁；其他会话的界面与火焰数值改动继续单独保留。
 
+- 界面「少边框」+ 商店参考图布局（整卡点击购买、210×340 三卡、信息带）+ 航图场景缩略卡，以及焚星塔充能口径（十层引爆计数、上限 10）：见 `docs/phase6/ui-flat-2026-11-10.md`。默认全量回归 **exit 0**、`world` **13 门 PASS（26.7 s）**；`fire_charge` 12 → 10 属数值口径，**待平衡拍板**。
+
 - 准备阶段：玩家路线全塔复活回血、基地满血；可拖拽已部署防御塔免费移位，基地固定，非法落点/战斗/退出暂停拒绝移位。仅含本轮暂存文件的独立版本默认完整回归 exit 0，world PASS（22.6s）；见 `docs/phase6/preparation-recovery-relocation.md`。并行 UI、火焰、出生预告和基地美术未纳入本批。
 
 - 本批美术：确认的俯视箭塔 + 八包独立卡面背景（含包色基座、暗化与轻虚化），卡面保留原版塔插图；接线、预览和验证见 `docs/phase6/arrow-art-rarity-2026-11-10.md`。其他会话的 UI / 关卡图及旧 AI 试稿仍保留未提交。

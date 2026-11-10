@@ -181,17 +181,21 @@ func _draw() -> void:
 			break
 		var rect := Rect2(112.0 + offset * (CARD_W + GAP), 16.0, CARD_W, CARD_H)
 		var active := index == _drag_index or index == _card_at(_pointer - position)
-		draw_style_box(_active_box if active else _card_box, rect)
+		# 🆕 2026-11-10 设计稿 v1（§5.1 悬停抬起）：悬停芯片整体上浮 3px。
+		#    🔴 命中判定仍用原 rect（不随上浮移动）—— 3px 差在抖动阈内，避免悬停抖动。
+		var lift := -3.0 if (active and index != _drag_index) else 0.0
+		var draw_r := Rect2(rect.position + Vector2(0.0, lift), rect.size)
+		draw_style_box(_active_box if active else _card_box, draw_r)
 		var nm := String(_pending[index])
 		var art := _Style.card_art(nm)
 		if art != null:
-			var area := Rect2(rect.position + Vector2(8.0, 4.0), Vector2(CARD_W - 16.0, 96.0))
+			var area := Rect2(draw_r.position + Vector2(8.0, 4.0), Vector2(CARD_W - 16.0, 96.0))
 			draw_texture_rect(_Style.card_backdrop(_CardText.rarity(nm), nm), area, false, _Style.CARD_BACKDROP_TINT)
 			var art_size := art.get_size()
 			var factor := minf(area.size.x / art_size.x, area.size.y / art_size.y)
 			var target := art_size * factor
 			draw_texture_rect(art, Rect2(area.get_center() - target * 0.5, target), false)
-		draw_string(font, rect.position + Vector2(8.0, 122.0), _CardText.display_name(nm), HORIZONTAL_ALIGNMENT_LEFT, CARD_W - 16.0, 16, C_ACTIVE if active else C_TEXT)
+		draw_string(font, draw_r.position + Vector2(8.0, 122.0), _CardText.display_name(nm), HORIZONTAL_ALIGNMENT_LEFT, CARD_W - 16.0, 16, C_ACTIVE if active else C_TEXT)
 	if _pending.size() > visible:
 		draw_string(font, Vector2(size.x - 70.0, 62.0), "%d/%d" % [_first_visible + 1, _pending.size() - visible + 1], HORIZONTAL_ALIGNMENT_RIGHT, 52.0, 16, C_DIM)
 	if _drag_index >= 0:
