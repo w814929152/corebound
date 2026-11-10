@@ -50,6 +50,15 @@ signal place_at_requested(pos: Vector2)
 signal placement_cancelled()
 
 
+var external_pause: bool = false
+
+func set_external_pause(value: bool) -> void:
+	external_pause = value
+	_last_msec = Time.get_ticks_msec()
+	if sm != null and is_inside_tree():
+		_apply_clock(true)
+
+
 var sm = null                 # TimeStateMachine 实例（纯逻辑）
 var focus_index: int = 0      # 焦点位 ∈ {0,1,2}（§2.4「有且仅有 1 个焦点位」）
 
@@ -84,6 +93,9 @@ func _process(delta: float) -> void:
 	if dt_real > _Cfg.MAX_FRAME_REAL_DT:
 		dt_real = _Cfg.MAX_FRAME_REAL_DT
 
+	if external_pause:
+		_apply_clock(false)
+		return
 	real_seconds += dt_real
 	game_seconds += float(delta)          # scaled：战场真实推进量
 
@@ -103,14 +115,14 @@ func _apply_clock(force: bool) -> void:
 
 	if not is_equal_approx(float(Engine.time_scale), ts):
 		Engine.time_scale = ts
-	if get_tree().paused != bool(c["paused"]):
-		get_tree().paused = bool(c["paused"])
+	if get_tree().paused != (external_pause or bool(c["paused"])):
+		get_tree().paused = external_pause or bool(c["paused"])
 
 	if force or sm.state != _emitted_state:
 		var from_state := _emitted_state
 		_emitted_state = sm.state
 		emit_signal("state_changed", from_state, sm.state)
-		emit_signal("clock_applied", ts, bool(c["paused"]))
+		emit_signal("clock_applied", ts, external_pause or bool(c["paused"]))
 	var dr: int = int(c["drawer"])
 	if force or dr != _emitted_drawer:
 		_emitted_drawer = dr
@@ -196,6 +208,8 @@ func start_next_wave() -> void:
 #  用 `_unhandled_key_input`：让 UI 控件先吃事件，避免商店里的按钮被全局热键抢走。
 # ---------------------------------------------------------------------------
 func _unhandled_key_input(event: InputEvent) -> void:
+	if external_pause:
+		return
 	if not (event is InputEventKey):
 		return
 	var e := event as InputEventKey
@@ -244,7 +258,7 @@ func snapshot() -> Dictionary:
 		"state_name": sm.state_name(),
 		"wave": sm.wave,
 		"time_scale": float(c["time_scale"]),
-		"paused": bool(c["paused"]),
+		"paused": external_pause or bool(c["paused"]),
 		"consumes_budget": bool(c["consumes_budget"]),
 		"drawer": int(c["drawer"]),
 		"budget_left": sm.budget_left,
@@ -260,6 +274,8 @@ func snapshot() -> Dictionary:
 
 ## Tab 是全局商店开关，先于 GUI 焦点导航处理，购买后按钮获焦也能关闭。
 func _input(event: InputEvent) -> void:
+	if external_pause:
+		return
 	if event is InputEventKey and event.keycode == KEY_TAB and event.pressed and not event.echo:
 		if sm != null and sm.state != _TSM.State.PLACEMENT_MODE:
 			toggle_shop()

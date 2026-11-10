@@ -158,7 +158,7 @@ func _build_menu() -> Control:
 	title.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	col.add_child(title)
 
-	var en := _Style.label("C O R E B O U N D", 18, _Style.C_STEEL)
+	var en := _Style.label("径 向 核 心 围 攻", 18, _Style.C_STEEL)
 	_Style.apply_font(en, "medium")
 	en.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	col.add_child(en)
@@ -234,7 +234,7 @@ func _build_menu() -> Control:
 	foot.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	page.add_child(foot)
 
-	var ver := _Style.label("v0.1.0 · Phase 6 · 点击或 ↑↓ + Enter", 16, _Style.C_STEEL)
+	var ver := _Style.label("v0.1.0 · 第六阶段 · 点击或 ↑↓ + Enter", 16, _Style.C_STEEL)
 	ver.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	ver.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	foot.add_child(ver)
@@ -469,7 +469,7 @@ func _make_card(pack_id: String, nm: String) -> Control:
 	top.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	v.add_child(top)
 
-	var name_l := _Style.label(nm, 18, _Style.C_WHITE)
+	var name_l := _Style.label(_CardText.display_name(nm), 18, _Style.C_WHITE)
 	_Style.apply_font(name_l, "medium")
 	# 🔴 名字必须自己吃下剩余宽度（EXPAND_FILL），**不能**再靠一个 `sp` 占位来顶：
 	#    一旦 clip_text = true，Label 的最小宽归 0，若旁边还有一个 EXPAND 的空白 Control，
@@ -558,7 +558,7 @@ func _refresh_dynamic() -> void:
 				_Packs.owned_regions.size(), _Packs.REGION_ORDER.size(),
 				unlocked.size(), _Packs.PACKS.size()]
 		else:
-			_status.text = "最佳波次 W%d · 已解锁 %d / %d 包" % [
+			_status.text = "最佳波次 第%d波 · 已解锁 %d / %d 包" % [
 				best, unlocked.size(), _Packs.PACKS.size()]
 	if _lib_head != null:
 		# 🔴 旧文案「共 81 张卡 …（实际 81 个卡位）」把同一个数字说了两遍，

@@ -130,7 +130,7 @@ const PACKS: Array = [
 		"unlock_wave": 18,
 	},
 	{
-		"id": "hex", "name": "咒术包", "tag_line": "debuff 易伤 +20% · 削魔抗 · DoT",
+		"id": "hex", "name": "咒术包", "tag_line": "负面状态增伤20% · 削魔抗 · 持续伤害",
 		"cards": ["Omen", "Hex", "Rune", "Curse", "Plague", "Wither", "Executioner", "Blight", "Malison", "Hexer"],
 		"unlock_wave": 24,
 	},
@@ -272,7 +272,7 @@ static func lock_hint(pack_id: String, best_wave: int) -> String:
 		#    「守住「永冻科考站」解锁」= 11 字会被裁掉后半截（实测）。地区名本身
 		#    就是"还没到手"的含义，省掉动词反而更短更清楚。
 		return "守住 %s" % nm
-	return "到达 W%d 解锁" % unlock_wave(pack_id)
+	return "到达第 %d 波解锁" % unlock_wave(pack_id)
 
 
 ## 借用态提示文案（UI 专用）：本关可用的「该地区原生科技」。非借用 → ""。

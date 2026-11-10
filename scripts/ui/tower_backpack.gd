@@ -5,6 +5,7 @@ const _BuildGrid := preload("res://scripts/geo/build_grid.gd")
 ## 🆕 字体注册表（art-bible §5.4）：面板文字不再走引擎默认字体（400 太细）。
 const _Battle := preload("res://scripts/ui/battle_theme.gd")
 const _Style := preload("res://scripts/ui/ui_style.gd")
+const _CardText := preload("res://scripts/data/card_text.gd")
 const _Hover := preload("res://scripts/ui/card_hover.gd")
 var _hover: CanvasLayer
 var _pointer := Vector2(-1000.0, -1000.0)
@@ -189,13 +190,13 @@ func _draw() -> void:
 			var factor := minf(area.size.x / art_size.x, area.size.y / art_size.y)
 			var target := art_size * factor
 			draw_texture_rect(art, Rect2(area.get_center() - target * 0.5, target), false)
-		draw_string(font, rect.position + Vector2(8.0, 122.0), nm, HORIZONTAL_ALIGNMENT_LEFT, CARD_W - 16.0, 16, C_ACTIVE if active else C_TEXT)
+		draw_string(font, rect.position + Vector2(8.0, 122.0), _CardText.display_name(nm), HORIZONTAL_ALIGNMENT_LEFT, CARD_W - 16.0, 16, C_ACTIVE if active else C_TEXT)
 	if _pending.size() > visible:
 		draw_string(font, Vector2(size.x - 70.0, 62.0), "%d/%d" % [_first_visible + 1, _pending.size() - visible + 1], HORIZONTAL_ALIGNMENT_RIGHT, 52.0, 16, C_DIM)
 	if _drag_index >= 0:
 		var mouse := get_local_mouse_position()
 		draw_circle(mouse, 18.0, Color(C_ACTIVE.r, C_ACTIVE.g, C_ACTIVE.b, 0.45))
-		draw_string(font, mouse + Vector2(24.0, 5.0), _drag_name.left(12), HORIZONTAL_ALIGNMENT_LEFT, -1, 16, C_TEXT)
+		draw_string(font, mouse + Vector2(24.0, 5.0), _CardText.display_name(_drag_name), HORIZONTAL_ALIGNMENT_LEFT, -1, 16, C_TEXT)
 		# 🆕 v4 光标三态：拖动中逐帧判定落点合法性（motion 每帧 redraw 驱动）
 		#    落点非法 → deny 禁止光标；合法 → place 准星；拖回背包条 → default。
 		_drag_cursor_update()

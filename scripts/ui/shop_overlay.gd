@@ -604,7 +604,7 @@ func _refresh_shop() -> void:
 			_slots[i].add_theme_stylebox_override("panel", _Battle.card())
 			_set_chrome_accent(i, "dim")
 		else:
-			_slot_name[i].text = nm
+			_slot_name[i].text = _CardText.display_name(nm)
 			# 🆕 插画带按卡名取图：缺失（未出图 / headless）→ 隐藏整带，版式回落
 			var art_tex := _Style.card_art(nm)
 			_slot_art[i].texture = art_tex
@@ -656,7 +656,7 @@ func _refresh_shop() -> void:
 			if String(hl.get("kappa_preview", "")) != "":
 				extra.append(String(hl["kappa_preview"]))       # H6
 			if float(hl.get("delta_pct", 0.0)) > 0.0001:
-				extra.append("投主塔 DPS +%.0f%%" % (float(hl["delta_pct"]) * 100.0))  # H9
+				extra.append("主塔秒伤 +%.0f%%" % (float(hl["delta_pct"]) * 100.0))  # H9
 			if not extra.is_empty():
 				note = (note + " · " if note != "" else "") + " · ".join(extra)
 			_slot_note[i].text = note

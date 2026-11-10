@@ -398,7 +398,7 @@ func _test_c2_highlights() -> void:
 	var hl := rt.highlights()
 	var h0: Dictionary = hl[0]
 	_check_bool("H2 FireUp 与主塔 fire 协同", bool(h0["tag_synergy"]), true)
-	_check_str("H5 FireUp 主塔 Lv3→4", String(h0["layer_next"]), "Lv 3 → 4")
+	_check_str("H5 FireUp 主塔 Lv3→4", String(h0["layer_next"]), "等级 3 → 4")
 	# H9 ΔDPS 为正（FireUp 给 fire 主塔 +1 层 → DPS 必增；具体值由金标本引擎定，此处验方向）
 	var dpct := float(h0["delta_pct"])
 	_check_bool("H9 FireUp 投主塔 ΔDPS > 0（有增益）", dpct > 0.0, true)

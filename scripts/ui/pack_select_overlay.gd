@@ -21,6 +21,7 @@ extends CanvasLayer
 
 signal packs_confirmed(packs: Array)
 
+const _CardText := preload("res://scripts/data/card_text.gd")
 const _Style := preload("res://scripts/ui/ui_style.gd")
 const _Packs := preload("res://scripts/data/card_packs.gd")
 const _RunMeta := preload("res://scripts/gameplay/run_meta.gd")
@@ -260,7 +261,7 @@ func _make_tile(pack: Dictionary, seq: int) -> Button:
 	v.add_child(grid)
 	var card_names: Array = []
 	for cnm in (pack["cards"] as Array):
-		var l1 := _Style.label(String(cnm), 16, _Style.C_TEXT)
+		var l1 := _Style.label(_CardText.display_name(String(cnm)), 16, _Style.C_TEXT)
 		l1.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		l1.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		# 兜底：将来若出现更长的卡名，省略号收尾，绝不画到瓦片外（clip_text 同时把
@@ -339,11 +340,11 @@ func _refresh() -> void:
 			_Packs.owned_regions.size(), _Packs.REGION_ORDER.size(),
 			unlocked.size(), tag, req]
 	elif nxt > 0:
-		_head.text += "\n最佳波次 W%d · 到达 W%d 解锁下一个卡包" % [best, nxt]
+		_head.text += "\n最佳波次 第%d波 · 到达第%d波 解锁下一个卡包" % [best, nxt]
 	elif nxt < 0:
 		_head.text += "\n全部 %d 个卡包开放 · 本局任选 %d 包" % [unlocked.size(), req]
 	else:
-		_head.text += "\n最佳波次 W%d · 卡包已全部解锁" % best
+		_head.text += "\n最佳波次 第%d波 · 卡包已全部解锁" % best
 
 	for t in _tiles:
 		var pid := String(t["id"])

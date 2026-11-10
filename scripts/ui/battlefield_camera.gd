@@ -2,8 +2,9 @@ extends RefCounted
 ## 战场镜头状态；单位、命中特效、拖放与地面共用唯一变换。
 const Maps := preload("res://scripts/data/battlefield_maps.gd")
 const MIN_ZOOM := 0.6
-const MAX_ZOOM := 2.4
-const DEFAULT_ZOOM := 1.0
+const MAX_ZOOM := 3.2
+## 默认近景使 1080p 下 4u 建筑贴图约为 64px；总览独立保持完整地图。
+const DEFAULT_ZOOM := 2.0
 const CLOSE_VIEW := 1.5
 static var zoom := DEFAULT_ZOOM
 static var focus := Maps.CORE

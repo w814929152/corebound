@@ -208,10 +208,13 @@ func _draw() -> void:
 func _draw_badge(font: Font, e: Dictionary, R: float, fs: int) -> void:
 	var c: Vector2 = e["pos"]
 	var h: int = int(e["h"])
-	var lbl := "Lv"
+	var lbl := "级"
+	var label_font: Font = _Style.font_body()
+	if label_font == null:
+		label_font = font
 	var num := str(h)
 	var sub := maxi(9, int(round(float(fs) * 0.70)))
-	var w_lbl := font.get_string_size(lbl, HORIZONTAL_ALIGNMENT_LEFT, -1, sub).x
+	var w_lbl := label_font.get_string_size(lbl, HORIZONTAL_ALIGNMENT_LEFT, -1, sub).x
 	var w_num := font.get_string_size(num, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
 	var gap := 1.0
 	var cw := PAD_X * 2.0 + w_lbl + gap + w_num
@@ -258,6 +261,6 @@ func _draw_badge(font: Font, e: Dictionary, R: float, fs: int) -> void:
 	var base_y := rect.position.y + ch * 0.5 \
 		+ (font.get_ascent(fs) - font.get_descent(fs)) * 0.5
 	var x := rect.position.x + PAD_X
-	draw_string(font, Vector2(x, base_y), lbl, HORIZONTAL_ALIGNMENT_LEFT, -1, sub,
+	draw_string(label_font, Vector2(x, base_y), lbl, HORIZONTAL_ALIGNMENT_LEFT, -1, sub,
 		Color(accent.r, accent.g, accent.b, 0.95 if not dim else 0.55))
 	draw_string(font, Vector2(x + w_lbl + gap, base_y), num, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, col)

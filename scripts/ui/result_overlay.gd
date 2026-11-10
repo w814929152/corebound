@@ -149,6 +149,7 @@ func _build() -> void:
 	# 🆕 战报块（§5.2「数字 > 文字」：终局数据用等宽读数仪表行，不再埋在正文里）
 	_stat_core = _make_stat_row(vbox, "核心剩余")
 	_stat_wave = _make_stat_row(vbox, "坚守波次")
+	_Style.apply_font(_stat_wave, "medium")
 	_stat_scrap = _make_stat_row(vbox, "本局废料")
 
 	vbox.add_child(_Style.hline())
@@ -224,11 +225,11 @@ func show_result(p_won: bool, p_wave: int, p_core_hp: float, p_core_hp_max: floa
 			_banner.texture = _load_tex(BANNER_WON_PATH)
 		_stat_core.text = "%d / %d" % [int(p_core_hp), int(p_core_hp_max)]
 		_stat_core.add_theme_color_override("font_color", _Style.C_WHITE)
-		_stat_wave.text = "W%d" % p_wave
+		_stat_wave.text = "第 %d 波" % p_wave
 		_stat_wave.add_theme_color_override("font_color", _Style.C_WHITE)
 		_stat_scrap.text = "%.0f" % float(p_scrap)
 		_stat_scrap.add_theme_color_override("font_color", _Style.C_GOLD)  # §2.2 辉金 = 资源
-		_body_label.text = "守核成功 —— 打完 W1 → W%d 全部波次" % p_wave
+		_body_label.text = "守核成功 —— 守住第 1 至第 %d 波" % p_wave
 	else:
 		_title_label.text = "核 心 归 零 · 失 败"
 		_title_label.add_theme_color_override("font_color", _Style.C_ALERT)
@@ -240,11 +241,11 @@ func show_result(p_won: bool, p_wave: int, p_core_hp: float, p_core_hp_max: floa
 			_banner.texture = _load_tex(BANNER_LOST_PATH)
 		_stat_core.text = "%d / %d" % [int(p_core_hp), int(p_core_hp_max)]
 		_stat_core.add_theme_color_override("font_color", _Style.C_ALERT)
-		_stat_wave.text = "W%d" % p_wave
+		_stat_wave.text = "第 %d 波" % p_wave
 		_stat_wave.add_theme_color_override("font_color", _Style.C_WHITE)
 		_stat_scrap.text = "%.0f" % float(p_scrap)
 		_stat_scrap.add_theme_color_override("font_color", _Style.C_GOLD)
-		_body_label.text = "核心在 W%d 被击穿 —— 构筑强度不足，再试一次？" % p_wave
+		_body_label.text = "核心在第 %d 波被击穿 —— 构筑强度不足，再试一次？" % p_wave
 	visible = true
 
 

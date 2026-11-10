@@ -478,3 +478,16 @@ func _emit_shop() -> void:
 
 func _emit_run() -> void:
 	emit_signal("run_changed")
+
+
+## 主动放弃不触发输赢结算，也不发放奖励。
+func abandon_run() -> void:
+	over = true
+	campaign_result = {}
+	if runtime != null:
+		runtime.cancel_placement()
+	if wave_director != null:
+		wave_director.state = wave_director.State.IDLE
+	if director != null:
+		director.set_external_pause(true)
+	_emit_run()

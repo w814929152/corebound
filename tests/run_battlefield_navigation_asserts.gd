@@ -58,7 +58,7 @@ func run() -> void:
 		await motion(anchor)
 		var world_anchor: Vector2 = ml.screen_to_world_position(anchor)
 		await button(anchor,MOUSE_BUTTON_WHEEL_UP,true)
-		check(Camera.zoom>1.0,"滚轮放大：%s" % viewport)
+		check(Camera.zoom>Camera.DEFAULT_ZOOM,"滚轮放大：%s" % viewport)
 		check(ml.world_to_screen(world_anchor).distance_to(anchor)<0.01,"鼠标所指地面缩放时保持原位")
 		check(ml.world_to_screen(world_anchor).distance_to(vfx._to_screen(world_anchor))<0.01,"缩放后特效与地形一致")
 		var before: Dictionary = ml._xform()
@@ -100,7 +100,7 @@ func run() -> void:
 		Camera.zoom_at(0.00001,center,size)
 		check(Camera.zoom==Camera.MIN_ZOOM,"缩放下限有效")
 		nav.reset_view()
-		check(Camera.focus==Maps.CORE and Camera.zoom==1.0,"回到核心恢复初始视角")
+		check(Camera.focus==Maps.CORE and Camera.zoom==Camera.DEFAULT_ZOOM,"回到核心恢复初始视角")
 	# 在缩放和平移后，从真实背包拖卡到扩展区域。
 	scene.controller.runtime.scrap = 100.0
 	scene.controller._on_buy_requested(0)
@@ -129,7 +129,7 @@ func run() -> void:
 	key.pressed = true
 	root.push_input(key,true)
 	await process_frame
-	check(Camera.focus==Maps.CORE and Camera.zoom==1.0,"F 快捷键回到核心")
+	check(Camera.focus==Maps.CORE and Camera.zoom==Camera.DEFAULT_ZOOM,"F 快捷键回到核心")
 	# 结束手势的边界：失去窗口焦点后，移动鼠标不能继续拖动。
 	await motion(place_center)
 	await button(place_center,MOUSE_BUTTON_MIDDLE,true)
@@ -157,14 +157,14 @@ func run() -> void:
 		await RenderingServer.frame_post_draw
 		root.get_texture().get_image().save_png("res://art/_review/navigation-zoomed.png")
 		nav._bar.get_child(4).pressed.emit()
-		check(Camera.focus==Maps.CORE and Camera.zoom==1.0,"回到核心按钮复位镜头")
+		check(Camera.focus==Maps.CORE and Camera.zoom==Camera.DEFAULT_ZOOM,"回到核心按钮复位镜头")
 	# 新开一局复位，波次和买卖等普通刷新不复位。
 	nav._zoom(1.5,place_center)
 	var kept := Camera.zoom
 	scene.controller._emit_run()
 	check(Camera.zoom==kept,"普通游戏刷新保留镜头")
 	scene.controller.start_new_run()
-	check(Camera.focus==Maps.CORE and Camera.zoom==1.0,"新一局重置镜头")
+	check(Camera.focus==Maps.CORE and Camera.zoom==Camera.DEFAULT_ZOOM,"新一局重置镜头")
 	scene.queue_free()
 	paused = false
 	Space.terrain_enabled = false

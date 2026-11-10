@@ -1,4 +1,6 @@
 extends RefCounted
+
+const _CardText := preload("res://scripts/data/card_text.gd")
 ##
 ## 切片4 · 商店运行时（**玩家手动路线**）
 ##
@@ -699,7 +701,7 @@ func buy(slot: int) -> bool:
 			# ② 单塔效果卡 → 投主塔（`apply_action` 内部处理 层数+1 / 新占槽 / 换掉最弱卡）
 			var act := _action_for(nm)
 			if act.is_empty() or _ShopAI.apply_action(player, act, cfg) == null:
-				last_error = "装配失败：%s" % nm
+				last_error = "装配失败：%s" % _CardText.display_name(nm)
 				return false
 			#    🟡 切片8：装配卡成本直接计入**宿主塔** invested（返还 50% 累计投入的来源之一）
 			_add_invested(int(act[2]), cost)
@@ -845,7 +847,7 @@ func _h5_layer_next(nm: String, kind: String, act: Array) -> String:
 	for t in player.towers:
 		if int(t.slot) == host:
 			var cur := int(t.attach.get(nm, 0))
-			return "Lv %d → %d" % [cur, cur + 1]
+			return "等级 %d → %d" % [cur, cur + 1]
 	return ""
 
 
@@ -937,11 +939,11 @@ func confirm_placement(slot: int) -> bool:
 	var nm := String(pending[_placing_index])
 	var mode := placement_mode_for(slot)
 	if mode == "invalid":
-		last_error = "非法目标：%s 不能落在塔位 %d" % [nm, slot]
+		last_error = "非法目标：%s 不能落在塔位 %d" % [_CardText.display_name(nm), slot]
 		return false
 	var act := ["build", nm, slot, null] if mode == "new" else ["up", nm, slot, null]
 	if _ShopAI.apply_action(player, act, cfg) == null:
-		last_error = "落子失败：%s → 塔位 %d" % [nm, slot]
+		last_error = "落子失败：%s → 塔位 %d" % [_CardText.display_name(nm), slot]
 		return false
 	# 🟡 切片8：建筑卡成本（build/upgrade 同价）计入**这座塔**的 invested（拆除返还 50% 依据）
 	var paid := 0.0
@@ -996,7 +998,7 @@ func placement_mode_at(pos: Vector2) -> Dictionary:
 		if ti >= 0:
 			if String(player.towers[ti].ctype) == nm:
 				return {"mode": "upgrade", "slot": existing, "reason": ""}
-			return {"mode": "invalid", "slot": existing, "reason": "这格已有「%s」" % String(player.towers[ti].ctype)}
+			return {"mode": "invalid", "slot": existing, "reason": "这格已有「%s」" % _CardText.display_name(String(player.towers[ti].ctype))}
 		return {"mode": "new", "slot": existing, "reason": ""}
 	if player.towers.size() >= tower_cap():
 		return {"mode": "invalid", "slot": -1, "reason": "塔数已满 %d / %d" % [player.towers.size(), tower_cap()]}
@@ -1033,7 +1035,7 @@ func confirm_placement_at(pos: Vector2) -> bool:
 		var ti := _tower_index(existing)
 		if ti >= 0:
 			if String(player.towers[ti].ctype) != nm:
-				last_error = "这格已有「%s」，不能改建为「%s」" % [String(player.towers[ti].ctype), nm]
+				last_error = "这格已有「%s」，不能改建为「%s」" % [_CardText.display_name(String(player.towers[ti].ctype)), _CardText.display_name(nm)]
 				return false
 			mode = "upgrade"
 		# ti < 0 = 拆塔残留的空槽 → 直接复用（mode 保持 "new"）
@@ -1047,7 +1049,7 @@ func confirm_placement_at(pos: Vector2) -> bool:
 
 	var act := ["build", nm, slot, null] if mode == "new" else ["up", nm, slot, null]
 	if _ShopAI.apply_action(player, act, cfg) == null:
-		last_error = "落子失败：%s" % nm
+		last_error = "落子失败：%s" % _CardText.display_name(nm)
 		return false
 
 	# 建筑卡成本（build / up 同价）计入**这座塔**的 invested（拆除返还 50% 的依据）
@@ -1397,7 +1399,7 @@ func discard_card(card_name: String) -> Dictionary:
 		return result
 	var nm := String(card_name)
 	if nm == "" or not player.cards.has(nm):
-		result["reason"] = "未持有该卡：%s" % nm
+		result["reason"] = "未持有该卡：%s" % _CardText.display_name(nm)
 		return result
 	var n_layers := 0
 	for t in player.towers:
@@ -1444,7 +1446,7 @@ func unequip_downgrade(card_name: String, slot: int = -1) -> Dictionary:
 			result["ok"] = true
 			last_error = ""
 			return result
-	result["reason"] = "该塔未持有 %s" % nm
+	result["reason"] = "该塔未持有 %s" % _CardText.display_name(nm)
 	return result
 
 

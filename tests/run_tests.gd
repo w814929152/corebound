@@ -127,6 +127,7 @@ const RADIAL8_DIAG_HEAVY: Array = [
 # （`run_all()` 是异步的）→ 与 radial8 闸门同款：用 OS.execute 拉起子进程收集 exit code。
 # 默认无参回归与 `-- world` 都会跑这一组。
 const WORLD_GATES: Array = [
+	{"name": "stage_exit", "script": "res://tests/run_stage_exit.gd"},
 	{"name": "building_only", "script": "res://tests/run_building_only_shop_asserts.gd"},
 	{"name": "shop_overlay", "script": "res://tests/run_shop_overlay_asserts.gd"},
 	{"name": "shop_interaction", "script": "res://tests/run_shop_interaction_asserts.gd"},

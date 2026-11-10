@@ -22,6 +22,7 @@ const Campaign := preload("res://scripts/gameplay/campaign.gd")
 const CampaignData := preload("res://scripts/data/campaign_data.gd")
 const StageSelect := preload("res://scripts/ui/stage_select_overlay.gd")
 ## 🆕 主界面（2026-11-07）：启动第一屏 —— 开始游戏 / 卡组图鉴 / 退出。
+const StageExit := preload("res://scripts/ui/stage_exit_overlay.gd")
 const MainMenu := preload("res://scripts/ui/main_menu_overlay.gd")
 
 ## 🆕 关卡推进总开关（2026-11-07 起**实机默认开**：开局先在「裂隙航图」大地图选关）。
@@ -49,6 +50,7 @@ const STAGE_WAVES_ENABLED := true
 ##      存档里那半条线保留不删，只是不再当判据。
 const DECK_BY_REGION_ENABLED := true
 
+var _stage_exit: CanvasLayer = null
 var _bs: Node = null
 var _pack_select: CanvasLayer = null
 var _campaign = null
@@ -162,6 +164,10 @@ func _ready() -> void:
 			_stage_select.stage_selected.connect(_on_stage_selected)
 			_stage_select.back_requested.connect(_on_stage_back)
 		# 🔴 启动第一屏一律是主界面（选关 / 选包由「开始游戏」触发）。
+		_stage_exit = StageExit.new()
+		_stage_exit.director = bs.director
+		add_child(_stage_exit)
+		_stage_exit.exit_confirmed.connect(_on_stage_exit)
 		call_deferred("_open_main_menu")
 
 
@@ -284,10 +290,15 @@ func _begin_run(packs: Array) -> void:
 	for pid in packs:
 		names.append(CardPacks.pack_name(String(pid)))
 	print("[boot] 本局卡包：%s（卡池 %d 张）" % [_join(names, "、"), ShopRuntime.player_card_names().size()])
+	_bs.director.set_external_pause(false)
 	_bs.controller.start_new_run()
+	if _stage_exit != null:
+		_stage_exit.set_active(true)
 
 
 func _on_run_finished(won: bool, wave: int) -> void:
+	if _stage_exit != null:
+		_stage_exit.set_active(false)
 	var fresh: Array = RunMeta.record_run(won, wave)
 	var best := RunMeta.best_wave()
 	var names: Array = []
@@ -307,7 +318,7 @@ func _on_run_finished(won: bool, wave: int) -> void:
 			_bs.controller.campaign_result = r.duplicate(true)
 			if r.get("ok", false):
 				var bits: Array = []
-				bits.append("Ember +%d" % int(r.get("ember_gained", 0)))
+				bits.append("余烬 +%d" % int(r.get("ember_gained", 0)))
 				if String(r.get("unlocked_stage", "")) != "":
 					bits.append("解锁 %s" % String(r.get("unlocked_stage", "")))
 				if String(r.get("unlocked_deck", "")) != "":
@@ -317,7 +328,7 @@ func _on_run_finished(won: bool, wave: int) -> void:
 			var r: Dictionary = _campaign.on_failed(sid, wave)
 			_bs.controller.campaign_result = r.duplicate(true)
 			if r.get("ok", false):
-				print("[boot] 关卡推进 · %s 失败 · Ember +%d" % [sid, int(r.get("ember_gained", 0))])
+				print("[boot] 关卡推进 · %s 失败 · 余烬 +%d" % [sid, int(r.get("ember_gained", 0))])
 		# 🆕 守住新地区 → 立刻把它并入卡包判据（下一局选包 / 图鉴都读同一份）。
 		_sync_deck_unlock()
 
@@ -330,3 +341,15 @@ func _join(arr: Array, sep: String) -> String:
 			s += sep
 		s += String(arr[i])
 	return s
+
+
+func _on_stage_exit() -> void:
+	if _bs == null:
+		return
+	_bs.controller.abandon_run()
+	if _stage_exit != null:
+		_stage_exit.set_active(false)
+	if CAMPAIGN_ENABLED:
+		_open_stage_select()
+	else:
+		_open_main_menu()

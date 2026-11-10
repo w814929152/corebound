@@ -243,7 +243,7 @@ func _on_wave_started(w: int) -> void:
 		_banner.text = "精英波 %d" % w
 		_banner.add_theme_color_override("font_outline_color", C_ALERT)
 	else:
-		_banner.text = "WAVE %d" % w
+		_banner.text = "第 %d 波" % w
 		_banner.add_theme_color_override("font_outline_color", C_GOLD)
 	_banner_end_ms = Time.get_ticks_msec() + BANNER_MS
 	_banner.visible = true
@@ -291,7 +291,7 @@ func _build() -> void:
 	_wave_label.add_theme_font_size_override("font_size", 30)
 	_wave_label.add_theme_color_override("font_color", C_WHITE)
 	_Style.apply_font(_wave_label, "display")     # §5.4：L0 波次号 = Black 展示字重
-	_wave_label.text = "WAVE 1"
+	_wave_label.text = "第 1 波"
 	add_child(_wave_label)
 	_stage_label = _Style.label("", 18, C_ALLY)
 	_stage_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -399,7 +399,7 @@ func _process(delta: float) -> void:
 	if director == null:
 		return
 	var s: Dictionary = director.snapshot()
-	_wave_label.text = "准备阶段" if int(s["wave"]) == 0 else "WAVE %d" % int(s["wave"])
+	_wave_label.text = "准备阶段" if int(s["wave"]) == 0 else "第 %d 波" % int(s["wave"])
 	_start_wave_btn.text = "开始战斗" if int(s["wave"]) == 0 else "开始下一波"
 	_refresh_score()
 	_refresh_wave_progress()
