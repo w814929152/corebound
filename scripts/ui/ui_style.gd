@@ -343,14 +343,18 @@ static func card_art(card_name: String) -> Texture2D:
 	var key := card_name.to_lower()
 	if _card_art_cache.has(key):
 		return _card_art_cache[key]
-	var path := CARD_ART_DIR + "card_%s_v1_460.png" % key
-	if key == "arrow":
-		path = CARD_ART_DIR + "card_arrow_illustration_v2.png"
+	var path := CARD_ART_DIR + "card_%s_illustration_v2.png" % key
+	if not ResourceLoader.exists(path):
+		path = CARD_ART_DIR + "card_%s_v1_460.png" % key
 	var tex: Texture2D = null
 	if ResourceLoader.exists(path):
 		tex = load(path)
 	_card_art_cache[key] = tex
 	return tex
+
+
+static func is_full_card_art(texture: Texture2D) -> bool:
+	return texture != null and texture.get_height() > texture.get_width()
 
 
 ## 内嵌槽（预算条轨道 / 血条底槽）

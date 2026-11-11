@@ -729,7 +729,7 @@ func _refresh_shop() -> void:
 			var backdrop: TextureRect = _slot_art[i].get_meta("rarity_backdrop")
 			backdrop.texture = _Style.card_backdrop(rar, nm)
 			# 完整竖版插画铺满卡框，插画带保留为空白以维持三卡同构布局。
-			var full_illustration := nm == "Arrow" and art_tex != null
+			var full_illustration := _Style.is_full_card_art(art_tex)
 			backdrop.self_modulate = Color.WHITE if full_illustration else _Style.CARD_BACKDROP_TINT
 			backdrop.get_meta("illustration_shade").visible = true
 			if full_illustration:

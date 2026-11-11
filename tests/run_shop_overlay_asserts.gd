@@ -66,9 +66,10 @@ func run() -> void:
 				if tier != "":
 					var backdrop: TextureRect = shop._slot_art[index].get_meta("rarity_backdrop")
 					var names: Array = scene.controller.runtime.offers
-					var full_illustration := String(names[index]) == "Arrow" and Style.card_art("Arrow") != null
+					var art := Style.card_art(String(names[index]))
+					var full_illustration := Style.is_full_card_art(art)
 					if full_illustration:
-						assert(backdrop.texture == Style.card_art("Arrow"))
+						assert(backdrop.texture == art)
 						assert(shop._slot_art[index].texture == null)
 						assert(backdrop.self_modulate == Color.WHITE)
 					else:
