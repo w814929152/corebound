@@ -16,10 +16,6 @@ const CardText := preload("res://scripts/data/card_text.gd")
 const SIZE := Vector2(210.0, 340.0)
 const FRAME_DIR := "res://art/2d/ui/"
 const DESC_LINES := 1   # 牌面只留一行基础信息（「远程单体」这类），完整文本在悬停浮卡
-## 🆕 2026-11-11（用户）：插画内容内缩一档（塔身不顶满卡窗）。
-const ART_INSET := 10.0
-## 全幅插画：CONTAIN 后略微放大，盖掉插画自带的卡框（避免卡里套卡）。
-const FULL_ART_ZOOM := 1.10
 
 ## 与 shop_overlay 同值（信息区米白 / 卡名近黑 / 摘要柔黑）。
 const C_CREAM := Color(0.980, 0.933, 0.882, 1.0)
@@ -36,51 +32,37 @@ static func build(nm: String) -> Control:
 	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var rar := CardText.rarity(nm)
 
-	# ---- 1. 插画区（8,8,194,220）----
-	# 🆕 2026-11-11（用户）：插画比例偏大 → 内容内缩一档：
-	#    · 全幅竖版插画：COVER 改 CONTAIN（不再裁切放大，整幅缩进卡窗）；
-	#    · 方形塔插画：在窗口内再让出 ART_INSET px，塔身不再顶满边框。
-	var win := Control.new()
-	win.position = Vector2(8.0, 8.0)
-	win.size = Vector2(194.0, 220.0)
-	win.clip_contents = true
-	win.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	root.add_child(win)
+	# ---- 1. 插画区（8,8,194,220）：全幅竖版插画铺满，方形旧插画叠包背景 ----
+	var holder := Control.new()
+	holder.position = Vector2(8.0, 8.0)
+	holder.size = Vector2(194.0, 220.0)
+	holder.clip_contents = true
+	holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.add_child(holder)
 
 	var art_tex := Style.card_art(nm)
 	var full_illustration := Style.is_full_card_art(art_tex)
 	var backdrop := TextureRect.new()
 	backdrop.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	backdrop.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	backdrop.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
 	backdrop.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	if full_illustration:
 		backdrop.texture = art_tex
 		backdrop.self_modulate = Color.WHITE
-		backdrop.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		# 🔎 CONTAIN 会露出插画自带的卡框（卡里套卡）→ 放大 1.10 倍并把溢出裁掉，
-		#    既比原来的 COVER 小一圈，又不出现第二层边框。
-		backdrop.pivot_offset = Vector2(97.0, 110.0)
-		backdrop.scale = Vector2(FULL_ART_ZOOM, FULL_ART_ZOOM)
-		win.add_child(backdrop)
 	else:
 		backdrop.texture = Style.card_backdrop(rar, nm)
 		backdrop.self_modulate = Style.CARD_BACKDROP_TINT
-		backdrop.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
-		win.add_child(backdrop)
-		if art_tex != null:
-			var holder := Control.new()
-			holder.position = Vector2(ART_INSET, ART_INSET)
-			holder.size = Vector2(194.0 - ART_INSET * 2.0, 220.0 - ART_INSET * 2.0)
-			holder.clip_contents = true
-			holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
-			win.add_child(holder)
-			var art := TextureRect.new()
-			art.texture = art_tex
-			art.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-			art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-			art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-			art.mouse_filter = Control.MOUSE_FILTER_IGNORE
-			holder.add_child(art)
+	holder.add_child(backdrop)
+
+	if not full_illustration and art_tex != null:
+		var art := TextureRect.new()
+		art.texture = art_tex
+		art.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		art.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		holder.add_child(art)
 
 	# ---- 2. 框体：底板 → 稀有度描边（颜色 + 线宽双通道）→ 类型条 ----
 	_picture(root, "ui_card_plate_v3.png", 0.0, 0.0, 210.0, 340.0)
