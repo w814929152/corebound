@@ -209,13 +209,29 @@ func _test_c_font_floor() -> void:
 
 	var shop := _make_shop()
 	var slabels: Array = _collect(shop, [], "label")
+	# 🆕 2026-11-11「箭塔卡面实装说明」：卡面的**类型标签 / 效果摘要**按设计稿 13–14px ——
+	#    这是 §9.1「最小 16px」红线唯一的例外（210×340 固定画幅卡面，不是 HUD 阅读文本）。
+	#    先把这两组从 16px 判定里排除，再用 13–14px 单独判定；其余 Label 仍守 16。
+	var card_face: Array = []
+	for group in [shop._slot_tag, shop._slot_desc]:
+		for l in group:
+			card_face.append(l)
 	var ssmall: Array = []
 	for l in slabels:
+		if card_face.has(l):
+			continue
 		var fs := int((l as Label).get_theme_font_size("font_size"))
 		if fs > 0 and fs < FONT_MIN:
 			ssmall.append("%s=%d" % [String((l as Label).text).substr(0, 10), fs])
-	_check("【商店】%d 个 Label 全部 ≥16px%s" % [slabels.size(), "" if ssmall.is_empty() else " → " + str(ssmall)],
+	_check("【商店】除卡面类型/摘要外 %d 个 Label 全部 ≥16px%s" % [slabels.size(), "" if ssmall.is_empty() else " → " + str(ssmall)],
 		ssmall.is_empty())
+	var face_bad: Array = []
+	for l in card_face:
+		var fs := int((l as Label).get_theme_font_size("font_size"))
+		if fs < 13 or fs > 14:
+			face_bad.append("%s=%d" % [String((l as Label).text).substr(0, 10), fs])
+	_check("【商店】卡面类型/摘要 13–14px（实装说明 · 样本 %d 个）%s" % [
+		card_face.size(), "" if face_bad.is_empty() else " → " + str(face_bad)], face_bad.is_empty())
 	shop.free()
 
 	# 🆕 大地图选关（裂隙航图）：全部文字走 `_Style.label` ⇒ 同样受 16px 下限约束。
@@ -475,10 +491,14 @@ func _test_i_card_text() -> void:
 		if not is_equal_approx((l as Label).custom_minimum_size.y, h0):
 			same_h = false
 	_check("3 个描述块预留高度完全一致（%.0fpx）" % h0, same_h)
-	_check("描述块预留高度 ≥ %d 行 × %.0fpx" % [_Shop.DESC_LINES, _Shop.DESC_LINE_H],
-		h0 >= _Shop.DESC_LINE_H * float(_Shop.DESC_LINES))
-	_check("描述块字号 ≥ %dpx（§9.1 P0）" % FONT_MIN,
-		int((shop._slot_desc[0] as Label).get_theme_font_size("font_size")) >= FONT_MIN)
+	# 🆕 2026-11-11「箭塔卡面实装说明」：卡面效果摘要 13–14px、最多两行。
+	#   ⚠️ 这是 §9.1「最小 16px」红线唯一例外：210×340 是固定画幅的卡面，按设计稿字号；
+	#   HUD / 抽屉 / 按钮仍由 `_Style.label()` 强制 ≥16（本文件其它用例继续守 16）。
+	var desc_px := int((shop._slot_desc[0] as Label).get_theme_font_size("font_size"))
+	_check("卡面摘要 13–14px（实装说明，实测 %d）" % desc_px, desc_px >= 13 and desc_px <= 14)
+	_check("摘要预留高度 ≥ 两行（%.0f ≥ %.0f）" % [
+		h0, _Shop.CARD_DESC_LINE_H * float(_Shop.CARD_DESC_LINES)],
+		h0 >= _Shop.CARD_DESC_LINE_H * float(_Shop.CARD_DESC_LINES))
 	shop.free()
 
 
@@ -736,12 +756,12 @@ func _test_l_main_menu() -> void:
 	menu._build()
 
 	_check("【主界面】默认页 = 菜单", menu.current_page() == _MainMenu.PAGE_MENU)
-	_check_int("【主界面】三个入口（开始 / 图鉴 / 退出）", menu._menu_buttons.size(), 3)
+	_check_int("【主界面】四个入口（开始 / 卡组 / 怪物 / 退出）", menu._menu_buttons.size(), 4)
 	var texts: Array = []
 	for b in menu._menu_buttons:
 		texts.append(String((b as Button).text))
 	_check("【主界面】入口文案 = 开始游戏 / 卡组图鉴 / 退出游戏",
-		texts == ["开始游戏", "卡组图鉴", "退出游戏"])
+		texts == ["开始游戏", "卡组图鉴", "怪物图鉴", "退出游戏"])
 	_check_all_buttons("主界面", menu)
 
 	# 字号（两个页面的 Label 一起查）
@@ -790,6 +810,19 @@ func _test_l_main_menu() -> void:
 
 	menu.back_to_menu()
 	_check("【图鉴】返回后回到菜单页", menu.current_page() == _MainMenu.PAGE_MENU)
+
+	menu._activate(2)
+	_check("【怪物图鉴】菜单入口可达", menu.current_page() == _MainMenu.PAGE_MONSTERS)
+	_check("【怪物图鉴】只显示怪物页", menu._monster_page.visible and not menu._menu_page.visible and not menu._library_page.visible)
+	_check_int("【怪物图鉴】覆盖三种原型", menu._monster_page.entries.size(), 3)
+	for entry in menu._monster_page.entries:
+		_check("【怪物图鉴】外观与属性完整 " + String(entry.proto), entry.art.texture != null and entry.stats.text.contains("抗性"))
+	menu._monster_page.back_requested.emit()
+	_check("【怪物图鉴】返回按钮回菜单", menu.current_page() == _MainMenu.PAGE_MENU and not menu._monster_page.visible)
+	var got_quit := [false]
+	menu.quit_requested.connect(func() -> void: got_quit[0] = true)
+	menu._activate(3)
+	_check("【主界面】退出入口仍发送退出信号", got_quit[0])
 
 	# 入口信号链路：开始游戏只发 `start_requested`（真正的流程由 boot.gd 决定）
 	var got_start := [false]

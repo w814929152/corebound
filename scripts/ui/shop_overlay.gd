@@ -49,13 +49,21 @@ const C_DIM := Color(0.55, 0.57, 0.60, 1.0)    # H1 买不起：价格灰（🔴
 const C_TEXT := Color(0.88, 0.90, 0.92, 1.0)
 const C_WARN := Color(0.86, 0.20, 0.20, 1.0)   # E5：刷新买不起 → 价格标红
 
+# ---- v3 卡面色板（design/art/card-redesign-2026-11-11.md §3，逐像素取自参考图）----
+const CARD_FRAME_DIR := "res://art/2d/ui/"
+const C_CARD_CREAM := Color(0.980, 0.933, 0.882, 1.0)  # #FAEEE1 信息区 / 米白图形
+const C_CARD_BLACK := Color(0.063, 0.075, 0.102, 1.0)  # #10131A 卡名 / 描边
+const C_CARD_DESC := Color(0.157, 0.176, 0.216, 1.0)   # #282D37 描述（比卡名柔一档，建立层级）
+const C_CARD_INK := Color(0.118, 0.133, 0.169, 1.0)    # #1E222B 插画区底
+
 # 三张竖版商品卡共用尺寸；🆕 2026-11-10 参考图布局重排：卡是主角，整体放大
 # （184×306 → 210×340），仍恒 3 位同尺寸（X3），窄屏保留滚动，购买与锁定入口始终可达。
 const SLOT_SIZE := Vector2(210.0, 340.0)       # 🔴 三个位完全一致（X3）
 ## 描述块行数（恒 3 行 → 三个位等高同构）；
 ## 16px 字号实测行高 25px（Godot 默认字体 ascent+descent），3 行 = 75px。
-const DESC_LINES := 3
-const DESC_LINE_H := 25.0
+const DESC_LINES := 3            # 数据源 describe() 恒 3 行（文案 SSOT，勿改）
+const CARD_DESC_LINES := 2      # 🆕 卡面只展示前 2 行（实装说明：摘要最多两行）
+const CARD_DESC_LINE_H := 20.0  # 14px 字号的行高（含 line_spacing 2）
 
 ## 顶部数值区（原为一行超长拼接串，改为 3 列网格 → 可扫读）
 const STAT_KEYS: Array = ["废料", "主塔塔位", "塔位", "强化槽", "全局槽"]
@@ -68,10 +76,10 @@ var _title: Label
 var _mode_tag: Label
 var _slots: Array = []        # Array[PanelContainer]
 var _slot_chrome: Array = []  # 🆕 蓝图角标刻线（§5.5）：Array[Control]，accent 随可购性重绘
+var _slot_edge: Array = []    # 🆕 v3 可染色描边层：Array[TextureRect]，稀有度（色 + 线宽）/ 悬停切换
 var _slot_name: Array = []    # Array[Label]
 var _slot_art: Array = []     # 🆕 插画带（art/2d/cards）：Array[TextureRect]，刷新时按卡名填充
 var _slot_tag: Array = []     # 🆕 Tag 电路符号芯片（§5.5）：Array[Label]
-var _slot_rarity: Array = []  # 🆕 稀有度角标 ▲（art-bible §2.3 · P1-6）：Array[Label]
 var _slot_kind: Array = []
 var _slot_price_mark: Array = []   # 🆕 ✓/✗ 字形（§9.2 双通道）
 var _slot_price_num: Array = []    # 🆕 价格数字（等宽字体 §5.5）
@@ -234,6 +242,7 @@ func _build() -> void:
 	# ---- 3 个商品位（🔴 尺寸/亮度完全一致，X3 合规）----
 	var slots_row := HBoxContainer.new()
 	slots_row.add_theme_constant_override("separation", 10)
+	slots_row.alignment = BoxContainer.ALIGNMENT_CENTER   # v3.1：固定 210 宽后整组居中
 	inner.add_child(slots_row)
 	for i in SLOT_COUNT:
 		var slot := _make_slot(i)
@@ -242,7 +251,7 @@ func _build() -> void:
 
 	# ---- 🆕 2026-11-10 参考图布局：卡组下方一行选牌提示（居中 · L2 辅助）----
 	#    对齐参考图「请选择 N 张卡牌」的语言：提示收拢成一行，不再堆叠多段说明。
-	var prompt := _Style.label("点击卡牌购买 · 1 / 2 / 3 快捷购买 · 建筑卡进入待放置队列，拖上战场落子",
+	var prompt := _Style.label("点击卡牌购买 · 建筑卡进入待放置队列，拖上战场落子",
 		_Style.FONT_MIN, _Style.C_TEXT_DIM)
 	prompt.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	inner.add_child(prompt)
@@ -346,206 +355,217 @@ func _mk_heavy_btn(text: String, variant: String) -> Button:
 	return b
 
 
-## 单个商品位。🔴 三个位**逐字同构**：同一 SLOT_SIZE、同一字号、同一按钮变体 ——
-##   任何逐位差异都会构成 X3「用布局暗示」。
-## 🆕 蓝图卡面（art-bible §5.5 · 2026-11-07）：直角细描边底座 + 四角刻线 chrome +
-##   Tag 电路符号芯片 + 等宽数字价格。
+## v3 卡位构建辅助函数（规格见 design/art/card-redesign-2026-11-11.md）。
+##   🔴 三个位仍逐字同构：同一 SLOT_SIZE、同一层级、同一字号（X3）。
+##   旧版「直角细描边 + 四角 L 刻线 + Tag 电路芯片」已由 v3 斜切八角卡框取代。
+func _flat_card(active: bool, rarity: String) -> StyleBoxFlat:
+	# v3 卡框自己承担内边距：PanelContainer 的 content margin 必须为 0，
+	# 否则所有绝对定位子节点会被容器整体推移 12px。
+	var box := _Battle.card(active, rarity)
+	box.set_content_margin_all(0.0)
+	return box
+
+
+func _fixed(parent: Control, x: float, y: float, w: float, h: float) -> Control:
+	var c := Control.new()
+	c.position = Vector2(x, y)
+	c.size = Vector2(w, h)
+	c.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	parent.add_child(c)
+	return c
+
+
+func _picture(parent: Control, file: String, x: float, y: float, w: float, h: float) -> TextureRect:
+	# 🔴 与 ui_style.icon() 同一管法：判空 → 缺图时留空位，不炸 UI（含 headless 测试）。
+	var t := TextureRect.new()
+	t.position = Vector2(x, y)
+	t.size = Vector2(w, h)
+	t.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	t.stretch_mode = TextureRect.STRETCH_SCALE
+	t.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var path := CARD_FRAME_DIR + file
+	if ResourceLoader.exists(path):
+		t.texture = load(path)
+	parent.add_child(t)
+	return t
+
+
+func _fixed_label(parent: Control, text: String, size: int, col: Color,
+		x: float, y: float, w: float, h: float, variant: String) -> Label:
+	var l := _Style.label(text, size, col)
+	# 🔴 卡面字号例外（2026-11-11「箭塔卡面实装说明」）：类型标签 13–14px、效果摘要 13–14px。
+	#    `_Style.label()` 会把任何小于 `FONT_MIN`(16) 的字号抬到 16 —— 那是 HUD 的口径
+	#    （battle-ui-spec §3「最小 16px 红线」）；210×340 的卡面是固定画幅的印刷面，
+	#    按设计稿字号走，故在此显式覆盖。HUD / 抽屉 / 按钮等 surfaces 不受影响。
+	if size < _Style.FONT_MIN:
+		l.add_theme_font_size_override("font_size", size)
+	l.position = Vector2(x, y)
+	l.size = Vector2(w, h)
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_Style.apply_font(l, variant)
+	parent.add_child(l)
+	return l
+
+
+## 单个商品位 · v3 卡面（2026-11-11）。
+##   规格见 design/art/card-redesign-2026-11-11.md：斜切八角金属外框 +
+##   深色插画区（68%）+ 米白信息区（27%），框与装饰为静态贴图，
+##   卡名 / 类型 / 描述 / 价格一律字体渲染；稀有度与悬停用单层描边贴图染色。
+##   🔴 三个位仍逐字同构：同一 SLOT_SIZE、同一层级、同一字号（X3）。
 func _make_slot(_i: int) -> PanelContainer:
 	var p := PanelContainer.new()
 	p.custom_minimum_size = SLOT_SIZE            # 🔴 三个位完全一致
-	p.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	# 🔴 v3.1：**不横向拉伸**。卡面所有层（框 / 插画 / 文字）都是按 210×340 的绝对坐标
+	#   摆的；一旦 `SIZE_EXPAND_FILL` 把卡位拉到 221px，右侧会多出 11px 空气，
+	#   框线、费用胶囊、底部刻口全部与卡边错位。卡是固定尺寸，居中排即可。
+	p.size_flags_horizontal = Control.SIZE_FILL
 	p.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	p.add_theme_stylebox_override("panel", _Battle.card())
+	p.add_theme_stylebox_override("panel", _flat_card(false, ""))
 	p.clip_contents = true
-	# 背景独立于插画带，铺满整张卡；内容仍保留原有内边距。
-	var background_layer := Control.new()
-	background_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	p.add_child(background_layer)
+	p.set_meta("rarity", "")
+
+	# ---- 1. 插画背景层：只覆盖 (8,8,194,224)，信息区不透出 ----
+	var bg_layer := Control.new()
+	bg_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	p.add_child(bg_layer)
 	var backdrop := TextureRect.new()
+	backdrop.position = Vector2(8.0, 8.0)
+	backdrop.size = Vector2(194.0, 220.0)   # 插画区 8..228，约占卡高 65%（内区 70%）
 	backdrop.self_modulate = _Style.CARD_BACKDROP_TINT
 	backdrop.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
 	backdrop.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	backdrop.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	backdrop.visible = false
-	background_layer.add_child(backdrop)
-	backdrop.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	# 抵消容器内边距，让背景覆盖整框，文字排版仍使用原边距。
-	var card_style := p.get_theme_stylebox("panel")
-	backdrop.offset_left = -card_style.get_content_margin(SIDE_LEFT)
-	backdrop.offset_top = -card_style.get_content_margin(SIDE_TOP)
-	backdrop.offset_right = card_style.get_content_margin(SIDE_RIGHT)
-	backdrop.offset_bottom = card_style.get_content_margin(SIDE_BOTTOM)
-	var illustration_shade := TextureRect.new()
-	illustration_shade.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	illustration_shade.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	bg_layer.add_child(backdrop)
 	var shade_gradient := Gradient.new()
-	shade_gradient.offsets = PackedFloat32Array([0.0, 0.22, 0.36, 0.60, 0.78, 1.0])
+	shade_gradient.offsets = PackedFloat32Array([0.0, 0.18, 0.38, 0.72, 1.0])
 	shade_gradient.colors = PackedColorArray([
-		Color(0.02, 0.03, 0.05, 0.85), Color(0.02, 0.03, 0.05, 0.65),
+		Color(0.02, 0.03, 0.05, 0.20), Color(0.02, 0.03, 0.05, 0.08),
 		Color(0.02, 0.03, 0.05, 0.0), Color(0.02, 0.03, 0.05, 0.0),
-		Color(0.02, 0.03, 0.05, 0.82), Color(0.02, 0.03, 0.05, 0.95)])
+		Color(0.02, 0.03, 0.05, 0.45)])
 	var shade_texture := GradientTexture2D.new()
 	shade_texture.gradient = shade_gradient
 	shade_texture.fill_from = Vector2.ZERO
 	shade_texture.fill_to = Vector2(0.0, 1.0)
+	var illustration_shade := TextureRect.new()
 	illustration_shade.texture = shade_texture
+	illustration_shade.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	illustration_shade.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	backdrop.add_child(illustration_shade)
 	illustration_shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	illustration_shade.hide()
 	backdrop.set_meta("illustration_shade", illustration_shade)
-	var vb := VBoxContainer.new()
-	vb.add_theme_constant_override("separation", 5)
-	p.add_child(vb)
 
-	# 序号（L3 辅助，钢灰）+ 稀有度角标（§2.3 · P1-6：▲ 数 1–5 + 边框色 = 双通道冗余）
-	var idx_row := HBoxContainer.new()
-	idx_row.add_theme_constant_override("separation", 6)
-	vb.add_child(idx_row)
-	var idx := _Style.label("%02d" % (_i + 1), _Style.FONT_MIN, _Style.C_TEXT_DIM)
-	_Style.apply_font(idx, "num")
-	idx.tooltip_text = "快捷键 %d 购买" % (_i + 1)
-	idx.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	idx_row.add_child(idx)
-	var pips := _Style.label("", _Style.FONT_MIN, _Style.C_STEEL)
-	pips.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	idx_row.add_child(pips)
-	var lock_space := Control.new()
-	lock_space.custom_minimum_size.x = 30.0
-	idx_row.add_child(lock_space)
-	_slot_rarity.append(pips)
+	# ---- 2. 主层：普通 Control（非 Container），子节点全部绝对定位 ----
+	var root := Control.new()
+	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	p.add_child(root)
 
-	# 卡名行：卡名（L1，Black 展示字重）+ 右侧 Tag 电路符号芯片（§5.5）
-	var name_row := HBoxContainer.new()
-	name_row.add_theme_constant_override("separation", 6)
-	vb.add_child(name_row)
-	var nm := _Style.label("—", 26, _Style.C_WHITE)
-	nm.add_theme_color_override("font_shadow_color", Color(0.0, 0.0, 0.0, 0.9))
-	nm.add_theme_constant_override("shadow_offset_y", 2)
-	_Style.apply_font(nm, "display")              # §5.4：卡名 = Black 展示字重（L1 主信息）
-	nm.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-	nm.clip_text = true
-	nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	name_row.add_child(nm)
-	_slot_name.append(nm)
-	var tag_chip := _Style.label("", _Style.FONT_MIN, _Style.C_TEXT_DIM)
-	tag_chip.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	vb.add_child(tag_chip)
-	_slot_tag.append(tag_chip)
-
-	# 竖版卡面的插画区：透明底素材保持比例，缺图时使用空底座。
-	#    资产缺失 / headless 未导入 → card_art() 返回 null → 整带隐藏（版式回落无图）。
-	#    🔴 构建时只建空带：卡名在 `_refresh_shop` 刷新时才落到槽位（此处 `nm` 是占位
-	#    Label，不是卡名字符串），纹理由刷新链路按卡名填充（`_slot_art`）。
+	# 2a 塔插图（非 Arrow 卡）；Arrow 走 backdrop 全幅插画分支
+	var art_holder := _fixed(root, 8.0, 8.0, 194.0, 220.0)
+	art_holder.clip_contents = true
 	var art := TextureRect.new()
-	art.custom_minimum_size = Vector2(0.0, 136.0)
+	art.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	art.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	art.visible = false
-	var art_frame := PanelContainer.new()
-	art_frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	art_frame.add_theme_stylebox_override("panel", StyleBoxEmpty.new())
-	vb.add_child(art_frame)
+	art_holder.add_child(art)
 	art.set_meta("rarity_backdrop", backdrop)
-	art_frame.add_child(art)
 	_slot_art.append(art)
 
-	# 卡种（L2 常规）
-	var kind := _Style.label("—", _Style.FONT_MIN, _Style.C_TEXT_DIM)
-	kind.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	vb.add_child(kind)
-	kind.max_lines_visible = 1
-	kind.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-	_slot_kind.append(kind)
+	# 2b 静态框体 / 可染色边线 / 费用胶囊 / 类型徽章（贴图内不含任何文字）
+	_picture(root, "ui_card_plate_v3.png", 0.0, 0.0, 210.0, 340.0)
+	var edge := _picture(root, "ui_card_edge_v3_2.png", 0.0, 0.0, 210.0, 340.0)
+	edge.modulate = _Style.C_STEEL
+	_slot_edge.append(edge)
+	_picture(root, "ui_card_cost_v3.png", 146.0, 9.0, 55.0, 26.0)
+	# 🆕 v3.1：类型条改为 194×20（横线一直延伸到面板内边，对齐参考图）
+	_picture(root, "ui_card_badge_v3.png", 8.0, 268.0, 194.0, 20.0)
 
-	# 价格行（L1 重要）：✓/✗ 标记（§9.2 双通道）+ **等宽数字**（§5.5）+ 单位
+	# 2c 信息区：卡名（30px 近黑）/ 类型徽章文字（16px 米白）/ 描述首行（17px 柔黑）
+	#   🔴 标签高度必须 ≥ 字体行高（16px ≈ 25、30px ≈ 47），否则字形会被控件矩形裁掉；
+	#     这里给足高度并关掉 clip_text，视觉位置由垂直居中决定，不靠 clip 收口。
+	var nm := _fixed_label(root, "—", 28, C_CARD_BLACK, 12.0, 229.0, 186.0, 36.0, "display")
+	nm.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	nm.clip_text = false
+	_slot_name.append(nm)
+	var tag_chip := _fixed_label(root, "—", 14, C_CARD_CREAM, 12.0, 265.0, 186.0, 20.0, "medium")
+	tag_chip.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	tag_chip.clip_text = false
+	_slot_tag.append(tag_chip)
+	var desc := _fixed_label(root, "", 14, C_CARD_DESC, 12.0, 286.0, 186.0, 42.0, "body")
+	desc.custom_minimum_size = Vector2(186.0, 42.0)   # 摘要最多两行（完整文案见悬停详情）
+	# 🆕 实装说明：摘要 13–14px、最多两行。14px 字形行高约 19，line_spacing 2 → 两行 40px，
+	#   正好落在 42px 的预留框内；框高必须 ≥ 两行行高，否则 Label 会裁掉第二行底部。
+	desc.add_theme_constant_override("line_spacing", -4)
+	desc.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	desc.clip_text = false
+	_slot_desc.append(desc)
+
+	# 2d 顶部辅助：锁头（左上角）/ 费用胶囊（右上）/ 买不起时的 ✗
+	#    🆕 v3.1：**编号 01 与稀有度菱形都已移除** ——
+	#    ①编号原用途是「1/2/3 快捷购买」的位置提示，快捷购买已删；
+	#    ②稀有度第二通道改为**描边线宽**（1/2/3，见 _edge_texture），
+	#      顶栏只剩锁头 + 费用，和参考图的干净顶边一致。
+
 	var price_row := HBoxContainer.new()
-	price_row.add_theme_constant_override("separation", 4)
-	vb.add_child(price_row)
+	price_row.position = Vector2(168.0, 9.0)
+	price_row.size = Vector2(33.0, 26.0)
+	price_row.add_theme_constant_override("separation", 0)
+	price_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	price_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	price_row.hide()
+	root.add_child(price_row)
 	_slot_price_row.append(price_row)
-	# 🆕 批次③：✓/✗ 从 Unicode 字形升级为 ic_check/ic_cross 图标（资产包 v1）——
-	#    形状通道不变（§9.2 红线①），颜色跟随价格（_set_price_color 改 modulate）；
-	#    图标缺失（headless）→ 回落 Unicode 字形 Label，双通道不缺席。
+	var price_num := _Style.label("--", 24, C_CARD_CREAM)   # 实装说明：费用数字 22–24px
+	_Style.apply_font(price_num, "num")
+	price_num.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	price_row.add_child(price_num)
+	_slot_price_num.append(price_num)
+	var price_unit := _Style.label("分", 16, C_DIM)
+	price_unit.hide()
+	price_unit.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	price_row.add_child(price_unit)
+	_slot_price_unit.append(price_unit)
+
 	var check_tex := _Style.icon("ic_check")
 	var cross_tex := _Style.icon("ic_cross")
 	var price_mark: Control
 	if check_tex != null and cross_tex != null:
 		var mark_ic := TextureRect.new()
-		mark_ic.custom_minimum_size = Vector2(16.0, 16.0)
+		mark_ic.position = Vector2(124.0, 14.0)
+		mark_ic.size = Vector2(16.0, 16.0)
 		mark_ic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		mark_ic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 		mark_ic.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		mark_ic.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		mark_ic.visible = false
 		mark_ic.set_meta("check", check_tex)
 		mark_ic.set_meta("cross", cross_tex)
-		price_row.add_child(mark_ic)
+		root.add_child(mark_ic)
 		price_mark = mark_ic
 	else:
-		var mark_lb := _Style.label("", _Style.FONT_MIN, C_DIM)
-		price_row.add_child(mark_lb)
-		price_mark = mark_lb
+		price_mark = _fixed_label(root, "", 16, C_DIM, 100.0, 11.0, 22.0, 22.0, "body")
 	_slot_price_mark.append(price_mark)
-	# 🆕 废料图标（资产包 v1 批次②）：missing 时降级为纯文本（icon() 判空返回 null）
-	var scrap_tex := _Style.icon("ic_scrap")
-	if scrap_tex != null:
-		var scrap_ic := TextureRect.new()
-		scrap_ic.texture = scrap_tex
-		scrap_ic.custom_minimum_size = Vector2(18.0, 18.0)
-		scrap_ic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		scrap_ic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		scrap_ic.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		scrap_ic.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		price_row.add_child(scrap_ic)
-	var price_num := _Style.label("--", 26, C_DIM)
-	_Style.apply_font(price_num, "num")           # §5.5：价格数字等宽（蓝图仪表读数）
-	price_row.add_child(price_num)
-	_slot_price_num.append(price_num)
-	var price_unit := _Style.label("分", _Style.FONT_MIN, C_DIM)
-	price_row.add_child(price_unit)
-	_slot_price_unit.append(price_unit)
 
-
-
-	# 🆕 效果描述块（§5.2 L2 文字；比备注亮一档 —— 它是「这张卡干什么」的正面信息，
-	#   备注只是条件事实）。🔴 高度固定 DESC_LINES 行：三个位的描述块**等高同构**（X3）。
-	var desc := _Style.label("", _Style.FONT_MIN, _Style.C_TEXT)
-	desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	desc.custom_minimum_size = Vector2(0.0, DESC_LINE_H * float(DESC_LINES))
-	vb.add_child(desc)
-	desc.hide()
-	_slot_desc.append(desc)
-
-	# 事实备注（H2/H3/H4/H5/H6/H9）—— 只在有事实时占位（min 0），否则不占高度
-	var note := _Style.label("", _Style.FONT_MIN, _Style.C_TEXT_DIM)
-	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	vb.add_child(note)
+	# 2e 数据节点（隐藏）：卡种 / 备注 —— 悬停详情仍从 note 读取事实
+	var kind := _Style.label("—", 16, C_DIM)
+	kind.hide()
+	kind.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.add_child(kind)
+	_slot_kind.append(kind)
+	var note := _Style.label("", 16, C_DIM)
 	note.hide()
+	note.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.add_child(note)
 	_slot_note.append(note)
 
-	# 撑开 → 三位等高时按钮对齐底部（不靠 padding 凑）
-	var gap := Control.new()
-	gap.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	vb.add_child(gap)
-	# 上部只留编号和稀有度，标题与资源价格统一落在底部信息区。
-	var footer := HBoxContainer.new()
-	footer.add_theme_constant_override("separation", 8)
-	vb.add_child(footer)
-	vb.remove_child(kind)
-	footer.add_child(kind)
-	kind.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	kind.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	vb.remove_child(price_row)
-	footer.add_child(price_row)
-	vb.move_child(art_frame, 1)
-	vb.move_child(gap, 2)
-	vb.move_child(name_row, 3)
-	vb.move_child(tag_chip, 4)
-	vb.move_child(footer, 5)
-
-	# 锁头是卡面上的独立图标热区，不占底部按钮行。
+	# 2f 锁头：独立热区，位于左上，与稀有度角标不相交
 	var lock := Control.new()
+	lock.position = Vector2(14.0, 8.0)
+	lock.size = Vector2(28.0, 28.0)
 	lock.custom_minimum_size = Vector2(28.0, 28.0)
 	lock.mouse_filter = Control.MOUSE_FILTER_STOP
 	lock.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
@@ -557,10 +577,11 @@ func _make_slot(_i: int) -> PanelContainer:
 			lock.accept_event()
 			if director != null and bool(lock.get_meta("enabled", false)):
 				director.emit_signal("lock_toggled", _i))
-	idx_row.add_child(lock)
+	root.add_child(lock)
 	_slot_lock.append(lock)
 	_slot_can_buy.append(false)
-	_ignore_card_content(vb, lock)
+	_ignore_card_content(root, lock)
+
 	p.mouse_filter = Control.MOUSE_FILTER_STOP
 	p.gui_input.connect(func(event: InputEvent) -> void:
 		if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
@@ -568,8 +589,7 @@ func _make_slot(_i: int) -> PanelContainer:
 			if director != null and _slot_can_buy[_i]:
 				director.emit_signal("buy_requested", _i))
 
-	# 🆕 蓝图 chrome（§5.5）：四角刻线，**后于** vb 加入 → 画在内容之上。
-	#    accent 存 meta，`_refresh_shop` 按可购性改写并 queue_redraw（不在 _draw 里 new）。
+	# 旧 chrome 节点保留（测试索引与悬停重绘），绘制内容已由 v3 卡框承担
 	var chrome := Control.new()
 	chrome.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	chrome.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -580,7 +600,6 @@ func _make_slot(_i: int) -> PanelContainer:
 	_slot_chrome.append(chrome)
 	return p
 
-
 func _ignore_card_content(node: Control, lock: Control) -> void:
 	if node == lock:
 		return
@@ -590,6 +609,20 @@ func _ignore_card_content(node: Control, lock: Control) -> void:
 			_ignore_card_content(child, lock)
 
 
+## 🆕 v3.1 稀有度第二通道：描边线宽 1/2/3（art-bible §2.3 的 bw），按稀有度取贴图。
+var _edge_cache: Dictionary = {}
+
+
+func _edge_texture(rarity: String) -> Texture2D:
+	var row: Dictionary = _Style.RARITY.get(rarity, _Style.RARITY["common"])
+	var bw := clampi(int(row.get("bw", 2)), 1, 3)
+	var file := "ui_card_edge_v3_%d.png" % bw
+	if not _edge_cache.has(file):
+		var path := CARD_FRAME_DIR + file
+		_edge_cache[file] = load(path) if ResourceLoader.exists(path) else null
+	return _edge_cache[file]
+
+
 func _draw_lock(icon: Control) -> void:
 	var locked := bool(icon.get_meta("locked", false))
 	var color := C_ACCENT if locked else C_TEXT
@@ -597,48 +630,17 @@ func _draw_lock(icon: Control) -> void:
 		color = C_DIM
 	# 闭合 / 打开的锁梁以形状区分状态，避免依赖字体字形。
 	var center := Vector2(14.0, 11.0) if locked else Vector2(19.0, 8.0)
-	icon.draw_arc(center, 5.0, PI, TAU, 20, color, 2.0, true)
-	icon.draw_line(center + Vector2(-5, 0), Vector2(center.x - 5, 15), color, 2.0, true)
-	icon.draw_line(center + Vector2(5, 0), center + Vector2(5, 4), color, 2.0, true)
-	icon.draw_rect(Rect2(7, 14, 14, 11), color, false, 2.0)
+	icon.draw_arc(center, 5.0, PI, TAU, 20, color, 1.6, true)
+	icon.draw_line(center + Vector2(-5, 0), Vector2(center.x - 5, 15), color, 1.6, true)
+	icon.draw_line(center + Vector2(5, 0), center + Vector2(5, 4), color, 1.6, true)
+	icon.draw_rect(Rect2(7, 14, 14, 11), color, false, 1.6)
 	icon.draw_circle(Vector2(14, 19), 1.5, color)
 
 
-## §5.5 蓝图 chrome：四角 L 形刻线（工程图角标语言）。
-##   accent：normal = 钢灰 / affordable = 耀青（与描边第二通道同源）/ dim = 压暗。
-func _draw_slot_chrome(c: Control) -> void:
-	var accent: String = String(c.get_meta("accent", "normal"))
-	var tier := String(c.get_parent().get_meta("rarity", ""))
-	var col := Color(_Style.rarity_color(tier), 0.70)
-	if _hovered_slot >= 0 and c.get_parent() == _slots[_hovered_slot]:
-		col = Color(_Style.C_ALLY, 0.95)
-	if accent == "dim":
-		col.a = 0.30
-	var leg := 9.0
-	var t := 2.0
-	var r := c.size
-	# 双层细框与切角装饰；高亮只加强边缘，不遮挡插画和购买热区。
-	var border := Color(col, 0.45)
-	c.draw_rect(Rect2(Vector2(2, 2), r - Vector2(4, 4)), border, false, 1.0)
-	c.draw_rect(Rect2(Vector2(6, 6), r - Vector2(12, 12)), Color(col, 0.18), false, 1.0)
-	var title_y := r.y - 112.0
-	c.draw_line(Vector2(14, title_y), Vector2(r.x - 14, title_y), Color(col, 0.45), 1.0)
-	c.draw_line(Vector2(14, title_y), Vector2(42, title_y), col, 2.0)
-	c.draw_colored_polygon(PackedVector2Array([
-		Vector2(r.x * 0.5, r.y - 3), Vector2(r.x * 0.5 + 3, r.y - 6),
-		Vector2(r.x * 0.5, r.y - 9), Vector2(r.x * 0.5 - 3, r.y - 6)]), col)
-	# 左上
-	c.draw_line(Vector2(0.0, 0.0), Vector2(leg, 0.0), col, t)
-	c.draw_line(Vector2(0.0, 0.0), Vector2(0.0, leg), col, t)
-	# 右上
-	c.draw_line(Vector2(r.x - leg, 0.0), Vector2(r.x, 0.0), col, t)
-	c.draw_line(Vector2(r.x, 0.0), Vector2(r.x, leg), col, t)
-	# 左下
-	c.draw_line(Vector2(0.0, r.y - leg), Vector2(0.0, r.y), col, t)
-	c.draw_line(Vector2(0.0, r.y), Vector2(leg, r.y), col, t)
-	# 右下
-	c.draw_line(Vector2(r.x - leg, r.y), Vector2(r.x, r.y), col, t)
-	c.draw_line(Vector2(r.x, r.y - leg), Vector2(r.x, r.y), col, t)
+## v3：外框、分区与装饰全部由 ui_card_plate_v3.png / ui_card_edge_v3_{1,2,3}.png 承担。
+##   节点保留（测试索引与悬停重绘），不再叠加旧直角细线框与四角 L 刻线。
+func _draw_slot_chrome(_c: Control) -> void:
+	pass
 
 
 # ---------------------------------------------------------------------------
@@ -659,7 +661,6 @@ func _refresh_shop() -> void:
 			_slot_art[i].get_meta("rarity_backdrop").hide()
 			_slots[i].set_meta("rarity", "")
 			_slot_tag[i].text = ""
-			_slot_rarity[i].text = ""
 			_slot_kind[i].text = "—"
 			if _slot_price_mark[i] is TextureRect:
 				_slot_price_mark[i].visible = false
@@ -671,7 +672,7 @@ func _refresh_shop() -> void:
 			_set_price_color(i, C_DIM)
 			_slot_desc[i].text = ""
 			_slot_note[i].text = ""
-			_slots[i].add_theme_stylebox_override("panel", _Battle.card())
+			_slots[i].add_theme_stylebox_override("panel", _flat_card(false, ""))
 			_set_chrome_accent(i, "dim")
 			_slot_can_buy[i] = false
 			_slot_lock[i].set_meta("enabled", false)
@@ -701,7 +702,6 @@ func _refresh_shop() -> void:
 			_slot_art[i].get_meta("rarity_backdrop").hide()
 			_slots[i].set_meta("rarity", "")
 			_slot_tag[i].text = ""
-			_slot_rarity[i].text = ""
 			_slot_kind[i].text = "此位无卡"
 			if _slot_price_mark[i] is TextureRect:
 				_slot_price_mark[i].visible = false
@@ -713,7 +713,7 @@ func _refresh_shop() -> void:
 			_set_price_color(i, C_DIM)
 			_slot_desc[i].text = ""
 			_slot_note[i].text = String(s["notes"][i])
-			_slots[i].add_theme_stylebox_override("panel", _Battle.card())
+			_slots[i].add_theme_stylebox_override("panel", _flat_card(false, ""))
 			_set_chrome_accent(i, "dim")
 		else:
 			_slot_name[i].text = _CardText.display_name(nm)
@@ -736,18 +736,22 @@ func _refresh_shop() -> void:
 				backdrop.texture = art_tex
 				_slot_art[i].texture = null
 			backdrop.visible = true
-			_slot_rarity[i].text = "▲".repeat(_Style.rarity_pips(rar))
-			_slot_rarity[i].add_theme_color_override("font_color", _Style.rarity_color(rar))
+			# 🆕 v3.1：稀有度第二通道 = 描边线宽（1/2/3），颜色仍走 modulate
+			var etex := _edge_texture(rar)
+			if etex != null:
+				_slot_edge[i].texture = etex
+			_slot_edge[i].modulate = _Style.C_ALLY if i == _hovered_slot else _Style.rarity_color(rar)
 			# 🆕 蓝图卡面（§5.5）：Tag 电路符号芯片（字形 + 颜色双通道，§9.2①）
 			var tg := _CardText.tag_of(nm)
 			if tg != "":
-				_slot_tag[i].text = "%s %s" % [_Style.tag_glyph(tg), _CardText.tag_cn(tg)]
-				_slot_tag[i].add_theme_color_override("font_color", _Style.tag_color(tg))
+				_slot_tag[i].text = "建筑 · %s" % _CardText.tag_cn(tg)
 			else:
-				_slot_tag[i].text = "◇ 常规"
-				_slot_tag[i].add_theme_color_override("font_color", _Style.C_TEXT_DIM)
+				_slot_tag[i].text = "建筑 · 常规"
 			# 🆕 效果描述块：卡名 + 卡种之外，告诉玩家「这张卡干什么」（恒 3 行）
-			_slot_desc[i].text = _CardText.describe(nm)
+			# 🆕 实装说明：效果摘要最多两行 —— 取 describe() 前两行（第 1 行身份、第 2 行数值）
+			var _dl: PackedStringArray = String(_CardText.describe(nm)).split("\n")
+			var _summary := "\n".join(_dl.slice(0, mini(CARD_DESC_LINES, _dl.size())))
+			_slot_desc[i].text = _summary
 			# H2：Tag 协同 → 卡种行加标记（视觉编码不写推荐类词）
 			var kind_txt := String(s["kinds"][i])
 			if bool(hl.get("tag_synergy", false)):
@@ -757,22 +761,26 @@ func _refresh_shop() -> void:
 			# 🔴 T-P6-06 S2（art-bible §9.2 红线①「任何游戏状态不得仅靠颜色传达」）：
 			#   买得起/买不起除**颜色**外，价格前加 **✓/✗ 字形冗余**（纯加法；配色判据一字不改）。
 			var _aff := bool(s["affordable"][i])
+			# 🆕 v3.1：可购性形状通道改为「买不起才出现 ✗」，买得起不再挂常驻对勾
+			#   —— 顶部少一个元素，更贴近参考图的干净顶栏；状态仍非纯颜色传达。
 			if _slot_price_mark[i] is TextureRect:
-				_slot_price_mark[i].texture = _slot_price_mark[i].get_meta("cross" if not _aff else "check")
-				_slot_price_mark[i].visible = true
+				_slot_price_mark[i].texture = _slot_price_mark[i].get_meta("cross")
+				_slot_price_mark[i].visible = not _aff
 			else:
-				_slot_price_mark[i].text = "✓" if _aff else "✗"
+				_slot_price_mark[i].text = "" if _aff else "✗"
 			_slot_price_num[i].text = "%.0f" % price
 			_slot_price_unit[i].text = ""
 			# 🆕 2026-11-10 接手修：价格行在 _make_slot 里默认隐藏，取消底部「购买」按钮后
 			#    卡面必须自己显示价格（原点击式布局漏了 show()，实机卡面完全看不到售价）。
 			_slot_price_row[i].show()
-			_set_price_color(i, C_ACCENT if _aff else C_DIM)
+			_set_price_color(i, C_CARD_CREAM if _aff else _Style.C_TEXT_DIM)
 			# 卡片描边 = 稀有度色（§2.3）；可购性由 ✓/✗ + 价格色 + 角刻线表达（第二通道）
 			_slots[i].add_theme_stylebox_override("panel",
-				_Battle.card(i == _hovered_slot, rar))
+				_flat_card(i == _hovered_slot, rar))
 			_set_chrome_accent(i, "affordable" if _aff else "normal")
 			var note := String(s["notes"][i])
+			if bool(hl.get("tag_synergy", false)):
+				note = ("◈协同 · " if note != "" else "◈协同") + note
 			if note == "" and bool(s["at_cap"][i]):
 				note = "已达上限 (+0%)"        # H4
 			# C2 高亮事实拼接（🔴 只标事实，SR-R2；顺序：H5 层数 / H3 +1档 / H6 κ / H9 ΔDPS）
@@ -958,8 +966,14 @@ func _set_hovered_slot(index: int) -> void:
 		return
 	_hovered_slot = index
 	_hover_time = 0.0
+	# 🆕 2026-11-11：1/2/3 快捷购买移除后，焦点位由悬停同步 —— Space 锁定仍作用于
+	#   玩家鼠标指向的那张卡（GDD §2.4「有且仅有 1 个焦点位」不破）。
+	if director != null and index >= 0 and index < SLOT_COUNT:
+		director.focus_index = index
 	if _hover != null:
 		_hover.clear()
 	for i in _slots.size():
-		_slots[i].add_theme_stylebox_override("panel", _Battle.card(i == index, String(_slots[i].get_meta("rarity", ""))))
+		_slots[i].add_theme_stylebox_override("panel", _flat_card(i == index, String(_slots[i].get_meta("rarity", ""))))
 		_slot_chrome[i].queue_redraw()
+		if i < _slot_edge.size():
+			_slot_edge[i].modulate = _Style.C_ALLY if i == index else _Style.rarity_color(String(_slots[i].get_meta("rarity", "")))

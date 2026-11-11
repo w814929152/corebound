@@ -124,7 +124,7 @@ func _ready() -> void:
 		print("[boot] proto/elite/aggro/revive/combat_types 全 ON（战斗类型系统 · RADIAL 实机口径）")
 		print("[boot] SpaceModel.mode = RADIAL（径向核心围攻 · 实机默认）")
 		print("[boot] Corebound MVP · 切片4（实时商店覆盖层 + 完整商店逻辑接线）")
-		print("[boot] Tab 开关抽屉 · Esc 关闭/取消 · R 刷新 · 1/2/3 选中即买 · Space 锁定焦点位")
+		print("[boot] Tab 开关抽屉 · Esc 关闭/取消 · R 刷新 · 点击卡牌购买 · Space 锁定焦点位")
 		print("[boot] 商品位显示真实卡名/价格；建筑卡买入后入待放置队列 → 点「放置」→ 点地图格子落子")
 		print("[boot] 自测只在 headless 下执行（<godot> --headless --script res://tests/run_tests.gd）")
 

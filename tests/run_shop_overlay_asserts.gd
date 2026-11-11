@@ -60,6 +60,8 @@ func run() -> void:
 			assert(shop._info_row.is_visible_in_tree())
 			assert(not shop._heavy_panel.is_visible_in_tree())
 			var first_size: Vector2 = shop._slots[0].size
+			# 🆕 v3：每位都有一层可染色描边（稀有度 / 悬停双通道）
+			assert(shop._slot_edge.size() == shop._slots.size())
 			shop._set_hovered_slot(0)
 			for index in shop._slots.size():
 				var tier: String = shop._slots[index].get_meta("rarity", "")
@@ -75,20 +77,27 @@ func run() -> void:
 					else:
 						assert(backdrop.texture == Style.card_backdrop(tier, String(names[index])))
 					assert(backdrop.get_meta("illustration_shade").visible)
-					# 标题与价格必须位于底部信息区，且不能互相覆盖或越出卡框。
+					# 🆕 v3：标题位于米白信息区，价格位于右上费用胶囊；两者不得重叠或越框。
 					var title_rect: Rect2 = shop._slot_name[index].get_global_rect()
 					var price_rect: Rect2 = shop._slot_price_row[index].get_global_rect()
 					var card_rect: Rect2 = shop._slots[index].get_global_rect()
 					assert(title_rect.position.y > card_rect.get_center().y)
-					assert(price_rect.position.y >= title_rect.end.y)
+					# 🆕 v3 参考图口径：价格落在右上费用胶囊，不再要求位于标题下方。
+					#   改为钉「不与标题重叠 + 在卡框内 + 位于卡片右半区」，判据更严。
+					assert(not price_rect.intersects(title_rect))
+					assert(price_rect.position.y >= card_rect.position.y)
 					assert(price_rect.end.x <= card_rect.end.x)
 					assert(price_rect.end.y <= card_rect.end.y)
-					assert(not shop._slot_rarity[index].get_global_rect().intersects(shop._slot_lock[index].get_global_rect()))
+					assert(price_rect.position.x > card_rect.position.x + card_rect.size.x * 0.5)
+					assert(shop._slot_edge[index] is TextureRect)
+					# 🆕 v3.1：稀有度第二通道 = 描边线宽（1/2/3），顶栏不再有角标节点
+					var edge_tex: Texture2D = shop._slot_edge[index].texture
+					var bw := clampi(int(Style.RARITY[tier]["bw"]), 1, 3)
+					assert(edge_tex != null)
+					assert(edge_tex.resource_path.ends_with("ui_card_edge_v3_%d.png" % bw))
 					var box: StyleBoxFlat = shop._slots[index].get_theme_stylebox("panel")
-					# 🆕 2026-11-10 v4「仅文字」：底色透明，稀有度由 ▲ 数（1–5）+ 颜色承担
+					# 🆕 2026-11-10 v4「仅文字」：底色透明，稀有度由描边色 + 线宽承担
 					assert(box.bg_color.a < 0.01)
-					var pips_label: Label = shop._slot_rarity[index]
-					assert(pips_label.text == "▲".repeat(Style.rarity_pips(tier)))
 			assert(first_size.y > first_size.x)
 			for card in shop._slots:
 				assert(absf(card.size.x - first_size.x) <= 1.0)
@@ -115,6 +124,13 @@ func run() -> void:
 	var intents := {"buy": 0, "lock": 0}
 	td.buy_requested.connect(func(_index: int) -> void: intents["buy"] += 1)
 	td.lock_toggled.connect(func(_index: int) -> void: intents["lock"] += 1)
+	# 🆕 2026-11-11：1/2/3 快捷购买已移除 —— 商店开着时按数字键不得再发出 buy_requested
+	for key in [KEY_1, KEY_2, KEY_3]:
+		var key_ev := InputEventKey.new()
+		key_ev.keycode = key
+		key_ev.pressed = true
+		td._unhandled_key_input(key_ev)
+	assert(intents["buy"] == 0)
 	var lock_point: Vector2 = shop._slot_lock[0].get_global_rect().get_center()
 	_click(lock_point)
 	assert(intents["lock"] == 1 and intents["buy"] == 0)

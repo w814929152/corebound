@@ -2,9 +2,10 @@ extends CanvasLayer
 ##
 ## 主界面（Main Menu）覆盖层 —— `main_menu_overlay.gd`
 ## ---------------------------------------------------------------------------
-## 职责：游戏启动后的**第一屏**。三个入口：
+## 职责：游戏启动后的**第一屏**。四个入口：
 ##   · 开始游戏 → 交给 `boot.gd` 走现有「选关 → 选包 → 开局」流程；
 ##   · 卡组图鉴 → 在本层内切到「卡组图鉴」页，浏览**全部 8 个卡包的 80 个卡位**；
+##   · 怪物图鉴 → 浏览三原型、基础属性与精英变体；
 ##   · 退出游戏 → 发 `quit_requested`（真正退出由调用方决定，本层不直接 quit）。
 ##
 ## 🔴 为什么图鉴要「一遍看到全部」而不是按解锁进度藏：
@@ -42,6 +43,8 @@ const KEYART_BG_PATH := "res://art/2d/ui/keyart_menu_bg_v1.png"
 
 const PAGE_MENU := 0
 const PAGE_LIBRARY := 1
+const PAGE_MONSTERS := 2
+const _MonsterLibrary := preload("res://scripts/ui/monster_library.gd")
 
 ## 图鉴单卡尺寸。5 张一行：5 × 320 + 4 × 12 = 1648 ≤ 1764（1920 − 2×72 − 滚动条）。
 ## 🔴 2026-11-09（第 81 卡）：宽度 278 → 320 是为了**名字行**，不是为了卡片观感。
@@ -61,6 +64,7 @@ var _keyart: bool = false        # keyart 贴图是否生效（决定 Backdrop �
 
 var _menu_page: Control = null
 var _library_page: Control = null
+var _monster_page: Control = null
 
 var _menu_buttons: Array = []      # Array[Button]
 var _menu_markers: Array = []      # Array[Label]（▶ 焦点标记）
@@ -131,6 +135,11 @@ func _build() -> void:
 	_menu_page = _build_menu()
 	_library_page = _build_library()
 	_library_page.visible = false
+	_monster_page = _MonsterLibrary.new()
+	add_child(_monster_page)
+	_monster_page.build()
+	_monster_page.back_requested.connect(back_to_menu)
+	_monster_page.visible = false
 	_refresh_focus()
 
 
@@ -182,7 +191,7 @@ func _build_menu() -> Control:
 	gap2.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	col.add_child(gap2)
 
-	# 三个入口（按钮 = 320×52，同一列左对齐；▶ 是键盘焦点标记，形状通道）
+	# 四个入口（按钮 = 320×52，同一列左对齐；▶ 是键盘焦点标记，形状通道）
 	# 🆕 入口独立成 VBox（separation 10）：ghost 改成下划线式之后有了可见按钮体，
 	#    沿用 `col` 的 6px 会把三个入口挤成一整块，与上方标题块失去分组感。
 	var btn_box := VBoxContainer.new()
@@ -190,7 +199,7 @@ func _build_menu() -> Control:
 	btn_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	col.add_child(btn_box)
 
-	var defs := [["开始游戏", "primary"], ["卡组图鉴", "normal"], ["退出游戏", "ghost"]]
+	var defs := [["开始游戏", "primary"], ["卡组图鉴", "normal"], ["怪物图鉴", "normal"], ["退出游戏", "ghost"]]
 	for i in defs.size():
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation", 4)
@@ -449,22 +458,32 @@ func _make_card(pack_id: String, nm: String) -> Control:
 	pc.add_child(row)
 	var art_tex := _Style.card_art(nm)
 	if art_tex != null:
+		# 🆕 2026-11-11 卡面实装：竖版全幅卡面（1024×1536）**铺满** 96×96 缩略框。
+		#    旧行为是 KEEP_ASPECT_CENTERED → 2:3 的图被缩成 64px 窄条，两侧露出包背景，
+		#    十张卡在列表里像「细长条」；改成 COVERED 居中裁切后，正方形安全区才被填满。
+		#    方形旧插画（无全幅版本）维持 CENTERED，避免被裁掉主体。
+		var full_art := _Style.is_full_card_art(art_tex)
 		var art := TextureRect.new()
 		art.texture = art_tex
 		art.custom_minimum_size = Vector2(96.0, 96.0)
 		art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		if full_art:
+			art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+		else:
+			art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 		art.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		var art_frame := PanelContainer.new()
 		art_frame.add_theme_stylebox_override("panel", StyleBoxEmpty.new())
 		art_frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		var backdrop := TextureRect.new()
-		backdrop.self_modulate = _Style.CARD_BACKDROP_TINT
-		backdrop.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
-		backdrop.texture = _Style.card_backdrop(rar, nm)
-		backdrop.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		backdrop.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		art_frame.add_child(backdrop)
+		# 全幅卡面自带深底 → 不再垫包背景（省一次 fill，也不会在裁切缝隙里透出旧色）
+		if not full_art:
+			var backdrop := TextureRect.new()
+			backdrop.self_modulate = _Style.CARD_BACKDROP_TINT
+			backdrop.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+			backdrop.texture = _Style.card_backdrop(rar, nm)
+			backdrop.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+			backdrop.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			art_frame.add_child(backdrop)
 		art_frame.add_child(art)
 		row.add_child(art_frame)
 
@@ -522,6 +541,7 @@ func _make_card(pack_id: String, nm: String) -> Control:
 func open() -> void:
 	_build()
 	_page = PAGE_MENU
+	_monster_page.visible = false
 	_menu_page.visible = true
 	_library_page.visible = false
 	_refresh_dynamic()
@@ -532,6 +552,7 @@ func open() -> void:
 ## 直接打开图鉴页（主界面的「卡组图鉴」入口；也供 UI 截帧探针用）。
 func show_library() -> void:
 	_build()
+	_monster_page.visible = false
 	_page = PAGE_LIBRARY
 	_menu_page.visible = false
 	_library_page.visible = true
@@ -541,7 +562,18 @@ func show_library() -> void:
 		_lib_scroll.scroll_vertical = 0
 
 
+func show_monsters() -> void:
+	_build()
+	_page = PAGE_MONSTERS
+	_menu_page.visible = false
+	_library_page.visible = false
+	_monster_page.visible = true
+	_monster_page.reset_scroll()
+	visible = true
+
+
 func back_to_menu() -> void:
+	_monster_page.visible = false
 	_page = PAGE_MENU
 	if _menu_page != null:
 		_menu_page.visible = true
@@ -624,6 +656,8 @@ func _activate(i: int) -> void:
 		1:
 			show_library()
 		2:
+			show_monsters()
+		3:
 			quit_requested.emit()
 
 
@@ -634,7 +668,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	if not (event is InputEventKey) or not event.pressed or event.echo:
 		return
 	var k := (event as InputEventKey).keycode
-	if _page == PAGE_LIBRARY:
+	if _page == PAGE_LIBRARY or _page == PAGE_MONSTERS:
 		if k == KEY_ESCAPE:
 			back_to_menu()
 			get_viewport().set_input_as_handled()
@@ -651,8 +685,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		_activate(_focus_idx)
 		get_viewport().set_input_as_handled()
 	else:
-		# 🔴 主界面压着一局尚未开始的战场：未消费的 Tab / R / 数字键会漏到
-		#    `battle_shop._unhandled_input`（打开抽屉 / 刷新 / 买卡）—— 一律吃掉。
+		# 🔴 主界面压着一局尚未开始的战场：未消费的 Tab / R 会漏到
+		#    `battle_shop._unhandled_input`（打开抽屉 / 刷新）—— 一律吃掉。
+		#    （2026-11-11：数字键快捷购买已移除，此处仅为防漏兜底。）
 		get_viewport().set_input_as_handled()
 
 

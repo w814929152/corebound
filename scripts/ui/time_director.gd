@@ -61,7 +61,10 @@ func set_external_pause(value: bool) -> void:
 
 
 var sm = null                 # TimeStateMachine 实例（纯逻辑）
-var focus_index: int = 0      # 焦点位 ∈ {0,1,2}（§2.4「有且仅有 1 个焦点位」）
+## 焦点位 ∈ {0,1,2}（§2.4「有且仅有 1 个焦点位」）。
+## 🆕 2026-11-11：1/2/3 快捷购买已移除（玩家要求），焦点位改由**鼠标悬停**同步
+##   （`shop_overlay._set_hovered_slot`），Space 锁定仍作用于悬停位；无悬停时回落默认 0。
+var focus_index: int = 0
 
 var real_seconds: float = 0.0   # 实时秒累计（unscaled）—— 玩家实际思考时间
 var game_seconds: float = 0.0   # 游戏时间累计（scaled）—— 战场实际推进量
@@ -230,11 +233,6 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		KEY_R:
 			if _shop_open():
 				emit_signal("reroll_requested")
-				get_viewport().set_input_as_handled()
-		KEY_1, KEY_2, KEY_3:
-			if _shop_open():
-				focus_index = e.keycode - KEY_1
-				emit_signal("buy_requested", focus_index)   # 「选中即买」（§4.2）
 				get_viewport().set_input_as_handled()
 		KEY_SPACE:
 			if _shop_open():

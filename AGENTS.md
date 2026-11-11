@@ -42,6 +42,8 @@ GODOT="C:/Program Files (x86)/Steam/steamapps/common/Godot Engine/godot.windows.
 
 ## 当前状态（2026-11-10，详见 handoff-2026-11-10-gameplay.md）
 
+- 卡面 v3.2（210×340 卡槽 / 插画 ≈70% / 信息区 ≈30% / 卡名 28 · 类型与摘要 14 / 锁左上 · 费用右上）+ 主菜单「怪物图鉴」+ 移除 `1/2/3` 快捷购买（购买只走点击整卡，焦点位随鼠标悬停）：见 `docs/phase6/handoff-2026-11-11-card-spec.md`、`monster-library.md`。默认全量回归 exit 0，`card_spec` 专项（20 项）已进默认回归。⚠️ 卡面 14px 是 §9.1「玩家可见文本 ≥16px」的唯一例外，**待拍板**。
+
 - 基地美术 / 十九格禁建区、准备阶段下一波出怪预告、商店背景铺满卡框：见 `docs/phase6/base-and-card-art-2026-11-10.md` 与 `spawn-preview.md`。出怪预告专项已加入默认 world 门禁；其他会话的界面与火焰数值改动继续单独保留。
 
 - 界面「少边框」+ 商店参考图布局（整卡点击购买、210×340 三卡、信息带）+ 航图场景缩略卡，以及焚星塔充能口径（十层引爆计数、上限 10）：见 `docs/phase6/ui-flat-2026-11-10.md`。默认全量回归 **exit 0**、`world` **13 门 PASS（26.7 s）**；`fire_charge` 12 → 10 属数值口径，**待平衡拍板**。
@@ -55,8 +57,9 @@ GODOT="C:/Program Files (x86)/Steam/steamapps/common/Godot Engine/godot.windows.
 - AI 塔身方案相关素材、工具与记录按用户要求保留未提交，**别 `git add -A`**。
 - 本批代码已通过默认完整回归（**exit 0**），`world` **12/12 PASS（20.1 s）**。
 - 塔贴图 lint 与 radial8 的历史结果见旧交接；radial8 本批未复跑。
-- 🔴 **已知红**：`attrition8` 的 `T-D′`（0.0 应 0.150）/ `T-A1`（0.0600 vs 0.12）/ `T-A2`（0.0845 vs 0.30）。
-  已在干净 `HEAD 7b3ffe4` 复现 → 非本轮引入，属数值再平衡后的漂移；**阈值未下调**，待平衡拍板。
+- 🔴 **已知红**：`attrition8` 的 `T-D′`（0.150）/ `T-A1`（0.0600 vs 0.12）/ `T-A2`（0.0845 vs 0.30）。
+  二分定位见 `docs/phase3/qg-radial/attrition8-drift-2026-11-10.md`：断点在**卡池扩容**（`1ef5487` → `c1e4c72`，48/80 张卡），
+  非「数值再平衡漂移」（`cdf4fc1` 前后读数逐位相同）；**阈值未下调**，待平衡拍板（重标定 or 基准卡池）。
 - 塔身现行产线 = `tools/gen_tower_sprites_v2.py`：`TOWERS`(3) + `TOWERS_EXT`(79) = **82 个原型 ↔ 82 张 128² 贴图**；
   新增原型必须重跑生成器 + `--import`。`art/manifest.json` 的 HEAD 格式是 **`indent=1` + 末尾无换行**，别改缩进。
 - 玩家路线口径：商店只卖建筑卡（`EFFECT_CARDS_ENABLED=false`）、开局无起手塔 + 30 废料。

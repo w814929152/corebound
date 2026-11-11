@@ -81,8 +81,8 @@ const PLACE_TEXT_ARMED := "点地图上任意一格落子（＋ 新建 · ↑ �
 ##   开局 `scrap = 0`，而卡价 12 ⇒ 首波结束前商店里全是灰的。若一律提示"买一张卡"，
 ##   玩家照做会撞见买不起的货架，首局直接卡在第一步。
 const BUY_TEXT_POOR := "击杀敌人获取废料后购买建筑"
-const BUY_TEXT_TAB := "Tab 打开商店 · 1/2/3 买一张建筑卡"
-const BUY_TEXT_RICH := "1/2/3 买一张建筑卡"
+const BUY_TEXT_TAB := "Tab 打开商店 · 点击卡牌购买"
+const BUY_TEXT_RICH := "点击卡牌买一张建筑卡"
 
 # ---- 依赖注入（对齐既有 `bind_*` 风格，不用 get_node 满天飞）----
 var controller: Node = null       # ShopController（只读 runtime.snapshot()）

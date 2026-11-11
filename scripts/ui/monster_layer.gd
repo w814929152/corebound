@@ -157,6 +157,19 @@ func _sprite(n: String) -> Texture2D:
 	return t
 
 
+## 关卡路线的制式施工单元；旧模拟展示继续使用原贴图。
+func _machine_sprite(proto: String) -> Texture2D:
+	var key := "machine_" + proto.to_lower()
+	if _sprite_cache.has(key):
+		return _sprite_cache[key]
+	var path := "res://art/2d/monsters/machines_v1/" + proto.to_lower() + ".png"
+	var texture: Texture2D = null
+	if ResourceLoader.exists(path):
+		texture = load(path)
+	_sprite_cache[key] = texture
+	return texture
+
+
 ## 🆕 批次⑦：关卡地图地形贴图（按 map_id 懒加载 + 缓存）。
 ##   🔴 `_draw` 每帧跑 → 禁止每帧 `exists + load`（与 `_sprite` / `hud._ht` 同一纪律）。
 ##   文件名把变体 id 的 `-` 换成 `_`（tri-fissure → map_terrain_tri_fissure_v1.png）。
@@ -2067,14 +2080,24 @@ func _draw_radial_monsters(sc: float) -> void:
 		#    基础 rs/ts 形变已烘焙，运行时 transform 只乘**摆动幅度**（squash&stretch 保留）；
 		#    rim / 精英环保留运行时。缺失降级回程序化。
 		var mon_tex := _sprite("sp_mon_" + proto.to_lower() + ("_elite" if elite else ""))
+		var machine := _machine_sprite(proto) if _SpaceModel.uses_terrain() else null
+		if machine != null:
+			mon_tex = machine
 		if mon_tex != null:
 			# 贴图尖刺朝上（-Y）→ 旋到 out_dir 轴（+rot2 体摆动）；Y=径向 / X=切向
 			draw_set_transform(c, out_dir + rot2 + PI * 0.5,
 				Vector2(1.0 - amp * sw, 1.0 + amp * sw))
 			var msize := 4.8 * sc
-			draw_texture_rect(mon_tex, Rect2(Vector2(-msize, -msize) * 0.5, Vector2(msize, msize)), false)
+			var texture_size := Vector2(msize, msize)
+			if machine != null:
+				# 新素材朝 +Y，现有旋转将其工具端朝向核心；只改变视觉体型。
+				var extent := 3.4 if proto == "Rush" else (5.2 if proto == "Tank" else 3.8)
+				msize = extent * sc * (ELITE_SCALE if elite else 1.0)
+				texture_size = mon_tex.get_size() / maxf(mon_tex.get_width(), mon_tex.get_height()) * msize
+			draw_texture_rect(mon_tex, Rect2(-texture_size * 0.5, texture_size), false)
 			draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-			_draw_rim(c, R, w, RIM_ENEMY)   # P0 增强：内发光（混乱时分离相邻单位）
+			if machine == null:
+				_draw_rim(c, R, w, RIM_ENEMY)   # 机器素材已烘焙描边，避免圆环覆盖机身。
 		else:
 			draw_colored_polygon(_blob12(c, R, out_dir + rot2, rs2, ts2), P_ENEMY)   # 主体（随摆）
 			if proto == "Tank":   # 内层焦褐环

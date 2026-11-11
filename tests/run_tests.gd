@@ -131,6 +131,7 @@ const WORLD_GATES: Array = [
 	{"name": "stage_exit", "script": "res://tests/run_stage_exit.gd"},
 	{"name": "building_only", "script": "res://tests/run_building_only_shop_asserts.gd"},
 	{"name": "shop_overlay", "script": "res://tests/run_shop_overlay_asserts.gd"},
+	{"name": "card_spec", "script": "res://tests/run_card_spec_asserts.gd"},
 	{"name": "shop_interaction", "script": "res://tests/run_shop_interaction_asserts.gd"},
 	{"name": "battle_start", "script": "res://tests/run_battle_start_asserts.gd"},
 	{"name": "preparation", "script": "res://tests/run_preparation_asserts.gd"},
