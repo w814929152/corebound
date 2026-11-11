@@ -181,6 +181,8 @@ VFX 特效、伤害数字、塔位空槽 / 威胁楔、同心环仍为纯代码�
 | `card-illustration-style-v1.md`、`card-prompts-batch1/2.json`、`tools/card_batch_prompt.py` | 旧正面立面 v4/v4b/v4c 口径 | ⚪ **留档 + 已挂 DEPRECATED 标注，与现行 3/4 口径冲突，勿用于新卡** |
 | `asset-gap-audit-2026-11-09.md` | 09:09 缺口审计 | ⚪ **已过期作废**，见 §10 |
 | `tower-sprites-v2.md` | 战场塔身贴图 v2：辨识度红线、六通道视觉语言、加载契约与产线 | 2026-11-10 现行 |
+| `tower-sprites-v3-ai-samples.md` | v3-ai 三风格样张：AI 出图落地体检、抠底管线、选型结论（并列方案，未接线） | 2026-11-10 新增 |
+| `tower-sprites-v3-ai-blueprint.md` | 已选 A 简化版：15 张主塔贴图产线、48px 去细节验收、落地限制（并列方案，未接线） | 2026-11-10 新增 |
 
 ---
 
