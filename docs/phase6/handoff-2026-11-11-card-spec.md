@@ -132,3 +132,7 @@
   `run_ui_style_asserts` 148/0、`shop_overlay`、`shop_interaction` 均 exit 0。
 - 截图：`art/_review/card-hover-shop.png`、`art/_review/card-hover-gallery.png`
   （出图工具 `tools/shoot_card_spec.gd`，悬停用「指针钉在卡片上」模拟）。
+- **插画缩比**（用户：比例太大）：全幅竖版插画由 `COVER` 改 `CONTAIN × 1.10`
+  （`FULL_ART_ZOOM`，比铺满小一圈，又刚好盖掉插画自带的卡框，避免卡里套卡）；
+  方形塔插画在卡窗内再各边让出 `ART_INSET = 10px`。两处都在 `card_face.gd` 与
+  `shop_overlay.gd` 同步，`card_spec` 25/0、`shop_overlay` exit 0。

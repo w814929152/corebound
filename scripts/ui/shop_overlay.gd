@@ -65,6 +65,10 @@ const DESC_LINES := 3            # 数据源 describe() 恒 3 行（文案 SSOT�
 ## 🆕 2026-11-11（用户）：卡面保留**一行**基础信息（「远程单体」「经济：每波产废料」这类），
 ##    完整机制与数值走悬停浮卡。行数常量同时是断言口径。
 const CARD_DESC_LINES := 1
+## 🆕 2026-11-11（用户）：插画内容内缩一档（塔身不顶满卡窗）。
+const ART_INSET := 10.0
+## 全幅插画：CONTAIN 后略微放大，盖掉插画自带的卡框（避免卡里套卡）。
+const FULL_ART_ZOOM := 1.10
 const CARD_DESC_LINE_H := 20.0  # 14px 字号的行高（含 line_spacing 2）
 
 ## 顶部数值区（原为一行超长拼接串，改为 3 列网格 → 可扫读）
@@ -466,7 +470,9 @@ func _make_slot(_i: int) -> PanelContainer:
 	p.add_child(root)
 
 	# 2a 塔插图（非 Arrow 卡）；Arrow 走 backdrop 全幅插画分支
-	var art_holder := _fixed(root, 8.0, 8.0, 194.0, 220.0)
+	# 🆕 2026-11-11（用户）：插画比例偏大 → 塔插画在卡窗内再让出 ART_INSET px（不顶满边框）。
+	var art_holder := _fixed(root, 8.0 + ART_INSET, 8.0 + ART_INSET,
+		194.0 - ART_INSET * 2.0, 220.0 - ART_INSET * 2.0)
 	art_holder.clip_contents = true
 	var art := TextureRect.new()
 	art.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -738,6 +744,16 @@ func _refresh_shop() -> void:
 			var full_illustration := _Style.is_full_card_art(art_tex)
 			backdrop.self_modulate = Color.WHITE if full_illustration else _Style.CARD_BACKDROP_TINT
 			backdrop.get_meta("illustration_shade").visible = true
+			# 🆕 2026-11-11（用户）：插画比例偏大 —— 全幅插画由 COVER 改 CONTAIN（整幅缩进卡窗，
+			#    不再裁切放大）；方形塔插画在 `_make_slot` 里已内缩 ART_INSET。
+			backdrop.stretch_mode = (TextureRect.STRETCH_KEEP_ASPECT_CENTERED if full_illustration
+				else TextureRect.STRETCH_KEEP_ASPECT_COVERED)
+			if full_illustration:
+				# 🔎 CONTAIN + 1.10 倍：比原 COVER 小一圈，又不露出插画自带的卡框。
+				backdrop.pivot_offset = backdrop.size * 0.5
+				backdrop.scale = Vector2(FULL_ART_ZOOM, FULL_ART_ZOOM)
+			else:
+				backdrop.scale = Vector2.ONE
 			if full_illustration:
 				backdrop.texture = art_tex
 				_slot_art[i].texture = null
