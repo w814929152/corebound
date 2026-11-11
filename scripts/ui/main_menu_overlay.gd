@@ -45,15 +45,14 @@ const PAGE_MENU := 0
 const PAGE_LIBRARY := 1
 const PAGE_MONSTERS := 2
 const _MonsterLibrary := preload("res://scripts/ui/monster_library.gd")
+const _CardFace := preload("res://scripts/ui/card_face.gd")
 
-## 图鉴单卡尺寸。5 张一行：5 × 320 + 4 × 12 = 1648 ≤ 1764（1920 − 2×72 − 滚动条）。
-## 🔴 2026-11-09（第 81 卡）：宽度 278 → 320 是为了**名字行**，不是为了卡片观感。
-##    278 时代单卡内宽 = 278 − 24(内边距) − 96(插画) − 8(间距) = 150，
-##    名字行还要再让出 ▲▲▲ 与 tag 角标（合计约 50–68）→ 名字实得 82–102px；
-##    而 `Thunderhead` 在 18px 下需 120px，`Hemorrhage` 112、`Executioner` 106
-##    → 全库 **9 张卡名被省略号吃掉**（实测见 tools/probe_card_name_fit.gd）。
-##    加宽 42 后名字实得 124–144，81 张全部不截断；图鉴区本来就富余 326px 没用上。
-const CARD_SIZE := Vector2(320.0, 126.0)
+## 图鉴单卡尺寸 = v3.2 竖版卡面（`card_face.SIZE`）。7 张一行：
+##   7 × 210 + 6 × 12 = 1542 ≤ 1648（1920 − 2×72 边距 − 滚动条余量）。
+## 🔴 历史：2026-11-09 那次把 278 → 320 是为了横条卡的**名字行**不被省略号吃掉；
+##    2026-11-11 换成竖版卡面后名字独占一行（186px 内宽 / 28px 字），旧约束自然消失。
+const CARD_SIZE := Vector2(210.0, 340.0)
+const LIB_COLUMNS := 7
 const MENU_X := 140.0
 const LIB_MARGIN_X := 72.0
 const LIB_TOP := 148.0
@@ -399,9 +398,9 @@ func _make_pack_block(pack: Dictionary, seq: int) -> Control:
 		block.add_child(_Style.hline())     # 无标题条时保留原分隔线
 
 	var row := GridContainer.new()
-	row.columns = 5
+	row.columns = LIB_COLUMNS
 	row.add_theme_constant_override("h_separation", 12)
-	row.add_theme_constant_override("v_separation", 8)
+	row.add_theme_constant_override("v_separation", 14)
 	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	block.add_child(row)
 
@@ -438,100 +437,15 @@ func _make_pack_block(pack: Dictionary, seq: int) -> Control:
 
 
 func _make_card(pack_id: String, nm: String) -> Control:
-	var rar := _CardText.rarity(nm)
-	var pc := PanelContainer.new()
-	pc.custom_minimum_size = CARD_SIZE
-	pc.add_theme_stylebox_override("panel", _Style.card_blueprint("normal", rar))
-	pc.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	# 🔴 卡宽必须锁死在 CARD_SIZE（现 320）：`custom_minimum_size` 只是**最小**值，
-	#    PanelContainer 的实际最小宽还会被最长文本行顶大。实测（tools/probe_ui_rects.gd）
-	#    278 时代 8 个包里有 6 个包卡宽不齐，278 / 282 / 304 / 308 / 318 / 326 混排，
-	#    最右一列顶到 x=1618 —— 超出卡片网格公共右边界 1536，长卡名的卡直接
-	#    压到隔壁格子。⇒ 文字一律 clip（min width 归 0），再加 clip_contents 兜底。
-	pc.clip_contents = true
-
-	# 🆕 插画（2026-11-08 批次②③）：左侧 96×96 方形安全区缩放。
-	#    资产缺失 / headless 未导入 → card_art() 返回 null → 降级为纯文字条（占满整行）。
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 8)
-	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	pc.add_child(row)
-	var art_tex := _Style.card_art(nm)
-	if art_tex != null:
-		# 🆕 2026-11-11 卡面实装：竖版全幅卡面（1024×1536）**铺满** 96×96 缩略框。
-		#    旧行为是 KEEP_ASPECT_CENTERED → 2:3 的图被缩成 64px 窄条，两侧露出包背景，
-		#    十张卡在列表里像「细长条」；改成 COVERED 居中裁切后，正方形安全区才被填满。
-		#    方形旧插画（无全幅版本）维持 CENTERED，避免被裁掉主体。
-		var full_art := _Style.is_full_card_art(art_tex)
-		var art := TextureRect.new()
-		art.texture = art_tex
-		art.custom_minimum_size = Vector2(96.0, 96.0)
-		art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		if full_art:
-			art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
-		else:
-			art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		art.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		var art_frame := PanelContainer.new()
-		art_frame.add_theme_stylebox_override("panel", StyleBoxEmpty.new())
-		art_frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		# 全幅卡面自带深底 → 不再垫包背景（省一次 fill，也不会在裁切缝隙里透出旧色）
-		if not full_art:
-			var backdrop := TextureRect.new()
-			backdrop.self_modulate = _Style.CARD_BACKDROP_TINT
-			backdrop.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
-			backdrop.texture = _Style.card_backdrop(rar, nm)
-			backdrop.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-			backdrop.mouse_filter = Control.MOUSE_FILTER_IGNORE
-			art_frame.add_child(backdrop)
-		art_frame.add_child(art)
-		row.add_child(art_frame)
-
-	var v := VBoxContainer.new()
-	v.add_theme_constant_override("separation", 2)
-	v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	v.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	v.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	row.add_child(v)
-
-	var top := HBoxContainer.new()
-	top.add_theme_constant_override("separation", 4)
-	top.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	v.add_child(top)
-
-	var name_l := _Style.label(_CardText.display_name(nm), 18, _Style.C_WHITE)
-	_Style.apply_font(name_l, "medium")
-	# 🔴 名字必须自己吃下剩余宽度（EXPAND_FILL），**不能**再靠一个 `sp` 占位来顶：
-	#    一旦 clip_text = true，Label 的最小宽归 0，若旁边还有一个 EXPAND 的空白 Control，
-	#    HBox 会把全部剩余宽度分给那个空白，名字直接拿到 0px 被裁干净（实测：
-	#    32 张卡名整行消失）。clip 只在极端长名下才触发省略号。
-	name_l.clip_text = true
-	name_l.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-	name_l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	name_l.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	top.add_child(name_l)
-
-	# 稀有度 ▲ 角标（形状通道，与边框色双通道表达）
-	var pips := _Style.label("▲".repeat(_Style.rarity_pips(rar)), 16, _Style.rarity_color(rar))
-	pips.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	top.add_child(pips)
-
-	# Tag 电路符号（§5.5）：与商店卡面同一套字形 / 颜色
-	var tg := _CardText.tag_of(nm)
-	if tg != "":
-		var gl := _Style.label(_Style.tag_glyph(tg), 16, _Style.tag_color(tg))
-		gl.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		top.add_child(gl)
-
-	var desc := _Style.label(_CardText.describe(nm), 16, _Style.C_TEXT)
-	desc.autowrap_mode = TextServer.AUTOWRAP_OFF
-	desc.clip_text = true                         # 同上：3 行 `\n` 文本，行宽不参与最小宽
-	desc.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-	desc.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	v.add_child(desc)
-
-	_card_entries.append({"pack": pack_id, "card": nm, "panel": pc, "label": desc})
-	return pc
+	# 🆕 2026-11-11 图鉴卡面跟进 v3.2：从「320×126 横条（96² 缩略图 + 两行字）」
+	#    改为与商店同一套 **210×340 竖版卡面**（卡框贴图 / 卡名 28 / 类型与摘要 14 /
+	#    稀有度 ▲ 在右上），避免缩略图把全幅竖版插画裁成窄条。
+	#    图鉴不接玩家状态：没有价格胶囊、锁头与购买；卡面自身固定尺寸并 clip_contents，
+	#    卡宽不再被长卡名顶大（旧 278 → 320 那次排查的根因随控件换型一并消失）。
+	var face := _CardFace.build(nm)
+	var desc_l: Label = face.get_meta("desc_label")
+	_card_entries.append({"pack": pack_id, "card": nm, "panel": face, "label": desc_l})
+	return face
 
 
 # ---------------------------------------------------------------------------

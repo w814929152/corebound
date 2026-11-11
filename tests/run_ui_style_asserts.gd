@@ -765,14 +765,29 @@ func _test_l_main_menu() -> void:
 	_check_all_buttons("主界面", menu)
 
 	# 字号（两个页面的 Label 一起查）
+	# 🆕 2026-11-11 图鉴跟进 v3.2 卡面：卡面类型条 / 摘要与商店同口径 13–14px
+	#    （§9.1 唯一例外，卡面是固定画幅印刷面）。带 `card_face_small` meta 的先排除，
+	#    随后再单独判 13–14px。
 	var small: Array = []
 	var labels: Array = _collect(menu, [], "label")
+	var menu_face: Array = []
 	for l in labels:
+		if (l as Label).has_meta("card_face_small"):
+			menu_face.append(l)
+			continue
 		var fs := int((l as Label).get_theme_font_size("font_size"))
 		if fs > 0 and fs < FONT_MIN:
 			small.append("%s=%d" % [String((l as Label).text).substr(0, 8), fs])
 	_check("【主界面】%d 个 Label 全部 ≥16px%s" % [labels.size(), "" if small.is_empty() else " → " + str(small)],
 		small.is_empty())
+	var menu_face_bad: Array = []
+	for l in menu_face:
+		var fs := int((l as Label).get_theme_font_size("font_size"))
+		if fs < 13 or fs > 14:
+			menu_face_bad.append("%s=%d" % [String((l as Label).text).substr(0, 8), fs])
+	_check("【图鉴】卡面类型/摘要 13–14px（同商店例外 · 样本 %d 个）%s" % [
+		menu_face.size(), "" if menu_face_bad.is_empty() else " → " + str(menu_face_bad)],
+		menu_face_bad.is_empty())
 
 	# 走「卡组图鉴」按钮路径（不是绕过 UI 直接调 show_library）
 	menu._activate(1)
