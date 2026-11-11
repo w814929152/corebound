@@ -11,10 +11,10 @@ var _hover: CanvasLayer
 var _pointer := Vector2(-1000.0, -1000.0)
 
 const _Layout := preload("res://scripts/ui/shop_layout.gd")
-const BAR_H := 156.0
+const BAR_H := 184.0
 const BAR_BOTTOM_GAP := 20.0
 const CARD_W := 120.0
-const CARD_H := 132.0
+const CARD_H := 160.0
 const GAP := 8.0
 const C_TEXT := Color(0.784, 0.812, 0.855)
 const C_DIM := Color(0.545, 0.580, 0.647)
@@ -189,21 +189,14 @@ func _draw() -> void:
 		var nm := String(_pending[index])
 		var art := _Style.card_art(nm)
 		if art != null:
-			var area := Rect2(draw_r.position + Vector2(8.0, 4.0), Vector2(CARD_W - 16.0, 96.0))
-			if _Style.is_full_card_art(art):
-				# 🆕 2026-11-11 卡面实装：竖版全幅卡面按 cover 居中裁切铺满 88×96 窗口。
-				#    旧路径是「先画方形包背景、再把图按 contain 缩小叠上去」——2:3 的图缩到
-				#    64px 宽后两侧露出旧背景色，在 120×132 的小卡上像贴了张竖条。
-				#    cover 用 draw_texture_rect_region 取源矩形，不拉伸形变。
-				var src := _cover_source(art, area.size)
-				draw_texture_rect_region(art, area, src)
-			else:
+			var area := Rect2(draw_r.position + Vector2(8.0, 4.0), Vector2(CARD_W - 16.0, 132.0))
+			if not _Style.is_full_card_art(art):
 				draw_texture_rect(_Style.card_backdrop(_CardText.rarity(nm), nm), area, false, _Style.CARD_BACKDROP_TINT)
-				var art_size := art.get_size()
-				var factor := minf(area.size.x / art_size.x, area.size.y / art_size.y)
-				var target := art_size * factor
-				draw_texture_rect(art, Rect2(area.get_center() - target * 0.5, target), false)
-		draw_string(font, draw_r.position + Vector2(8.0, 122.0), _CardText.display_name(nm), HORIZONTAL_ALIGNMENT_LEFT, CARD_W - 16.0, 16, C_ACTIVE if active else C_TEXT)
+			var art_size := art.get_size()
+			var factor := minf(area.size.x / art_size.x, area.size.y / art_size.y)
+			var target := art_size * factor
+			draw_texture_rect(art, Rect2(area.get_center() - target * 0.5, target), false)
+		draw_string(font, draw_r.position + Vector2(8.0, 153.0), _CardText.display_name(nm), HORIZONTAL_ALIGNMENT_LEFT, CARD_W - 16.0, 16, C_ACTIVE if active else C_TEXT)
 	if _pending.size() > visible:
 		draw_string(font, Vector2(size.x - 70.0, 62.0), "%d/%d" % [_first_visible + 1, _pending.size() - visible + 1], HORIZONTAL_ALIGNMENT_RIGHT, 52.0, 16, C_DIM)
 	if _drag_index >= 0:
@@ -214,24 +207,6 @@ func _draw() -> void:
 		#    落点非法 → deny 禁止光标；合法 → place 准星；拖回背包条 → default。
 		_drag_cursor_update()
 
-
-## 🆕 2026-11-11：把任意比例贴图按 cover 规则映射到目标矩形时所需的**源矩形**。
-##   目标比图更「高」→ 左右不裁、上下居中裁；目标比图更「宽」→ 上下不裁、左右居中裁。
-##   背包卡 88×96（0.917）配 2:3 全幅卡面时走第一支，垂直裁掉约 27%。
-static func _cover_source(tex: Texture2D, target: Vector2) -> Rect2:
-	var ts := tex.get_size()
-	if ts.x <= 0.0 or ts.y <= 0.0 or target.x <= 0.0 or target.y <= 0.0:
-		return Rect2(Vector2.ZERO, ts)
-	var src := Rect2(Vector2.ZERO, ts)
-	var tex_ar := ts.x / ts.y
-	var target_ar := target.x / target.y
-	if tex_ar > target_ar:
-		src.size.x = ts.y * target_ar
-		src.position.x = (ts.x - src.size.x) * 0.5
-	else:
-		src.size.y = ts.x / target_ar
-		src.position.y = (ts.y - src.size.y) * 0.5
-	return src
 
 func _process(_delta: float) -> void:
 	queue_redraw()
