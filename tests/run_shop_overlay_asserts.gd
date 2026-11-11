@@ -66,7 +66,23 @@ func run() -> void:
 				if tier != "":
 					var backdrop: TextureRect = shop._slot_art[index].get_meta("rarity_backdrop")
 					var names: Array = scene.controller.runtime.offers
-					assert(backdrop.texture == Style.card_backdrop(tier, String(names[index])))
+					var full_illustration := String(names[index]) == "Arrow" and Style.card_art("Arrow") != null
+					if full_illustration:
+						assert(backdrop.texture == Style.card_art("Arrow"))
+						assert(shop._slot_art[index].texture == null)
+						assert(backdrop.self_modulate == Color.WHITE)
+					else:
+						assert(backdrop.texture == Style.card_backdrop(tier, String(names[index])))
+					assert(backdrop.get_meta("illustration_shade").visible)
+					# 标题与价格必须位于底部信息区，且不能互相覆盖或越出卡框。
+					var title_rect: Rect2 = shop._slot_name[index].get_global_rect()
+					var price_rect: Rect2 = shop._slot_price_row[index].get_global_rect()
+					var card_rect: Rect2 = shop._slots[index].get_global_rect()
+					assert(title_rect.position.y > card_rect.get_center().y)
+					assert(price_rect.position.y >= title_rect.end.y)
+					assert(price_rect.end.x <= card_rect.end.x)
+					assert(price_rect.end.y <= card_rect.end.y)
+					assert(not shop._slot_rarity[index].get_global_rect().intersects(shop._slot_lock[index].get_global_rect()))
 					var box: StyleBoxFlat = shop._slots[index].get_theme_stylebox("panel")
 					# 🆕 2026-11-10 v4「仅文字」：底色透明，稀有度由 ▲ 数（1–5）+ 颜色承担
 					assert(box.bg_color.a < 0.01)

@@ -375,6 +375,24 @@ func _make_slot(_i: int) -> PanelContainer:
 	backdrop.offset_top = -card_style.get_content_margin(SIDE_TOP)
 	backdrop.offset_right = card_style.get_content_margin(SIDE_RIGHT)
 	backdrop.offset_bottom = card_style.get_content_margin(SIDE_BOTTOM)
+	var illustration_shade := TextureRect.new()
+	illustration_shade.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	illustration_shade.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	var shade_gradient := Gradient.new()
+	shade_gradient.offsets = PackedFloat32Array([0.0, 0.22, 0.36, 0.60, 0.78, 1.0])
+	shade_gradient.colors = PackedColorArray([
+		Color(0.02, 0.03, 0.05, 0.85), Color(0.02, 0.03, 0.05, 0.65),
+		Color(0.02, 0.03, 0.05, 0.0), Color(0.02, 0.03, 0.05, 0.0),
+		Color(0.02, 0.03, 0.05, 0.82), Color(0.02, 0.03, 0.05, 0.95)])
+	var shade_texture := GradientTexture2D.new()
+	shade_texture.gradient = shade_gradient
+	shade_texture.fill_from = Vector2.ZERO
+	shade_texture.fill_to = Vector2(0.0, 1.0)
+	illustration_shade.texture = shade_texture
+	backdrop.add_child(illustration_shade)
+	illustration_shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	illustration_shade.hide()
+	backdrop.set_meta("illustration_shade", illustration_shade)
 	var vb := VBoxContainer.new()
 	vb.add_theme_constant_override("separation", 5)
 	p.add_child(vb)
@@ -383,20 +401,26 @@ func _make_slot(_i: int) -> PanelContainer:
 	var idx_row := HBoxContainer.new()
 	idx_row.add_theme_constant_override("separation", 6)
 	vb.add_child(idx_row)
-	var idx := _Style.label("%d" % (_i + 1), _Style.FONT_MIN, _Style.C_TEXT_DIM)
+	var idx := _Style.label("%02d" % (_i + 1), _Style.FONT_MIN, _Style.C_TEXT_DIM)
+	_Style.apply_font(idx, "num")
 	idx.tooltip_text = "快捷键 %d 购买" % (_i + 1)
 	idx.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	idx_row.add_child(idx)
 	var pips := _Style.label("", _Style.FONT_MIN, _Style.C_STEEL)
 	pips.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	idx_row.add_child(pips)
+	var lock_space := Control.new()
+	lock_space.custom_minimum_size.x = 30.0
+	idx_row.add_child(lock_space)
 	_slot_rarity.append(pips)
 
 	# 卡名行：卡名（L1，Black 展示字重）+ 右侧 Tag 电路符号芯片（§5.5）
 	var name_row := HBoxContainer.new()
 	name_row.add_theme_constant_override("separation", 6)
 	vb.add_child(name_row)
-	var nm := _Style.label("—", 20, _Style.C_WHITE)
+	var nm := _Style.label("—", 26, _Style.C_WHITE)
+	nm.add_theme_color_override("font_shadow_color", Color(0.0, 0.0, 0.0, 0.9))
+	nm.add_theme_constant_override("shadow_offset_y", 2)
 	_Style.apply_font(nm, "display")              # §5.4：卡名 = Black 展示字重（L1 主信息）
 	nm.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	nm.clip_text = true
@@ -474,7 +498,7 @@ func _make_slot(_i: int) -> PanelContainer:
 		scrap_ic.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		scrap_ic.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		price_row.add_child(scrap_ic)
-	var price_num := _Style.label("--", 22, C_DIM)
+	var price_num := _Style.label("--", 26, C_DIM)
 	_Style.apply_font(price_num, "num")           # §5.5：价格数字等宽（蓝图仪表读数）
 	price_row.add_child(price_num)
 	_slot_price_num.append(price_num)
@@ -504,6 +528,21 @@ func _make_slot(_i: int) -> PanelContainer:
 	var gap := Control.new()
 	gap.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	vb.add_child(gap)
+	# 上部只留编号和稀有度，标题与资源价格统一落在底部信息区。
+	var footer := HBoxContainer.new()
+	footer.add_theme_constant_override("separation", 8)
+	vb.add_child(footer)
+	vb.remove_child(kind)
+	footer.add_child(kind)
+	kind.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	kind.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	vb.remove_child(price_row)
+	footer.add_child(price_row)
+	vb.move_child(art_frame, 1)
+	vb.move_child(gap, 2)
+	vb.move_child(name_row, 3)
+	vb.move_child(tag_chip, 4)
+	vb.move_child(footer, 5)
 
 	# 锁头是卡面上的独立图标热区，不占底部按钮行。
 	var lock := Control.new()
@@ -537,7 +576,7 @@ func _make_slot(_i: int) -> PanelContainer:
 	chrome.set_meta("accent", "normal")
 	chrome.draw.connect(func() -> void: _draw_slot_chrome(chrome))
 	p.add_child(chrome)
-	chrome.hide()
+	chrome.show()
 	_slot_chrome.append(chrome)
 	return p
 
@@ -569,14 +608,25 @@ func _draw_lock(icon: Control) -> void:
 ##   accent：normal = 钢灰 / affordable = 耀青（与描边第二通道同源）/ dim = 压暗。
 func _draw_slot_chrome(c: Control) -> void:
 	var accent: String = String(c.get_meta("accent", "normal"))
-	var col := Color(_Style.C_STEEL.r, _Style.C_STEEL.g, _Style.C_STEEL.b, 0.55)
-	if accent == "affordable":
-		col = Color(_Style.C_ALLY.r, _Style.C_ALLY.g, _Style.C_ALLY.b, 0.90)
-	elif accent == "dim":
-		col = Color(_Style.C_STEEL.r, _Style.C_STEEL.g, _Style.C_STEEL.b, 0.30)
+	var tier := String(c.get_parent().get_meta("rarity", ""))
+	var col := Color(_Style.rarity_color(tier), 0.70)
+	if _hovered_slot >= 0 and c.get_parent() == _slots[_hovered_slot]:
+		col = Color(_Style.C_ALLY, 0.95)
+	if accent == "dim":
+		col.a = 0.30
 	var leg := 9.0
 	var t := 2.0
 	var r := c.size
+	# 双层细框与切角装饰；高亮只加强边缘，不遮挡插画和购买热区。
+	var border := Color(col, 0.45)
+	c.draw_rect(Rect2(Vector2(2, 2), r - Vector2(4, 4)), border, false, 1.0)
+	c.draw_rect(Rect2(Vector2(6, 6), r - Vector2(12, 12)), Color(col, 0.18), false, 1.0)
+	var title_y := r.y - 112.0
+	c.draw_line(Vector2(14, title_y), Vector2(r.x - 14, title_y), Color(col, 0.45), 1.0)
+	c.draw_line(Vector2(14, title_y), Vector2(42, title_y), col, 2.0)
+	c.draw_colored_polygon(PackedVector2Array([
+		Vector2(r.x * 0.5, r.y - 3), Vector2(r.x * 0.5 + 3, r.y - 6),
+		Vector2(r.x * 0.5, r.y - 9), Vector2(r.x * 0.5 - 3, r.y - 6)]), col)
 	# 左上
 	c.draw_line(Vector2(0.0, 0.0), Vector2(leg, 0.0), col, t)
 	c.draw_line(Vector2(0.0, 0.0), Vector2(0.0, leg), col, t)
@@ -678,6 +728,13 @@ func _refresh_shop() -> void:
 			_slots[i].set_meta("rarity", rar)
 			var backdrop: TextureRect = _slot_art[i].get_meta("rarity_backdrop")
 			backdrop.texture = _Style.card_backdrop(rar, nm)
+			# 完整竖版插画铺满卡框，插画带保留为空白以维持三卡同构布局。
+			var full_illustration := nm == "Arrow" and art_tex != null
+			backdrop.self_modulate = Color.WHITE if full_illustration else _Style.CARD_BACKDROP_TINT
+			backdrop.get_meta("illustration_shade").visible = true
+			if full_illustration:
+				backdrop.texture = art_tex
+				_slot_art[i].texture = null
 			backdrop.visible = true
 			_slot_rarity[i].text = "▲".repeat(_Style.rarity_pips(rar))
 			_slot_rarity[i].add_theme_color_override("font_color", _Style.rarity_color(rar))
@@ -687,7 +744,8 @@ func _refresh_shop() -> void:
 				_slot_tag[i].text = "%s %s" % [_Style.tag_glyph(tg), _CardText.tag_cn(tg)]
 				_slot_tag[i].add_theme_color_override("font_color", _Style.tag_color(tg))
 			else:
-				_slot_tag[i].text = ""
+				_slot_tag[i].text = "◇ 常规"
+				_slot_tag[i].add_theme_color_override("font_color", _Style.C_TEXT_DIM)
 			# 🆕 效果描述块：卡名 + 卡种之外，告诉玩家「这张卡干什么」（恒 3 行）
 			_slot_desc[i].text = _CardText.describe(nm)
 			# H2：Tag 协同 → 卡种行加标记（视觉编码不写推荐类词）
@@ -705,7 +763,7 @@ func _refresh_shop() -> void:
 			else:
 				_slot_price_mark[i].text = "✓" if _aff else "✗"
 			_slot_price_num[i].text = "%.0f" % price
-			_slot_price_unit[i].text = "分"
+			_slot_price_unit[i].text = ""
 			# 🆕 2026-11-10 接手修：价格行在 _make_slot 里默认隐藏，取消底部「购买」按钮后
 			#    卡面必须自己显示价格（原点击式布局漏了 show()，实机卡面完全看不到售价）。
 			_slot_price_row[i].show()
@@ -765,8 +823,6 @@ func _set_price_color(i: int, col: Color) -> void:
 ## 蓝图 chrome accent 改写 + 重绘（🔴 只改 meta，不在刷新路径 new StyleBox）。
 func _set_chrome_accent(i: int, accent: String) -> void:
 	var c: Control = _slot_chrome[i]
-	if String(c.get_meta("accent", "")) == accent:
-		return
 	c.set_meta("accent", accent)
 	c.queue_redraw()
 
@@ -906,3 +962,4 @@ func _set_hovered_slot(index: int) -> void:
 		_hover.clear()
 	for i in _slots.size():
 		_slots[i].add_theme_stylebox_override("panel", _Battle.card(i == index, String(_slots[i].get_meta("rarity", ""))))
+		_slot_chrome[i].queue_redraw()

@@ -344,6 +344,8 @@ static func card_art(card_name: String) -> Texture2D:
 	if _card_art_cache.has(key):
 		return _card_art_cache[key]
 	var path := CARD_ART_DIR + "card_%s_v1_460.png" % key
+	if key == "arrow":
+		path = CARD_ART_DIR + "card_arrow_illustration_v2.png"
 	var tex: Texture2D = null
 	if ResourceLoader.exists(path):
 		tex = load(path)
