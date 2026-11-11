@@ -92,7 +92,7 @@ func _check_float(name: String, got: float, want: float) -> void:
 func _test_a_tables() -> void:
 	_log("---- A 数据表结构 ----")
 	# Legacy EXT_CARD_ORDER remains isolated; card-pack-only weights live in CARD_PACK_WEIGHTS.
-	_check_int("A1 TOWERS_EXT 塔数（含卡包建筑）", _TD.TOWERS_EXT.size(), 80)
+	_check_int("A1 TOWERS_EXT 塔数（含卡包建筑）", _TD.TOWERS_EXT.size(), 82)
 	_check_int("A2 REINF_EXT 强化数", _TD.REINF_EXT.size(), 5)
 	_check_int("A2b REINF_EXT2 第二强化数", _TD.REINF_EXT2.size(), 7)
 	_check_int("A3 EXT_WEIGHTS 权重条数", _TD.EXT_WEIGHTS.size(), 57)

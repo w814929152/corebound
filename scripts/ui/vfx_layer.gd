@@ -33,6 +33,7 @@ const _SpaceModel := preload("res://scripts/geo/space_model.gd")
 const _BattlefieldCamera := preload("res://scripts/ui/battlefield_camera.gd")
 const _ShopLayout := preload("res://scripts/ui/shop_layout.gd")
 const _Style := preload("res://scripts/ui/ui_style.gd")
+const _Range := preload("res://scripts/gameplay/tower_range.gd")
 const _TowerData := preload("res://scripts/data/tower_data.gd")
 
 const MARGIN := 48.0
@@ -124,9 +125,9 @@ func bind_director(d: Node) -> void:
 	#   与 `monster_layer` 订阅 `tower_revived` 同性质 —— 🈚 反向路径，不回写玩法。
 	if not d.is_connected("monster_killed", _on_monster_killed):
 		d.monster_killed.connect(_on_monster_killed)
-	queue_redraw()
 	if not d.is_connected("scrap_shot", _on_scrap_shot):
 		d.scrap_shot.connect(_on_scrap_shot)
+	queue_redraw()
 
 
 func _on_scrap_shot(slot: int, origin: Vector2, target: Vector2, target_index: int) -> void:
@@ -517,21 +518,24 @@ func _update_bolts(dt: float) -> void:
 	var front_idx2 := int(front2.get("index", -1))
 	var gscale := clampf(1.0 + float(_snap.get("dps", 0.0)) / DPS_FULL, 1.0, 3.0)
 	var slot_pos: Array = _slots_arr()
-	for tw in controller.runtime.snapshot().get("slots", []):
+	var rt = controller.runtime
+	var auras := _Range.active_auras(rt.player.towers, rt.geo, bool(_snap.get("tactical_combat", false)))
+	for tw in rt.snapshot().get("slots", []):
 		if bool(tw.get("empty", true)):
 			continue
 		if bool(tw.get("disabled", false)):
 			continue
 		if _TowerData.tower_dps(String(tw.get("ctype", "Arrow"))) <= 0.0:
 			continue
-		var slot := int(tw.get("slot", -1))
 		if _TowerData.tower_shot_scrap(String(tw.get("ctype", "Arrow"))) > 0:
 			continue
+		var slot := int(tw.get("slot", -1))
 		if slot < 0 or slot >= slot_pos.size():
 			continue
 		var target := front2
 		if bool(_snap.get("tactical_combat", false)):
-			target = _front_in_range(slot_pos[slot], _TowerData.tower_rng(String(tw.get("ctype", "Arrow"))))
+			var coverage := _Range.with_auras(_Range.profile(String(tw.get("ctype", "Arrow")), int(tw.get("range_merges", 0))), slot_pos[slot], auras)
+			target = _front_in_range(slot_pos[slot], coverage, float(tw.get("range_facing", 0.0)))
 			if target.is_empty():
 				_bolt_t.erase(slot)
 				continue
@@ -564,12 +568,12 @@ func _front_monster() -> Dictionary:
 	return best
 
 
-func _front_in_range(center: Vector2, radius: float) -> Dictionary:
+func _front_in_range(center: Vector2, coverage: Vector2, facing: float) -> Dictionary:
 	var best: Dictionary = {}
 	var remain := INF
 	for m in _snap.get("monsters", []):
 		var p: Vector2 = m.get("pos", Vector2.ZERO)
-		if float(m.get("hp", 0.0)) > 0.0 and center.distance_squared_to(p) <= radius * radius \
+		if float(m.get("hp", 0.0)) > 0.0 and _Range.contains(p - center, coverage.x, coverage.y, facing) \
 				and float(m.get("t_remain", INF)) < remain:
 			remain = float(m["t_remain"])
 			best = m

@@ -65,6 +65,7 @@ const _CombatTypes := preload("res://scripts/data/combat_types.gd")
 ## 🆕 触发型建筑（2026-11-07）：整备（每波）/ 阵亡 时给塔加等级。
 const _TowerEffects := preload("res://scripts/engine/tower_effects.gd")
 const _TD := preload("res://scripts/data/tower_data.gd")
+const _Range := preload("res://scripts/gameplay/tower_range.gd")
 const _TacticalCombat := preload("res://scripts/gameplay/tactical_combat.gd")
 ## 🔒 V-8：复用批处理镜像的**诊断量容器工厂** —— 复活诊断字典与 `wave_sim_aggro` 共用
 ##   同一份 schema（键名/初值逐位相同）→ 实时↔批处理逐位比对才能直接对键取值，
@@ -91,8 +92,8 @@ enum MState {
 signal wave_result(w: int, result: Dictionary)   # 实时结算（本波结束瞬间发）
 signal monster_spawned(m)                        # I-3 的运行时侧（渲染层订阅）
 signal monster_killed(m)
-signal monster_leaked(m)                         # → Core.hp -= 50
 signal scrap_shot(slot: int, origin: Vector2, target: Vector2, target_index: int)
+signal monster_leaked(m)                         # → Core.hp -= 50
 ## 🔒 T1（Q-T4 = ① 已定稿）：塔被仇恨打死 → 进入 Disabled 中间态（断输出不断链）。
 ##   携带塔位 slot。渲染层订阅做「塔体损伤演出」（T-C2 余光编码，不做数字条）。
 signal tower_destroyed(slot: int)
@@ -192,8 +193,8 @@ var minions: Array = []
 # 焚星塔的波内状态；按塔位分别计数，开波清空。
 var _fire_charge: Dictionary = {}
 var _fire_attack_clock: Dictionary = {}
-var _fire_blasts: Array = []
 var _scrap_shot_cooldown: Dictionary = {}
+var _fire_blasts: Array = []
 var _frost_attack_clock: Dictionary = {}
 var _ice_storms: Array = []
 var _ice_storm_queue: Array = []
@@ -289,6 +290,7 @@ func bind_runtime(rt) -> void:
 	runtime = rt
 	if rt == null:
 		return
+	rt.range_director = self
 	setup(rt.player, rt.cfg, rt.geo)
 
 func recover_preparation_buildings() -> void:
@@ -389,9 +391,9 @@ func start_wave(p_w: int) -> void:
 	monsters = []
 	_fire_charge.clear()
 	_fire_attack_clock.clear()
+	_scrap_shot_cooldown.clear()
 	_fire_blasts.clear()
 	_frost_attack_clock.clear()
-	_scrap_shot_cooldown.clear()
 	_ice_storms.clear()
 	_ice_storm_queue.clear()
 	_resolving_ice_storms = false
@@ -709,6 +711,7 @@ func _tick_frost_effects(dt: float) -> void:
 	for t in player.towers:
 		if not bool(t.disabled):
 			aspd += _TD.tower_buff_aspd(String(t.ctype))
+	var auras := _Range.active_auras(player.towers, geo, tactical_combat_enabled)
 	for source in player.towers:
 		var name := String(source.ctype)
 		var slot := int(source.slot)
@@ -716,9 +719,11 @@ func _tick_frost_effects(dt: float) -> void:
 		if bool(source.disabled) or _TD.tower_slow(name) <= 0.0 or _TD.tower_dps(name) <= 0.0:
 			_frost_attack_clock.erase(slot)
 			continue
+		var center := _tower_pos(source)
+		var coverage := _Range.with_auras(_Range.profile(name, int(source.range_merges), tactical_combat_enabled), center, auras)
 		var targets: Array = []
 		for m in monsters:
-			if float(m.hp) > 0.0 and int(m.state) != MState.LEAKED and _tower_pos(source).distance_to(m.pos(v0_)) <= _TD.tower_rng(name):
+			if float(m.hp) > 0.0 and int(m.state) != MState.LEAKED and _Range.contains(m.pos(v0_) - center, coverage.x, coverage.y, float(source.range_facing)):
 				targets.append(m)
 		if targets.is_empty():
 			_frost_attack_clock.erase(slot)
@@ -794,15 +799,17 @@ func _tick_fire_effects(dt: float) -> void:
 	for t in player.towers:
 		if not bool(t.disabled):
 			aspd += _TD.tower_buff_aspd(String(t.ctype))
+	var auras := _Range.active_auras(player.towers, geo, tactical_combat_enabled)
 	for source in player.towers:
 		var name := String(source.ctype)
 		if bool(source.disabled) or _TD.tower_tag(name) != "fire" or _TD.tower_dps(name) <= 0.0:
 			_fire_attack_clock.erase(int(source.slot))
 			continue
 		var center := _tower_pos(source)
+		var coverage := _Range.with_auras(_Range.profile(name, int(source.range_merges), tactical_combat_enabled), center, auras)
 		var targets: Array = []
 		for m in monsters:
-			if float(m.hp) > 0.0 and center.distance_to(m.pos(v0_)) <= _TD.tower_rng(name):
+			if float(m.hp) > 0.0 and _Range.contains(m.pos(v0_) - center, coverage.x, coverage.y, float(source.range_facing)):
 				targets.append(m)
 		if targets.is_empty():
 			_fire_attack_clock.erase(int(source.slot))

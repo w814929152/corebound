@@ -52,7 +52,65 @@ const _Geo6 := preload("res://scripts/geo/geo6.gd")
 const _Geo := preload("res://scripts/geo/geo.gd")
 const _BuildGrid := preload("res://scripts/geo/build_grid.gd")
 const _PreparationMonsterData := preload("res://scripts/data/monster_data.gd")
+const _Range := preload("res://scripts/gameplay/tower_range.gd")
+const _Space := preload("res://scripts/geo/space_model.gd")
 var preparation_actions_enabled := false
+var range_director: Node
+var placement_turn := 0.0
+var placement_spawn_points := PackedVector2Array()
+
+func directional_ranges_enabled() -> bool:
+	return is_instance_valid(range_director) and bool(range_director.tactical_combat_enabled)
+
+func placement_facing(position: Vector2) -> float:
+	var direction := position - _Space.core_pos()
+	var nearest := INF
+	for entry in placement_spawn_points:
+		var offset := entry - position
+		var distance := offset.length_squared()
+		if distance < nearest and distance > 0.0:
+			direction = offset
+			nearest = distance
+	return direction.angle() + placement_turn
+
+func tower_range_preview(position: Vector2, info: Dictionary) -> Dictionary:
+	var index := _tower_index(int(info["slot"]))
+	var existing = player.towers[index] if info["mode"] == "upgrade" and index >= 0 else null
+	var merges := int(existing.range_merges) if existing != null else 0
+	var name := placing_card_name()
+	var enabled := directional_ranges_enabled()
+	var aura := _TD.tower_range_aura(name) if enabled else {}
+	var auras := _Range.active_auras(player.towers, geo, enabled)
+	var before := _Range.with_auras(_Range.profile(name, merges, enabled), position, auras)
+	var after := _Range.with_auras(_Range.profile(name, merges + int(existing != null), enabled), position, auras)
+	if not aura.is_empty():
+		before = Vector2(float(aura["radius"]), TAU)
+		after = before
+	return {"radius": after.x, "angle": after.y, "before": before, "aura": aura,
+		"facing": float(existing.range_facing) if existing != null else placement_facing(position)}
+
+func _apply_placement_range(slot: int, mode: String) -> void:
+	if not directional_ranges_enabled():
+		return
+	var tower = player.towers[_tower_index(slot)]
+	if _Range.profile(String(tower.ctype)) == _Range.profile(String(tower.ctype), 1):
+		return
+	if mode == "upgrade":
+		tower.range_merges += 1
+	elif geo != null and slot >= 0 and slot < geo.slots.size():
+		tower.range_facing = placement_facing(geo.slots[slot])
+
+func rotate_selected_tower(turn: float) -> bool:
+	if not directional_ranges_enabled() or not preparation_actions_enabled or player == null or director == null or not _in_safe_window() or director.external_pause:
+		return false
+	var index := _tower_index(selected_tower_slot)
+	if index < 0:
+		return false
+	var tower = player.towers[index]
+	if _Range.profile(String(tower.ctype)).y >= TAU:
+		return false
+	tower.range_facing = wrapf(float(tower.range_facing) + turn, -PI, PI)
+	return true
 
 func recover_preparation_buildings() -> bool:
 	if not preparation_actions_enabled or player == null or not _in_safe_window():
@@ -944,6 +1002,8 @@ func begin_placement(pending_index: int) -> bool:
 	if pending_index < 0 or pending_index >= pending.size():
 		last_error = "待放置队列无此下标"
 		return false
+	placement_turn = 0.0
+	placement_spawn_points.clear()
 	_placing_index = pending_index
 	return true
 
@@ -984,6 +1044,7 @@ func confirm_placement(slot: int) -> bool:
 	if _ShopAI.apply_action(player, act, cfg) == null:
 		last_error = "落子失败：%s → 塔位 %d" % [_CardText.display_name(nm), slot]
 		return false
+	_apply_placement_range(slot, mode)
 	# 🟡 切片8：建筑卡成本（build/upgrade 同价）计入**这座塔**的 invested（拆除返还 50% 依据）
 	var paid := 0.0
 	if _placing_index < pending_cost.size():
@@ -1090,6 +1151,8 @@ func confirm_placement_at(pos: Vector2) -> bool:
 	if _ShopAI.apply_action(player, act, cfg) == null:
 		last_error = "落子失败：%s" % _CardText.display_name(nm)
 		return false
+
+	_apply_placement_range(slot, mode)
 
 	# 建筑卡成本（build / up 同价）计入**这座塔**的 invested（拆除返还 50% 的依据）
 	var paid := 0.0
@@ -1584,6 +1647,7 @@ func snapshot() -> Dictionary:
 			var t2 = by_slot[i]
 			# 🔒 T1 修复入口 UI：暴露 disabled 状态供重决策面板红点计数（有受损塔才亮「处置受损塔」按钮）
 			slots.append({"slot": i, "ctype": String(t2.ctype), "h": int(t2.h),
+				"range_merges": int(t2.range_merges), "range_facing": float(t2.range_facing),
 				"empty": false, "disabled": bool(t2.disabled)})
 		else:
 			slots.append({"slot": i, "ctype": "", "h": 0, "empty": true, "disabled": false})

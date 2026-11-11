@@ -129,6 +129,8 @@ const EXT_WEIGHTS := {
 
 ## Card-pack-only building weights; kept out of `EXT_WEIGHTS` so the legacy extended pack stays fixed.
 const CARD_PACK_WEIGHTS := {
+	"Arcbeacon": 0.08,
+	"Rangebeacon": 0.08,
 	"Scrapcannon": 0.07,
 	"Icehunter": 0.08,
 	"Pyroclasm": 0.07,
@@ -166,6 +168,12 @@ static func tower_dps(ctype: String) -> float:
 
 static func tower_attack_speed(ctype: String) -> float:
 	return maxf(0.1, float(_tower_def(ctype).get("attack_speed", 1.0)))
+
+
+static func tower_range_aura(ctype: String) -> Dictionary:
+	if not TOWERS.has(ctype) and not TOWERS_EXT.has(ctype):
+		return {}
+	return _tower_def(ctype).get("range_aura", {})
 
 
 static func tower_shot_scrap(ctype: String) -> int:

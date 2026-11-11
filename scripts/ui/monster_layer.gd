@@ -28,6 +28,8 @@ const _TSM := preload("res://scripts/engine/time_state_machine.gd")
 const _SpaceModel := preload("res://scripts/geo/space_model.gd")
 const _Terrain := preload("res://scripts/ui/battlefield_terrain.gd")
 const _BattlefieldCamera := preload("res://scripts/ui/battlefield_camera.gd")
+const _AttackRangeCaption := preload("res://scripts/ui/attack_range_caption.gd")
+const _Range := preload("res://scripts/gameplay/tower_range.gd")
 const _PlacementTowerData := preload("res://scripts/data/tower_data.gd")
 const _BuildGrid := preload("res://scripts/geo/build_grid.gd")
 const _MonsterData := preload("res://scripts/data/monster_data.gd")
@@ -265,6 +267,12 @@ var _move_pointer := Vector2.ZERO
 var _move_dragging := false
 
 func _input(event: InputEvent) -> void:
+	if event is InputEventKey and event.pressed and not event.echo and event.keycode in [KEY_Q, KEY_E]:
+		var turn := deg_to_rad(-15.0 if event.keycode == KEY_Q else 15.0)
+		if controller != null and controller.rotate_tower_range(turn):
+			queue_redraw()
+			get_viewport().set_input_as_handled()
+			return
 	if _moving_slot < 0:
 		return
 	if event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE:
@@ -281,7 +289,8 @@ func _input(event: InputEvent) -> void:
 		var slot := _moving_slot
 		_moving_slot = -1
 		var hovered := get_viewport().gui_get_hovered_control()
-		if _move_dragging and (hovered == null or hovered.mouse_filter == Control.MOUSE_FILTER_IGNORE):
+		var over_backpack := placement_backpack != null and placement_backpack.get_global_rect().has_point(event.position)
+		if _move_dragging and not over_backpack and (hovered == null or hovered.mouse_filter == Control.MOUSE_FILTER_IGNORE):
 			time_director.emit_signal("tower_relocate_requested", slot, _BuildGrid.snap(_to_world(event.position)))
 		_move_dragging = false
 		queue_redraw()
@@ -305,14 +314,17 @@ func _begin_tower_drag(point: Vector2) -> bool:
 	return true
 
 func _draw_relocation_preview(sc: float) -> void:
-	if _moving_slot < 0 or not _move_dragging:
+	if _moving_slot < 0 or not _move_dragging or not _can_inspect_towers():
 		return
 	var destination := _BuildGrid.snap(_to_world(_move_pointer))
 	var valid: bool = controller.runtime.can_relocate_tower(_moving_slot, destination)
 	var center := _to_screen(destination)
 	var color := P_ALLY if valid else P_ALERT
-	draw_circle(center, 2.2 * sc, Color(color, 0.22))
-	draw_arc(center, 2.2 * sc, 0.0, TAU, 32, color, 2.0)
+	var cell := PackedVector2Array()
+	for corner in _BuildGrid.corners(destination):
+		cell.append(_to_screen(corner))
+	draw_colored_polygon(cell, Color(color, 0.22))
+	draw_polyline(_closed(cell), color, 2.0, true)
 	for tower in controller.runtime.player.towers:
 		if int(tower.slot) == _moving_slot:
 			var texture := _sprite("sp_tower_" + String(tower.ctype).to_lower())
@@ -321,7 +333,16 @@ func _draw_relocation_preview(sc: float) -> void:
 			break
 
 
+const _TowerDetails := preload("res://scripts/ui/card_hover.gd")
+var _range_caption: Node2D
+var _tower_details: CanvasLayer
+
 func _ready() -> void:
+	_range_caption = _AttackRangeCaption.new()
+	add_child(_range_caption)
+	_tower_details = _TowerDetails.new()
+	add_child(_tower_details)
+	_tower_details.layer = 9
 	# 🔴 I-7：点选是商店期交互（安全窗 paused=true 下也要收点击）→ ALWAYS。
 	#    本节点仍只读玩法状态、只发意图信号，process_mode 只影响"能否收输入"。
 	process_mode = Node.PROCESS_MODE_ALWAYS
@@ -405,6 +426,7 @@ func _slots_arr() -> Array:
 
 
 func _process(delta: float) -> void:
+	_update_tower_details()
 	# 🔴 P0：演出相位累加（只驱动画面，纯本地状态）。
 	var dt := clampf(float(delta), 0.0, 0.1)
 	_vfx_t += dt
@@ -555,6 +577,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if controller == null or controller.runtime == null or time_director == null:
 		return
+	if placement_backpack != null and placement_backpack.get_global_rect().has_point(mb.global_position):
+		return
 	if _begin_tower_drag(mb.global_position):
 		get_viewport().set_input_as_handled()
 		return
@@ -572,7 +596,17 @@ func _unhandled_input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 		return
 
-	# ---- 其余态：仅抽屉展开（商店期）可点选已建塔 ----
+	# 准备阶段点击空地收起详情，同时保留镜头拖动。
+	if _can_inspect_towers():
+		var slot := _hit_slot_screen(mb.global_position, true)
+		if slot >= 0:
+			time_director.emit_signal("tower_select_requested", slot)
+			get_viewport().set_input_as_handled()
+		else:
+			controller.clear_tower_selection()
+		return
+
+	# 其他状态仍沿用商店点选。
 	if int(time_director.sm.clock()["drawer"]) == 0:
 		return
 	var hit := _hit_slot_screen(mb.global_position, true)
@@ -945,6 +979,7 @@ func _draw_under_attack(sc: float) -> void:
 #  绘制
 # ---------------------------------------------------------------------------
 func _draw() -> void:
+	_range_caption.hide()
 	var t := _xform()
 	var sc := float(t["sc"])
 	# 🔴 双模分派：RADIAL 走 P0 分层绘制；PATH 走旧口径（逐位不变）。
@@ -1047,6 +1082,7 @@ func _draw_radial(sc: float) -> void:
 	_draw_radial_ground(sc)       # 层1 场地圆 + 同心环×3 + 放射刻度×8 + 层2 出生环
 	_draw_all_shadows(sc)         # 层3：先画全部影（避免脏影，spec §A.3/§A.6）
 	_draw_radial_slot_layer(sc)   # 层4：空槽八边形 + 威胁楔形 + 被攻击环 + 暴露图标
+	_draw_preparation_ranges(sc)
 	_draw_placement_marks(sc, "bg")   # 层4.5：⑤ 自由摆放网格 + 可建区边界（塔之下）
 	_draw_radial_core(sc)         # 层5：盘 + 8 刻齿（唯一轮廓）
 	_draw_radial_towers(sc)       # 层6：双层八边形塔
@@ -1573,7 +1609,8 @@ func _draw_radial_slot_layer(sc: float) -> void:
 ##                   画在塔下面会被塔身整块盖住，玩家看不出"这一格可以升级"
 ##                   （实测截图取证确认过，不是推测）。
 func _draw_placement_marks(sc: float, phase: String = "bg") -> void:
-	if not _in_placement():
+	var relocating := _moving_slot >= 0 and _move_dragging and _can_inspect_towers()
+	if not _in_placement() and not (relocating and phase == "bg"):
 		return
 	if controller == null or controller.runtime == null:
 		return
@@ -1628,7 +1665,8 @@ func _draw_placement_marks(sc: float, phase: String = "bg") -> void:
 			Color(P_ALERT.r, P_ALERT.g, P_ALERT.b, 0.45), maxf(1.5, 0.09 * sc), true)
 
 	if phase == "bg":
-		_draw_placement_range(sc)
+		if not relocating:
+			_draw_placement_range(sc)
 		return                      # 背景段到此为止（塔之上还要再调一次 fg 段）
 
 	# ---- ③ 悬停格预览 ----
@@ -1698,14 +1736,17 @@ func placement_range_preview() -> Dictionary:
 	if not _in_placement() or controller == null or controller.runtime == null:
 		return {}
 	var name: String = controller.runtime.placing_card_name()
-	if name == "" or _PlacementTowerData.tower_dps(name)<=0.0:
+	if name == "":
 		return {}
-	var radius := _PlacementTowerData.tower_rng(name)
 	var point = _placement_hover_world()
-	if radius<=0.0 or point == null:
+	if point == null:
 		return {}
-	var mode: String = controller.runtime.placement_mode_at(point)["mode"]
-	return {"center":point,"radius":radius,"mode":mode,"valid":mode in ["new","upgrade"]}
+	var info: Dictionary = controller.runtime.placement_mode_at(point)
+	var preview: Dictionary = controller.runtime.tower_range_preview(point, info)
+	if float(preview["radius"]) <= 0.0 or (_PlacementTowerData.tower_dps(name) <= 0.0 and preview["aura"].is_empty()):
+		return {}
+	preview.merge({"center": point, "mode": info["mode"], "valid": info["mode"] in ["new", "upgrade"]})
+	return preview
 
 
 func _draw_placement_range(sc: float) -> void:
@@ -1715,13 +1756,113 @@ func _draw_placement_range(sc: float) -> void:
 	var center := _to_screen(preview["center"])
 	var radius := float(preview["radius"])*sc
 	var color := P_GOLD if String(preview["mode"])=="upgrade" else P_ALLY
+	var aura: Dictionary = preview["aura"]
+	if not aura.is_empty():
+		color = _range_aura_color(aura)
 	if not bool(preview["valid"]):
 		color = P_ALERT
-	draw_circle(center,radius,Color(color,0.07 if bool(preview["valid"]) else 0.025))
-	draw_arc(center,radius,0.0,TAU,128,Color(color,0.80),2.0,true)
-	# 四侧短刻度使边界在地面和网格上都容易辨认。
-	for direction in [Vector2.LEFT,Vector2.RIGHT,Vector2.UP,Vector2.DOWN]:
-		draw_line(center+direction*(radius-4.0),center+direction*(radius+4.0),Color(color,0.95),2.0,true)
+	var angle := float(preview["angle"])
+	var facing := float(preview["facing"])
+	var before: Vector2 = preview["before"]
+	_draw_attack_range(center, radius, angle, facing, color, 0.13 if preview["valid"] else 0.035)
+	if preview["mode"] == "upgrade" and before != Vector2(float(preview["radius"]), angle):
+		_draw_attack_range(center, before.x * sc, before.y, facing, Color(color, 0.5), 0.0)
+		var label := "%d° → %d°" % [roundi(rad_to_deg(before.y)), roundi(rad_to_deg(angle))]
+		if before.x != float(preview["radius"]):
+			label = "%d → %d" % [roundi(before.x), roundi(float(preview["radius"]))]
+		_draw_range_label(center, label, color)
+	elif angle < TAU and preview["valid"]:
+		_draw_range_label(center, "Q / E", P_ALLY)
+
+
+func _can_inspect_towers() -> bool:
+	return controller != null and not controller.over and controller.runtime != null \
+		and time_director != null and time_director.sm != null and not time_director.external_pause \
+		and time_director.sm.state == _TSM.State.SAFE_WINDOW and controller.runtime.geo != null
+
+
+func _update_tower_details() -> void:
+	if not is_visible_in_tree() or not _can_inspect_towers() or _move_dragging:
+		_tower_details.clear()
+		return
+	var rt = controller.runtime
+	var index: int = rt._tower_index(rt.selected_tower_slot)
+	if index < 0:
+		_tower_details.clear()
+		return
+	var tower = rt.player.towers[index]
+	var position: Vector2 = rt.geo.slots[int(tower.slot)]
+	var directional: bool = rt.directional_ranges_enabled()
+	var auras := _Range.active_auras(rt.player.towers, rt.geo, directional)
+	var profile := _Range.with_auras(_Range.profile(String(tower.ctype), int(tower.range_merges), directional), position, auras)
+	var context := "等级 %d · 生命 %.0f / %.0f\n" % [tower.h, tower.hp, tower.hp_max]
+	var aura := _PlacementTowerData.tower_range_aura(String(tower.ctype))
+	if not aura.is_empty():
+		context += "光环半径 %.1f" % float(aura["radius"])
+	else:
+		context += "射程 %.1f" % profile.x if profile.x > 0.0 else "无直接攻击"
+	if profile.y < TAU and rt.preparation_actions_enabled:
+		context += " · %d° 扇形\nQ / E 调整朝向" % roundi(rad_to_deg(profile.y))
+	var right := get_viewport_rect().size.x
+	_tower_details.show_card(String(tower.ctype), Rect2(right - 10.0, 158.0, 0.0, 0.0), context)
+
+
+func _draw_preparation_ranges(sc: float) -> void:
+	if not _can_inspect_towers():
+		return
+	var rt = controller.runtime
+	var relocating := _moving_slot >= 0 and _move_dragging
+	var destination := _BuildGrid.snap(_to_world(_move_pointer)) if relocating else Vector2.ZERO
+	var valid_move: bool = relocating and rt.can_relocate_tower(_moving_slot, destination)
+	var directional: bool = rt.directional_ranges_enabled()
+	var auras := _Range.active_auras(rt.player.towers, rt.geo, directional, _moving_slot if valid_move else -1, destination)
+	for tower in rt.player.towers:
+		var slot := int(tower.slot)
+		if not relocating and slot != rt.selected_tower_slot:
+			continue
+		var position: Vector2 = rt.geo.slots[slot]
+		var color := P_ALLY
+		var opacity := 0.09
+		if relocating:
+			if slot == _moving_slot:
+				position = destination
+				color = P_ALLY if valid_move else P_ALERT
+			else:
+				color = Color(P_ALLY, 0.45)
+				opacity = 0.0
+		var profile := _Range.with_auras(_Range.profile(String(tower.ctype), int(tower.range_merges), directional), position, auras)
+		var aura := _PlacementTowerData.tower_range_aura(String(tower.ctype)) if directional else {}
+		if not aura.is_empty():
+			profile = Vector2(float(aura["radius"]), TAU)
+			if color != P_ALERT:
+				color = Color(_range_aura_color(aura), color.a * (0.45 if tower.disabled else 1.0))
+		if profile.x > 0.0:
+			_draw_attack_range(_to_screen(position), profile.x * sc, profile.y, float(tower.range_facing), color, opacity)
+
+
+func _range_aura_color(aura: Dictionary) -> Color:
+	return Color("#c9a0ff") if aura.has("angle_degrees") else Color("#89e69b")
+
+
+func _draw_range_label(center: Vector2, caption: String, color: Color) -> void:
+	_range_caption.show_range(center, caption, color)
+	_range_caption.show()
+
+func _draw_attack_range(center: Vector2, radius: float, angle: float, facing: float, color: Color, opacity: float) -> void:
+	var start := facing - angle * 0.5
+	var end := facing + angle * 0.5
+	if angle >= TAU:
+		if opacity > 0.0:
+			draw_circle(center, radius, Color(color, opacity))
+	else:
+		var points := PackedVector2Array([center])
+		for step in range(65):
+			points.append(center + Vector2.from_angle(lerpf(start, end, float(step) / 64.0)) * radius)
+		if opacity > 0.0:
+			draw_colored_polygon(points, Color(color, opacity))
+		draw_line(center, points[1], color, 2.0, true)
+		draw_line(center, points[-1], color, 2.0, true)
+	draw_arc(center, radius, start, end, 64, color, 2.0, true)
 
 
 ## 落子徽标：圆盘衬底 + 几何符号（零文本）。`mode` ∈ {new, upgrade, invalid}。

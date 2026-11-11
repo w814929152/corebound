@@ -1,6 +1,7 @@
 extends RefCounted
 ## 玩家关卡的逐塔射程结算。复用伤害引擎的构筑乘区；不修改基准模拟器。
 const DE := preload("res://scripts/engine/damage_engine.gd")
+const TowerRange := preload("res://scripts/gameplay/tower_range.gd")
 const TD := preload("res://scripts/data/tower_data.gd")
 const CT := preload("res://scripts/data/combat_types.gd")
 const Effects := preload("res://scripts/engine/tower_effects.gd")
@@ -20,6 +21,7 @@ static func spawn_theta(index: int, wave: int, stage_id: String) -> float:
 static func apply(wd, dt: float) -> void:
 	if wd.player == null or wd.geo == null:
 		return
+	var auras := TowerRange.active_auras(wd.player.towers, wd.geo)
 	var result: Dictionary = DE.compute_dps(wd.player, wd.cfg, wd.geo)
 	var info: Dictionary = result.get("info", {})
 	var rows: Array = info.get("per_tower", [])
@@ -37,7 +39,7 @@ static func apply(wd, dt: float) -> void:
 			continue
 		var name := String(tower.ctype)
 		var center: Vector2 = wd.geo.slots[slot]
-		var radius := TD.tower_rng(name)
+		var coverage := TowerRange.with_auras(TowerRange.profile(name, int(tower.range_merges)), center, auras)
 		var row: Dictionary = rows[i]
 		# Coverage 原来是平均在射程内的时间比例。真实判距后移除该折扣，避免重复扣覆盖。
 		var cov := float(row.get("cov", 0.0))
@@ -50,22 +52,22 @@ static func apply(wd, dt: float) -> void:
 			var cooldown := maxf(0.0, float(wd._scrap_shot_cooldown.get(slot, 0.0)) - dt)
 			var rate := TD.tower_attack_speed(name) * (1.0 + speed_bonus)
 			if cooldown <= 0.000001 and wd.runtime != null and float(wd.runtime.scrap) >= shot_cost:
-				if apply_in_range(wd, center, radius, output / rate, kind, reduction,
-						false, shot_cost, slot):
+				if apply_in_range(wd, center, coverage.x, output / rate, kind, reduction,
+						false, coverage.y, float(tower.range_facing), shot_cost, slot):
 					cooldown = 1.0 / rate
 			wd._scrap_shot_cooldown[slot] = cooldown
 			continue
-		apply_in_range(wd, center, radius, budget, kind, float(reduction),
-			bool(TD._tower_def(name).get("hunt_frozen", false)))
+		apply_in_range(wd, center, coverage.x, budget, kind, float(reduction),
+			bool(TD._tower_def(name).get("hunt_frozen", false)), coverage.y, float(tower.range_facing))
 		var dot := TD.tower_dot(name) * Effects.debuff_damage_mult(wd.player) * dt
 		if dot > 0.0:
-			apply_in_range(wd, center, radius, dot, CT.TRUE, 0.0)
+			apply_in_range(wd, center, coverage.x, dot, CT.TRUE, 0.0, false, coverage.y, float(tower.range_facing))
 
 
 ## 怪物已按距核心的剩余时间稳定排序；伤害仅在本塔射程内结转，未使用伤害不储存。
 static func apply_in_range(wd, center: Vector2, radius: float, budget: float,
-		kind: String, reduction: float, hunt_frozen: bool = false,
-		shot_cost: int = 0, slot: int = -1) -> bool:
+		kind: String, reduction: float, hunt_frozen: bool = false, angle: float = TAU,
+		facing: float = 0.0, shot_cost: int = 0, slot: int = -1) -> bool:
 	var dealt_damage := false
 	var targets: Array = wd.monsters
 	if hunt_frozen:
@@ -77,7 +79,7 @@ static func apply_in_range(wd, center: Vector2, radius: float, budget: float,
 	for m in targets:
 		if budget <= 0.0:
 			break
-		if float(m.hp) <= 0.0 or center.distance_squared_to(m.pos(wd.v0_)) > radius * radius:
+		if float(m.hp) <= 0.0 or not TowerRange.contains(m.pos(wd.v0_) - center, radius, angle, facing):
 			continue
 		var factor := 1.0
 		if wd.combat_types_enabled and not (hunt_frozen and float(m.frozen_remaining) > 0.0):

@@ -31,6 +31,7 @@
 ##    调用方一律 `const _CardText := preload("res://scripts/data/card_text.gd")`。
 ##
 
+const _Range := preload("res://scripts/gameplay/tower_range.gd")
 const _TD := preload("res://scripts/data/tower_data.gd")
 const _ShopAI := preload("res://scripts/engine/shop_ai.gd")
 
@@ -54,8 +55,10 @@ const TAG_CN := {
 ## 玩家可见名称；内部卡牌 ID 保持不变。
 const NAME_CN := {
 	"Foundry": "铸造厂",
-	"Arrow": "箭塔",
 	"Scrapcannon": "熔币重炮",
+	"Arcbeacon": "展域塔",
+	"Rangebeacon": "延程塔",
+	"Arrow": "箭塔",
 	"Cannon": "炮塔",
 	"Frost": "霜塔",
 	"Scout": "侦察塔",
@@ -187,8 +190,10 @@ const ROLE := {
 	"Scout": "击杀赏金",
 	"Kinetic": "最近塔转物理",
 	"Foundry": "经济：每波产废料",
-	"Blaze": "近距范围点火",
 	"Scrapcannon": "重击·消耗废料",
+	"Arcbeacon": "光环 · 扩大扇角",
+	"Rangebeacon": "光环 · 增加射程",
+	"Blaze": "近距范围点火",
 	"Cinder": "单体点火",
 	"Pyre": "阵亡：爆炸 40",
 	"Glacier": "十层冻结 2 秒",
@@ -418,11 +423,15 @@ static func describe(nm: String) -> String:
 	var r := role(nm)
 	if r == "":
 		return ""
-	var charge := _TD.tower_fire_charge(nm) if (_TD.TOWERS.has(nm) or _TD.TOWERS_EXT.has(nm)) else {}
 	if _tower_def(nm).has("shot_scrap"):
 		return "%s\n%s\n每发耗 %d 废料" % [r, stat_line(nm), _TD.tower_shot_scrap(nm)]
+	var charge := _TD.tower_fire_charge(nm) if (_TD.TOWERS.has(nm) or _TD.TOWERS_EXT.has(nm)) else {}
 	if not charge.is_empty():
 		return "不自动攻击\n引爆 %d 次充满\n密集区爆发 %s" % [int(charge["capacity"]), _num(float(charge["damage"]))]
+	var aura := _TD.tower_range_aura(nm)
+	if not aura.is_empty():
+		var effect := "每层扇角 +%s°" % _num(float(aura["angle_degrees"])) if aura.has("angle_degrees") else "每层射程 +%s" % _num(float(aura["attack_radius"]))
+		return "%s\n光环半径 %s\n%s" % [r, _num(float(aura["radius"])), effect]
 	# 🆕 经济建筑：不攻击，每波按比例补贴废料（不能用「伤害 0 · 射程 0」那行）。
 	if _TD.tower_income(nm) > 0.0:
 		return "%s\n每波 +%d%% 废料\n占 1 个塔位" % [r, int(round(_TD.tower_income(nm) * 100.0))]
@@ -476,23 +485,36 @@ static func describe(nm: String) -> String:
 
 ## 悬停详情独立于旧三行卡面；并列展示实际生效的主效果和附加状态。
 static func details(nm: String) -> String:
+	var aura := _TD.tower_range_aura(nm)
+	if not aura.is_empty():
+		var targets := "只影响光环内的扇形攻击塔，扇角最高 360°。" if aura.has("angle_degrees") else "影响光环内有攻击半径的防御塔。"
+		return "辅助建筑，无直接攻击。\n" + targets + "\n同卡合成和多座光环都可叠加。辅助塔停机时光环失效。"
 	var definition := _tower_def(nm)
 	if definition.is_empty():
 		return describe(nm)
-	var charge := _TD.tower_fire_charge(nm)
 	var shot_scrap := _TD.tower_shot_scrap(nm)
 	if shot_scrap > 0:
 		return "%s\n物理单体 · 射程 %s\n每次开火消耗 %d 废料；余额不足时停火。" % [
 			stat_line(nm), _num(float(definition["rng"])), shot_scrap]
+	var charge := _TD.tower_fire_charge(nm)
 	if not charge.is_empty():
 		return "不自动攻击\n全场每触发一次火焰十层引爆，充能一次；累计 %d 次后发射。\n爆发伤害 %s · 半径 %s" % [int(charge["capacity"]),_num(float(charge["damage"])),_num(float(charge["radius"]))]
 	if nm == "Icehunter":
 		return "优先攻击射程内完全冻结的单位。\n对冻结目标无视所有抗性；解冻后恢复正常抗性结算。\n单体魔法攻击，自身不附加冰冻。\n%s · 射程 %s" % [stat_line(nm), _num(float(definition["rng"]))]
 	var has_fire := String(definition.get("tag",""))=="fire" and float(definition.get("dps",0.0))>0.0
 	var has_frost := float(definition.get("slow",0.0))>0.0 and float(definition.get("dps",0.0))>0.0
-	if not has_fire and not has_frost:
+	var initial := _Range.profile(nm)
+	var merged := _Range.profile(nm, 1)
+	if nm == "Arrow":
+		return "圆形射程 %s\n同卡合成：半径 +%s，最高 %s" % [_num(initial.x), _num(merged.x - initial.x), _num(_Range.profile(nm, 20).x)]
+	if not has_fire and not has_frost and initial == merged:
 		return describe(nm)
-	var lines: Array = [role(nm),stat_line(nm),"射程 %s · %s攻击" % [_num(float(definition["rng"])),"群体" if bool(definition["aoe"]) else "单体"]]
+	var shape := "扇形 %d° · 射程 %s" % [roundi(rad_to_deg(initial.y)), _num(initial.x)] if initial.y < TAU else "射程 %s" % _num(initial.x)
+	var lines: Array = [role(nm), stat_line(nm), "%s · %s攻击" % [shape, "群体" if bool(definition["aoe"]) else "单体"]]
+	if merged.x > initial.x:
+		lines.append("同卡合成：半径 +%s，最高 %s" % [_num(merged.x - initial.x), _num(_Range.profile(nm, 20).x)])
+	elif merged.y > initial.y:
+		lines.append("同卡合成：扇角 +%d°，最高 %d°" % [roundi(rad_to_deg(merged.y - initial.y)), roundi(rad_to_deg(_Range.profile(nm, 20).y))])
 	if has_fire:
 		var fire: Dictionary = _TD.FIRE_EFFECT
 		lines.append("火焰：攻击附加1层，持续 %s 秒；重复附加刷新时间。" % _num(float(fire["duration"])))

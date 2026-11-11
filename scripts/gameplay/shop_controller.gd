@@ -1,4 +1,6 @@
 extends Node
+
+const _Range := preload("res://scripts/gameplay/tower_range.gd")
 ##
 ## 切片4 · 接线层（**唯一**把 `TimeDirector` 的意图信号接到 `ShopRuntime` 的地方）
 ## 切片5 · 波次推进改由 `WaveDirector`（真实刷怪战斗循环）驱动
@@ -244,6 +246,12 @@ func _on_placement_cancelled() -> void:
 ## 🟡 切片8·I-7：战场塔位点选接线（MonsterLayer 点击塔 → runtime.select_tower）。
 ##   🔴 纯接线：改的是 runtime 的**点选状态**（UI 侧临时选择），不改构筑数值；
 ##      点选后 reinforce 卡的宿主由 `_reinforce_host()` 决定（点选合法→该塔，否则→主塔）。
+func clear_tower_selection() -> void:
+	if runtime != null and runtime.selected_tower_slot >= 0:
+		runtime.clear_selection()
+		_emit_shop()
+
+
 func _on_tower_select_requested(slot: int) -> void:
 	if runtime == null:
 		return
@@ -402,11 +410,27 @@ func _prepare_disabled_rows(rows: Array) -> Array:
 
 
 # ---- 待放置队列 → 进入放置模式（I-8 的前半段）----
+func rotate_tower_range(turn: float) -> bool:
+	if runtime == null or over or director == null or director.external_pause:
+		return false
+	if int(director.sm.state) == _TSM.State.PLACEMENT_MODE:
+		if not runtime.directional_ranges_enabled() or _Range.profile(runtime.placing_card_name()).y >= TAU:
+			return false
+		runtime.placement_turn = wrapf(runtime.placement_turn + turn, -PI, PI)
+		return true
+	if not runtime.rotate_selected_tower(turn):
+		return false
+	_emit_shop()
+	return true
+
+
 func request_placement(pending_index: int) -> bool:
 	if runtime == null or director == null:
 		return false
 	if not runtime.begin_placement(pending_index):
 		return false
+	if runtime.directional_ranges_enabled():
+		runtime.placement_spawn_points = wave_director.preview_spawn_positions(int(director.sm.wave) + 1)
 	# 🔴 `TimeDirector.enter_placement()` 返回 void（适配层只写引擎时钟，不回传成功与否）
 	#    → 用状态机的**实际态**判定进入是否成功，不要用返回值。
 	director.enter_placement()

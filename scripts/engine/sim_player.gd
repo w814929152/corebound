@@ -67,6 +67,9 @@ static func snap(p) -> Dictionary:
 			bool(t.disabled), float(t.hp), float(t.hp_max),
 			float(t.revive_t_disabled), int(t.revive_used_w), int(t.revived_ever),
 			bool(t.death_exposed), bool(t.death_carry), bool(t.death_valid)])
+		# Player range state must survive shop previews that rebuild the tower objects.
+		if t.range_merges != 0 or t.range_facing != 0.0:
+			ts[-1].append_array([t.range_merges, t.range_facing])
 	return {
 		"towers": ts,
 		"cards": p.cards.duplicate(),
@@ -94,6 +97,9 @@ static func rest(p, s: Dictionary) -> void:
 			t.death_exposed = bool(row[10])
 			t.death_carry = bool(row[11])
 			t.death_valid = bool(row[12])
+		if row.size() >= 15:
+			t.range_merges = int(row[13])
+			t.range_facing = float(row[14])
 		ts.append(t)
 	p.towers = ts
 	p.cards = s["cards"].duplicate()

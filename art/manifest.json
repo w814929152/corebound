@@ -1735,6 +1735,13 @@
    ]
   },
   {
+   "file": "sprites/sp_tower_arcbeacon_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
    "file": "sprites/sp_tower_arrow_v1.png",
    "size": [
     128,
@@ -2114,6 +2121,13 @@
   },
   {
    "file": "sprites/sp_tower_quake_v1.png",
+   "size": [
+    128,
+    128
+   ]
+  },
+  {
+   "file": "sprites/sp_tower_rangebeacon_v1.png",
    "size": [
     128,
     128

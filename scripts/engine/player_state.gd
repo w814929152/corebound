@@ -11,6 +11,8 @@ class TowerState extends RefCounted:
 	var slot: int = 0
 	var ctype: String = ""
 	var h: int = 0                 # 建筑卡层数 h_i
+	var range_merges: int = 0
+	var range_facing: float = 0.0
 	var attach: Dictionary = {}    # {强化卡名: 层数} → L_i = Σ 层数
 	## 🔒 T1 占位（设计文档 mechanics-tower-life-death §0 / §4.3 交接点③）：
 	##   塔死亡（进入 Disabled 中间态）时对 7 乘区管线的**唯一落点**。

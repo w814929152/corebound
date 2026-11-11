@@ -101,7 +101,7 @@ const REGION_ORDER: Array = ["cinder", "rime", "pierce", "arc", "sunder", "hex",
 const PACKS: Array = [
 	{
 		"id": "core", "name": "泛用包", "tag_line": "泛用输出 · 赏金 · 类型转换",
-		"cards": ["Foundry", "Arrow", "Cannon", "Frost", "Scout", "Kinetic", "Ranger", "Sentry", "Catapult", "Harrier", "Scrapcannon"],
+		"cards": ["Foundry", "Arrow", "Cannon", "Frost", "Scout", "Kinetic", "Ranger", "Sentry", "Catapult", "Harrier", "Scrapcannon", "Arcbeacon", "Rangebeacon"],
 		"unlock_wave": 0,
 	},
 	{
@@ -381,7 +381,8 @@ static func validate() -> Array:
 			errs.append("存在缺 id 的卡包")
 			continue
 		var cards: Array = p.get("cards", [])
-		var expected := CARDS_PER_PACK + (1 if pid in ["core", "cinder", "rime"] else 0)
+		var extra_cards: int = {"core": 3, "cinder": 1, "rime": 1}.get(pid, 0)
+		var expected := CARDS_PER_PACK + extra_cards
 		if cards.size() != expected:
 			errs.append("卡包 %s 张数 = %d（应为 %d）" % [pid, cards.size(), expected])
 		var uw := int(p.get("unlock_wave", 0))
