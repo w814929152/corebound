@@ -62,7 +62,9 @@ const SLOT_SIZE := Vector2(210.0, 340.0)       # 🔴 三个位完全一致（X3
 ## 描述块行数（恒 3 行 → 三个位等高同构）；
 ## 16px 字号实测行高 25px（Godot 默认字体 ascent+descent），3 行 = 75px。
 const DESC_LINES := 3            # 数据源 describe() 恒 3 行（文案 SSOT，勿改）
-const CARD_DESC_LINES := 2      # 🆕 卡面只展示前 2 行（实装说明：摘要最多两行）
+## 🆕 2026-11-11（用户）：卡面保留**一行**基础信息（「远程单体」「经济：每波产废料」这类），
+##    完整机制与数值走悬停浮卡。行数常量同时是断言口径。
+const CARD_DESC_LINES := 1
 const CARD_DESC_LINE_H := 20.0  # 14px 字号的行高（含 line_spacing 2）
 
 ## 顶部数值区（原为一行超长拼接串，改为 3 列网格 → 可扫读）
@@ -503,6 +505,10 @@ func _make_slot(_i: int) -> PanelContainer:
 	desc.add_theme_constant_override("line_spacing", -4)
 	desc.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	desc.clip_text = false
+	# 🆕 2026-11-11（用户）：卡面保留**一行**基础信息（「远程单体」「经济：每波产废料」这类），
+	#    完整机制与数值走悬停浮卡（`card_hover`：describe 三行 + details）。
+	#    框高仍按两行预留，只显示首行并顶对齐，避免单行被垂直居中压到框底。
+	desc.vertical_alignment = VERTICAL_ALIGNMENT_TOP
 	_slot_desc.append(desc)
 
 	# 2d 顶部辅助：锁头（左上角）/ 费用胶囊（右上）/ 买不起时的 ✗
@@ -950,7 +956,9 @@ func _process(delta: float) -> void:
 				var info := "价格：%.0f 废料" % controller.runtime.price_at(i)
 				if _slot_note[i].text != "":
 					info += "\n" + _slot_note[i].text
-				_hover.show_card(nm, card.get_global_rect(), info)
+				# 🆕 2026-11-11：卡面精简后详情全在悬停 —— 浮卡改实心面板并挂在卡下方，
+				#    避免压在左侧核心 HP / 废料读数上。
+				_hover.show_card(nm, card.get_global_rect(), info, false, true)
 				return
 	_hover.clear()
 	_set_hovered_slot(-1)

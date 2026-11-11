@@ -46,6 +46,7 @@ const PAGE_LIBRARY := 1
 const PAGE_MONSTERS := 2
 const _MonsterLibrary := preload("res://scripts/ui/monster_library.gd")
 const _CardFace := preload("res://scripts/ui/card_face.gd")
+const _CardHover := preload("res://scripts/ui/card_hover.gd")
 
 ## 图鉴单卡尺寸 = v3.2 竖版卡面（`card_face.SIZE`）。7 张一行：
 ##   7 × 210 + 6 × 12 = 1542 ≤ 1648（1920 − 2×72 边距 − 滚动条余量）。
@@ -72,6 +73,10 @@ var _status: Label = null
 
 var _lib_head: Label = null
 var _lib_scroll: ScrollContainer = null
+## 🆕 2026-11-11 图鉴悬停详情（卡面精简后，完整文本只在这里）。
+var _hover: CanvasLayer = null
+var _hover_card := ""
+var _hover_t := 0.0
 var _lib_list: VBoxContainer = null
 var _back_btn: Button = null
 var _pack_blocks: Array = []       # Array[Dictionary]：{id, status, cards}
@@ -140,6 +145,47 @@ func _build() -> void:
 	_monster_page.back_requested.connect(back_to_menu)
 	_monster_page.visible = false
 	_refresh_focus()
+
+	# 🆕 2026-11-11：图鉴悬停详情（卡面精简后，机制/数值全在这里）。
+	#    菜单层是 CanvasLayer 200，浮卡要压在上面 → 单独抬到 260。
+	_hover = _CardHover.new()
+	add_child(_hover)
+	_hover.layer = LAYER + 60
+	_hover.set_solid(true)
+
+
+## 图鉴悬停：指针停在卡片上 0.35s 后弹出详情（与商店同一套 `card_hover`）。
+func _process(delta: float) -> void:
+	if _hover == null:
+		return
+	if _page != PAGE_LIBRARY or _library_page == null or not _library_page.visible:
+		if _hover_card != "":
+			_hover.clear()
+			_hover_card = ""
+			_hover_t = 0.0
+		return
+	var mouse: Vector2 = get_viewport().get_mouse_position()
+	var hit := ""
+	var hit_rect := Rect2()
+	for e in _card_entries:
+		var pc: Control = (e as Dictionary)["panel"]
+		if is_instance_valid(pc) and pc.is_visible_in_tree() and pc.get_global_rect().has_point(mouse):
+			hit = String((e as Dictionary)["card"])
+			hit_rect = pc.get_global_rect()
+			break
+	if hit == "":
+		if _hover_card != "":
+			_hover.clear()
+			_hover_card = ""
+			_hover_t = 0.0
+		return
+	if hit != _hover_card:
+		_hover.clear()
+		_hover_card = hit
+		_hover_t = 0.0
+	_hover_t += delta
+	if _hover_t >= 0.35:
+		_hover.show_card(hit, hit_rect, "", false, true)
 
 
 # --- 页 1：主菜单 -----------------------------------------------------------

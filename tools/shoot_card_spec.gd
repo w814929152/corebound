@@ -10,6 +10,7 @@ const Space := preload("res://scripts/geo/space_model.gd")
 
 var frame := 0
 var scene: Node
+var _menu: Node
 
 
 func _initialize() -> void:
@@ -39,6 +40,19 @@ func _process(_delta: float) -> bool:
 		shop._pointer = shop._slots[0].get_global_rect().get_center()
 	if frame == 150:
 		_shot("cards-spec-hover.png")
+	if frame == 152:
+		scene.queue_free()
+	if frame == 160:
+		_menu = load("res://scripts/ui/main_menu_overlay.gd").new()
+		root.add_child(_menu)
+		_menu.open()
+		_menu.show_library()
+	if frame == 180:
+		var e: Dictionary = _menu._card_entries[0]
+		_menu._hover.show_card(String(e["card"]), (e["panel"] as Control).get_global_rect(),
+			"", false, true)
+	if frame == 200:
+		_shot("cards-gallery-hover.png")
 		return true
 	return false
 

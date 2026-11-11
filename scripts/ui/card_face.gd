@@ -15,7 +15,7 @@ const CardText := preload("res://scripts/data/card_text.gd")
 
 const SIZE := Vector2(210.0, 340.0)
 const FRAME_DIR := "res://art/2d/ui/"
-const DESC_LINES := 2
+const DESC_LINES := 1   # 牌面只留一行基础信息（「远程单体」这类），完整文本在悬停浮卡
 
 ## 与 shop_overlay 同值（信息区米白 / 卡名近黑 / 摘要柔黑）。
 const C_CREAM := Color(0.980, 0.933, 0.882, 1.0)
@@ -96,6 +96,9 @@ static func build(nm: String) -> Control:
 	var desc := _label(root, shown, 14, C_DESC, 12.0, 286.0, 186.0, 42.0, "body")
 	desc.add_theme_constant_override("line_spacing", -4)
 	desc.set_meta("card_face_small", true)
+	# 🆕 2026-11-11（用户）：牌面保留**一行**基础信息（「远程单体」「经济：每波产废料」这类），
+	#    完整机制与数值由悬停浮卡承担；框仍按两行预留，只显示首行并顶对齐。
+	desc.vertical_alignment = VERTICAL_ALIGNMENT_TOP
 	root.set_meta("desc_label", desc)
 	return root
 

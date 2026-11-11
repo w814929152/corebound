@@ -13,6 +13,7 @@ extends SceneTree
 ##
 const Shop := preload("res://scripts/ui/shop_overlay.gd")
 const Text := preload("res://scripts/data/card_text.gd")
+const Hover := preload("res://scripts/ui/card_hover.gd")
 
 var checks := 0
 var failures := 0
@@ -83,22 +84,20 @@ func run() -> void:
 	check(desc_px >= 13 and desc_px <= 14, "效果摘要 13–14px（实测 %d）" % desc_px)
 	check(price_px >= 22 and price_px <= 24, "费用数字 22–24px（实测 %d）" % price_px)
 
-	# ---- 4. 摘要最多两行：卡面只取 describe() 前两行，且预留高度容得下两行 ----
-	check(Shop.CARD_DESC_LINES == 2, "卡面摘要行数上限 = 2（实测 %d）" % Shop.CARD_DESC_LINES)
+	# ---- 4. 摘要只留一行基础信息（「远程单体」这类），完整文本在悬停 ----
+	check(Shop.CARD_DESC_LINES == 1, "卡面基础信息行数 = 1（实测 %d）" % Shop.CARD_DESC_LINES)
+	check(desc_l.visible, "卡面显示一行基础信息（不是整块隐藏）")
+	check(not String(desc_l.text).contains("\n"), "卡面只显示首行（实测「%s」）" % String(desc_l.text))
 	var line_h := float(desc_px) * 1.2 + 2.0   # 14px 行高约 19，+line_spacing 2
-	check(desc_l.custom_minimum_size.y >= line_h * 2.0 - 1.0,
-		"摘要预留高度 ≥ 两行（%.0f ≥ %.0f）" % [desc_l.custom_minimum_size.y, line_h * 2.0])
-	var overflow: Array = []
-	var two_line := 0
+	check(desc_l.custom_minimum_size.y >= line_h,
+		"摘要框容得下一行（%.0f ≥ %.0f）" % [desc_l.custom_minimum_size.y, line_h])
+	var empty_first: Array = []
 	for nm in ["Arrow", "Cannon", "Frost", "Tesla", "Lance", "Foundry", "Glacier", "Furnace"]:
 		var lines: PackedStringArray = String(Text.describe(nm)).split("\n")
-		var shown := mini(Shop.CARD_DESC_LINES, lines.size())
-		if shown > 2:
-			overflow.append(nm)
-		if shown == 2:
-			two_line += 1
-	check(overflow.is_empty(), "所有卡面摘要 ≤ 2 行%s" % ("" if overflow.is_empty() else " → " + str(overflow)))
-	check(two_line >= 6, "两行摘要实际生效（%d/8 张卡展到第二行）" % two_line)
+		if lines.is_empty() or String(lines[0]).strip_edges() == "":
+			empty_first.append(nm)
+	check(empty_first.is_empty(), "每张卡都有可读的首行基础信息%s" % (
+		"" if empty_first.is_empty() else " → " + str(empty_first)))
 
 	# ---- 5. 锁定入口在左上角 / 费用角标在右上 ----
 	var lock: Control = shop._slot_lock[0]
@@ -114,6 +113,18 @@ func run() -> void:
 	if plate_ok:
 		var plate: Texture2D = load("res://art/2d/ui/ui_card_plate_v3.png")
 		check(plate.get_size() == Vector2(420, 680), "卡框底板为 2x（420×680），逻辑 210×340")
+
+	# ---- 7. 牌面一行基础信息 + 悬停详情（2026-11-11 用户口径）----
+	#    牌面保留「远程单体」这类首行；完整机制与数值在悬停浮卡（`card_hover`）。
+	var hover: CanvasLayer = Hover.new()
+	root.add_child(hover)
+	hover.show_card("Arrow", Rect2(0, 0, 210, 340), "价格：12 废料", false, true)
+	var htxt := String(hover.body.text)
+	check(hover.panel.visible, "悬停浮卡可见（0.4s 触发后）")
+	check(htxt.contains("单体") and htxt.contains("伤害 8"), "悬停正文含完整机制与数值")
+	check(htxt.contains("12 废料"), "悬停正文含商店上下文（价格）")
+	check(htxt.count("单体，无附加") == 1, "describe 与 details 相同的卡不重复渲染正文")
+	hover.free()
 
 	print("卡面实装断言：%d 项，失败 %d 项" % [checks, failures])
 	shop.free()

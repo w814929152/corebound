@@ -111,3 +111,24 @@
 - 字号断言：`run_ui_style_asserts` 为主界面标签加 `card_face_small` 豁免（与商店卡面同一例外），
   并单独判 13–14px —— **汇总 148 项 / 0 失败**。
 - 实机截图：`art/_review/ui_all/02_library.png`（`tools/shoot_ui_all.gd` 全页截帧）。
+
+## 8. 牌面精简 + 悬停详情（v3.3 · 同日 12:5x · 大肥鱼）
+
+用户口径：**牌面精简，保留一行基础信息，详细文本改由鼠标悬停展示**。
+
+- **牌面**（商店三卡 + 图鉴全卡）：`插画 + 卡名 28 + 类型条 + 一行基础信息`
+  （「远程单体」「经济：每波产废料」这类 `describe()` 首行，14px 顶对齐；商店另有价格/锁头）。
+  完整机制与数值不再占牌面，走悬停浮卡。
+- **悬停浮卡**（`scripts/ui/card_hover.gd`）：
+  - 正文 = `describe()` 全 3 行（机制 / 数值 / 标记）+ `details()` 补充说明；
+    两者逐字相同的卡（如 Arrow）不重复渲染；商店再追加「价格：N 废料」与商品位备注。
+  - 类型行口径与牌面一致：无 Tag 的卡显示「建筑卡 · 常规」，不再出现「· 无」。
+  - 浮卡改为**深色实心面板**（左缘 4px 稀有度色条、无整圈描边）——卡面精简后详情是主信息层，
+    纯文字描边叠在战场/HUD 上读不清；`set_solid(false)` 可退回「仅文字」口径。
+  - 触发：商店沿用 0.4s 悬停；图鉴新接 0.35s（`main_menu_overlay._process`，指针离开即收起），
+    浮卡挂在卡片下方并做视口夹取。
+- **断言**：`run_card_spec_asserts` 增 5 项（只显示一行基础信息 / 浮卡可见 /
+  含完整机制与数值 / 含商店价格上下文 / describe 与 details 相同不重复）→ **25 项 0 失败**；
+  `run_ui_style_asserts` 148/0、`shop_overlay`、`shop_interaction` 均 exit 0。
+- 截图：`art/_review/card-hover-shop.png`、`art/_review/card-hover-gallery.png`
+  （出图工具 `tools/shoot_card_spec.gd`，悬停用「指针钉在卡片上」模拟）。
