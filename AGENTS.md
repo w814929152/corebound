@@ -14,7 +14,12 @@
 3. **一律 `preload`，不写 `class_name`**：`--headless --script` 没有 `global_script_class_cache`；
    `--script` 指向的文件必须 `extends SceneTree` / `MainLoop`。
 4. **浮点**：整数指数走 `FpPow.pow_int()`，移植 Python `sum()` 走 `FpSum.sum_py()`。
-5. **提交前必须**：`run_tests.gd` 退出码 0（现在默认包含 `world`，约 4 分钟）。
+5. **提交前按改动范围验证**：
+   - 文档改动检查内容、链接和差异即可。
+   - 图片等资源替换运行 Godot `--import`，并确认受影响的游戏界面或场景加载并显示正确。
+   - 局部 UI 或资源加载改动运行对应专项，覆盖受影响的入口和交互；涉及贴图时同时验证导入与显示。
+   - 涉及玩法、数值、模拟、存档、跨模块行为，或专项无法覆盖影响范围时，运行默认 `run_tests.gd`，要求退出码 0（含 `world`）。
+   - 用户明确要求的检查照常执行。在提交说明或交接中记录实际运行的验证与结果。
 
 ## 环境
 
