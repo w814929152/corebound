@@ -40,7 +40,16 @@ GODOT="C:/Program Files (x86)/Steam/steamapps/common/Godot Engine/godot.windows.
 "$GODOT" --path .                                                            # 窗口试玩
 ```
 
-## 当前状态（2026-11-10，详见 handoff-2026-11-10-gameplay.md）
+## 当前状态（2026-11-12 快照，详见 handoff-2026-11-12-progress.md）
+
+- **2026-11-12 快照**：HEAD `9f2d969` 与 `origin/master` 一致，**无待推送提交**；工作区无已跟踪改动，
+  只剩未跟踪试稿（`output/`、`art/_review`、`art/2d/sprites_ai_v3`、AI 工具、`.appdata`），按约定不入库。
+  本轮实跑默认回归 **exit 0**、`world` **14/14 PASS**（含 `stage_exit`、`card_spec`）、`towersprites` **85/85 PASS**。
+  ⚠️ 本机 SSH 22 端口被代理拦截（`kex_exchange_identification`），推送 / 拉取走 HTTPS：
+  `git push https://github.com/w814929152/corebound.git HEAD:master`。
+- 2026-11-11 晚新增：熔币重炮（每发耗废料）、扇形射程 + 可叠加射程光环（展域塔 +10°/层、延程塔 +2 射程/层，
+  光环半径 8）、背包完整展示卡面；卡面 v3.2 / v3.3（精简牌面 + 悬停浮卡）见 `handoff-2026-11-11-card-spec.md`。
+  塔原型与贴图已达 **85**（`TOWERS`(3) + `TOWERS_EXT`(82)）。
 
 - 卡面 v3.2（210×340 卡槽 / 插画 ≈70% / 信息区 ≈30% / 卡名 28 · 类型与摘要 14 / 锁左上 · 费用右上）+ 主菜单「怪物图鉴」+ 移除 `1/2/3` 快捷购买（购买只走点击整卡，焦点位随鼠标悬停）：见 `docs/phase6/handoff-2026-11-11-card-spec.md`、`monster-library.md`。默认全量回归 exit 0，`card_spec` 专项（20 项）已进默认回归。**卡组图鉴同步改用同一套竖版卡面**（`scripts/ui/card_face.gd`，7 列网格）。**牌面已精简为「插画 + 卡名 + 类型条 + 一行基础信息」**（如「远程单体」，商店另含价格/锁头），完整机制与数值改由**悬停浮卡**展示（`card_hover.gd` 深色实心面板，商店 0.4s / 图鉴 0.35s 触发）。⚠️ 卡面 14px 是 §9.1「玩家可见文本 ≥16px」的唯一例外，**待拍板**。
 
@@ -60,7 +69,7 @@ GODOT="C:/Program Files (x86)/Steam/steamapps/common/Godot Engine/godot.windows.
 - 🔴 **已知红**：`attrition8` 的 `T-D′`（0.150）/ `T-A1`（0.0600 vs 0.12）/ `T-A2`（0.0845 vs 0.30）。
   二分定位见 `docs/phase3/qg-radial/attrition8-drift-2026-11-10.md`：断点在**卡池扩容**（`1ef5487` → `c1e4c72`，48/80 张卡），
   非「数值再平衡漂移」（`cdf4fc1` 前后读数逐位相同）；**阈值未下调**，待平衡拍板（重标定 or 基准卡池）。
-- 塔身现行产线 = `tools/gen_tower_sprites_v2.py`：`TOWERS`(3) + `TOWERS_EXT`(79) = **82 个原型 ↔ 82 张 128² 贴图**；
+- 塔身现行产线 = `tools/gen_tower_sprites_v2.py`：`TOWERS`(3) + `TOWERS_EXT`(82) = **85 个原型 ↔ 85 张 128² 贴图**；
   新增原型必须重跑生成器 + `--import`。`art/manifest.json` 的 HEAD 格式是 **`indent=1` + 末尾无换行**，别改缩进。
 - 玩家路线口径：商店只卖建筑卡（`EFFECT_CARDS_ENABLED=false`）、开局无起手塔 + 30 废料。
 - `build/windows/Corebound.exe` 是 2026-11-09 14:24 旧包，**不含**地形/结构攻防，也不含新塔贴图。
@@ -72,7 +81,8 @@ GODOT="C:/Program Files (x86)/Steam/steamapps/common/Godot Engine/godot.windows.
 3. 窗口试玩中文界面、退出确认与 200% 近景。
 4. 数值表稳定后全量重跑塔贴图生成器并刷新预览（当前总览是 81 张快照）。
 5. 决定 AI 版是否落地；用 Steam 版 Godot 重导出 Windows 包。
-6. 推送本地提交（需用户明确要求；领先数量以 Git 为准）。
+6. 推送：2026-11-12 已与 origin 同步（HEAD `9f2d969`）；本机 SSH 22 被代理拦截，推送走
+   `git push https://github.com/w814929152/corebound.git HEAD:master`。
 
 ## 关键文件
 
@@ -86,4 +96,4 @@ GODOT="C:/Program Files (x86)/Steam/steamapps/common/Godot Engine/godot.windows.
 | 开局废料 | `scripts/engine/mvp_config.gd`（`PLAYER_STARTING_SCRAP`） |
 | 默认回归 + world | `tests/run_tests.gd`（`WORLD_GATES`） |
 | 塔身贴图产线 / 守卫 | `tools/gen_tower_sprites_v2.py`、`tests/lint_tower_sprites.gd` |
-| 最新功能交接 | `docs/phase6/handoff-2026-11-10-gameplay.md`；旧文 `handoff-2026-11-09.md` 保留龙娘回执，勿覆盖 |
+| 最新功能交接 | `docs/phase6/handoff-2026-11-12-progress.md`（进度快照）；功能细节 `handoff-2026-11-11-card-spec.md`、`handoff-2026-11-10-gameplay.md`；旧文 `handoff-2026-11-09.md` 保留龙娘回执，勿覆盖 |
