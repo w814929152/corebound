@@ -58,6 +58,7 @@ const TestSuiteCampaign := preload("res://tests/run_campaign_asserts.gd")
 const TestSuiteIcehunter := preload("res://tests/run_icehunter_asserts.gd")
 const TestSuiteFrost := preload("res://tests/run_frost_asserts.gd")
 const TestSuiteFireCharge := preload("res://tests/run_fire_charge_asserts.gd")
+const TestSuiteScrapcannon := preload("res://tests/run_scrapcannon_asserts.gd")
 const TestSuiteCombatTypes := preload("res://tests/run_combat_types_asserts.gd")
 const TestSuiteStageWaves := preload("res://tests/run_stage_waves_asserts.gd")
 const TestSuiteTowerSprites := preload("res://tests/lint_tower_sprites.gd")
@@ -178,7 +179,7 @@ func _initialize() -> void:
 				or a == "repair8" or a == "aggro_golive" or a == "tutorial"
 				or a == "extpack" or a == "uistyle" or a == "tlv"
 				or a == "cardpack" or a == "campaign" or a == "combat_types"
-				or a == "stagewaves" or a == "firecharge" or a == "frost"
+				or a == "stagewaves" or a == "firecharge" or a == "scrapcannon" or a == "frost"
 				or a == "towersprites" or a == "world"):
 			only = a
 
@@ -248,6 +249,8 @@ func _initialize() -> void:
 		ok = _run_suite(TestSuiteFrost) and ok
 	if only == "" or only == "firecharge":
 		ok = _run_suite(TestSuiteFireCharge) and ok
+	if only == "" or only == "scrapcannon":
+		ok = _run_suite(TestSuiteScrapcannon) and ok
 	if only == "" or only == "combat_types":
 		ok = _run_suite(TestSuiteCombatTypes) and ok
 	# 🆕 关卡波表（2026-11-08）：波型串 / 守恒律 / S 加压 / 精英 / 三原型 / 导演接线

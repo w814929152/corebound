@@ -136,6 +136,7 @@ HERO = {
     "Scout":      ("arrow_cluster", 5, 3, 0, 0, 1),
     "Ballista":   ("twin_barrel",   2, 5, 0, 0, 1),
     "Catapult":   ("heavy_gun",     1, 4, 0, 0, 2),
+    "Scrapcannon": ("heavy_gun",    1, 9, 0, 0, 2),
     "Bastion":    ("heavy_gun",     8, 8, 1, 0, 2),
     "Wraith":     ("void_core",     6, 12, 2, 6, 2),
 }
@@ -246,7 +247,8 @@ def build_dna(towers: list[tuple[str, str]]) -> list[dict]:
     for name, tag in towers:
         by_tag[tag].append(name)
     for t in by_tag:
-        by_tag[t].sort()
+        # Keep established sprite indices when adding the paid cannon.
+        by_tag[t].sort(key=lambda name: (name == "Scrapcannon", name))
 
     dna = []
     for name, tag in towers:

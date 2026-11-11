@@ -22,7 +22,7 @@
 ##
 ## 🔴 卡池稀释（实测依据，见 keyword-adaptation §0/§7.4）：
 ##   池 7→10 张（+43% 零效果白板）实测 A −8.0pp / B −11.0pp，pity 只是止损阀不是扩容许可。
-##   每局池 = 所选 3 包共 30 张；熔炉包和霜序包各额外增加 1 张（最多 32 张）。
+##   每局池 = 所选 3 包共 30 张；泛用包、熔炉包、霜序包各额外增加 1 张（最多 33 张）。
 ##
 ## 🔴 数据边界（control-manifest §5）：数值只在 `tower_data.gd` / `shop_ai.gd` 定义一次。
 ##   本文件只回答「谁和谁一包」「几包可用」「几波解锁」，**不写任何数值**；
@@ -49,7 +49,7 @@ const _CampaignData := preload("res://scripts/data/campaign_data.gd")
 ## 🔴 每局可携带的卡包数：3 包 × 10 张**建筑** = **30 张卡**（一卡一包，无需去重）。
 const PICKS_PER_RUN := 3
 
-## 卡包基础张数；熔炉包和霜序包各额外收录一座专属塔，共 11 张。UI 按实际卡池计数。
+## 卡包基础张数；泛用包、熔炉包和霜序包各额外收录一座塔。UI 按实际卡池计数。
 ##   🔴 10 = 80 张卡 ÷ 8 包 的结果，见 `PACKS` 上方注释。
 const CARDS_PER_PACK := 10
 
@@ -101,7 +101,7 @@ const REGION_ORDER: Array = ["cinder", "rime", "pierce", "arc", "sunder", "hex",
 const PACKS: Array = [
 	{
 		"id": "core", "name": "泛用包", "tag_line": "泛用输出 · 赏金 · 类型转换",
-		"cards": ["Foundry", "Arrow", "Cannon", "Frost", "Scout", "Kinetic", "Ranger", "Sentry", "Catapult", "Harrier"],
+		"cards": ["Foundry", "Arrow", "Cannon", "Frost", "Scout", "Kinetic", "Ranger", "Sentry", "Catapult", "Harrier", "Scrapcannon"],
 		"unlock_wave": 0,
 	},
 	{
@@ -381,7 +381,7 @@ static func validate() -> Array:
 			errs.append("存在缺 id 的卡包")
 			continue
 		var cards: Array = p.get("cards", [])
-		var expected := CARDS_PER_PACK + (1 if pid in ["cinder", "rime"] else 0)
+		var expected := CARDS_PER_PACK + (1 if pid in ["core", "cinder", "rime"] else 0)
 		if cards.size() != expected:
 			errs.append("卡包 %s 张数 = %d（应为 %d）" % [pid, cards.size(), expected])
 		var uw := int(p.get("unlock_wave", 0))

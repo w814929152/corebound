@@ -13,7 +13,7 @@ extends Node2D
 ##
 ## 🔴 分层纪律（control-manifest §5 / spec §C.4 —— 本层全文适用）：
 ##   · 只读 `WaveDirector.snapshot()` / `controller.runtime.snapshot()`；
-##   · **零玩法写入、零新信号**（唯一 gameplay 触碰 = R1 一行只读键 `index`，见 `wave_director.snapshot()`）；
+##   · **零玩法写入**；付费弹道订阅实际开火事件。
 ##   · 订阅既有 `monster_killed(m)`（**单向**通知）做击杀反馈 —— 与 `monster_layer` 订阅
 ##     `tower_revived` 同性质，🈚 任何反向路径；
 ##   · **不引入任何随机** —— 碎片方向 = 确定性黄金角 + 查表（不消费 RNG，帧间稳定）；
@@ -125,6 +125,13 @@ func bind_director(d: Node) -> void:
 	if not d.is_connected("monster_killed", _on_monster_killed):
 		d.monster_killed.connect(_on_monster_killed)
 	queue_redraw()
+	if not d.is_connected("scrap_shot", _on_scrap_shot):
+		d.scrap_shot.connect(_on_scrap_shot)
+
+
+func _on_scrap_shot(slot: int, origin: Vector2, target: Vector2, target_index: int) -> void:
+	if _bolts.size() < VFX_MAX_BOLTS:
+		_spawn_bolt(slot, origin, target, target_index)
 
 
 func bind_time_director(d: Node) -> void:
@@ -518,6 +525,8 @@ func _update_bolts(dt: float) -> void:
 		if _TowerData.tower_dps(String(tw.get("ctype", "Arrow"))) <= 0.0:
 			continue
 		var slot := int(tw.get("slot", -1))
+		if _TowerData.tower_shot_scrap(String(tw.get("ctype", "Arrow"))) > 0:
+			continue
 		if slot < 0 or slot >= slot_pos.size():
 			continue
 		var target := front2

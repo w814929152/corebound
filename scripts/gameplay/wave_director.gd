@@ -92,6 +92,7 @@ signal wave_result(w: int, result: Dictionary)   # 实时结算（本波结束�
 signal monster_spawned(m)                        # I-3 的运行时侧（渲染层订阅）
 signal monster_killed(m)
 signal monster_leaked(m)                         # → Core.hp -= 50
+signal scrap_shot(slot: int, origin: Vector2, target: Vector2, target_index: int)
 ## 🔒 T1（Q-T4 = ① 已定稿）：塔被仇恨打死 → 进入 Disabled 中间态（断输出不断链）。
 ##   携带塔位 slot。渲染层订阅做「塔体损伤演出」（T-C2 余光编码，不做数字条）。
 signal tower_destroyed(slot: int)
@@ -192,6 +193,7 @@ var minions: Array = []
 var _fire_charge: Dictionary = {}
 var _fire_attack_clock: Dictionary = {}
 var _fire_blasts: Array = []
+var _scrap_shot_cooldown: Dictionary = {}
 var _frost_attack_clock: Dictionary = {}
 var _ice_storms: Array = []
 var _ice_storm_queue: Array = []
@@ -389,6 +391,7 @@ func start_wave(p_w: int) -> void:
 	_fire_attack_clock.clear()
 	_fire_blasts.clear()
 	_frost_attack_clock.clear()
+	_scrap_shot_cooldown.clear()
 	_ice_storms.clear()
 	_ice_storm_queue.clear()
 	_resolving_ice_storms = false

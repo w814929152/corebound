@@ -35,6 +35,8 @@ const TOWERS := {
 ##      与**贴身轴**（Tesla：最近最弱，换 aoe + 微减速）。
 ##      新塔各带**独立 tag** ⇒ 天然形成新构筑流派，而不是旧卡的上位替代。
 const TOWERS_EXT := {
+	"Scrapcannon": {"dps": 36.0, "attack_speed": 0.50, "tag": "", "aoe": false, "slow": 0.0, "rng": 26.0,
+		"shot_scrap": 2},
 	"Icehunter": {"dps": 7.0, "attack_speed": 0.80, "tag": "frost", "aoe": false, "slow": 0.0, "rng": 22.0, "hunt_frozen": true},
 	# 焚星塔：只由全场火焰十层引爆事件充能，不参与自动攻击。
 	"Pyroclasm": {"dps": 0.0, "tag": "fire", "aoe": true, "slow": 0.0, "rng": 28.0,

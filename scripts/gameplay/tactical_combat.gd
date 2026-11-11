@@ -26,6 +26,10 @@ static func apply(wd, dt: float) -> void:
 	var global_mult := float(info.get("aoe", 1.0)) * float(info.get("crossfire", 1.0)) \
 		* float(info.get("aux", 1.0)) * float(info.get("empower", 1.0)) * float(info.get("debuff_mult", 1.0))
 	wd.dps = float(result.get("total", 0.0))
+	var speed_bonus := 0.0
+	for source in wd.player.towers:
+		speed_bonus += TD.tower_buff_aspd(String(source.ctype))
+	speed_bonus = minf(speed_bonus, 0.6)
 	for i in range(mini(rows.size(), wd.player.towers.size())):
 		var tower = wd.player.towers[i]
 		var slot := int(tower.slot)
@@ -37,9 +41,20 @@ static func apply(wd, dt: float) -> void:
 		var row: Dictionary = rows[i]
 		# Coverage 原来是平均在射程内的时间比例。真实判距后移除该折扣，避免重复扣覆盖。
 		var cov := float(row.get("cov", 0.0))
-		var budget := float(row.get("dps", 0.0)) / cov * global_mult * dt if cov > 0.0 else 0.0
+		var output := float(row.get("dps", 0.0)) / cov * global_mult if cov > 0.0 else 0.0
+		var budget := output * dt
 		var kind := String(row.get("dmg_type", CT.PHYSICAL))
 		var reduction: float = float(wd._phys_reduct) if kind == CT.PHYSICAL else float(wd._magic_reduct)
+		var shot_cost := TD.tower_shot_scrap(name)
+		if shot_cost > 0:
+			var cooldown := maxf(0.0, float(wd._scrap_shot_cooldown.get(slot, 0.0)) - dt)
+			var rate := TD.tower_attack_speed(name) * (1.0 + speed_bonus)
+			if cooldown <= 0.000001 and wd.runtime != null and float(wd.runtime.scrap) >= shot_cost:
+				if apply_in_range(wd, center, radius, output / rate, kind, reduction,
+						false, shot_cost, slot):
+					cooldown = 1.0 / rate
+			wd._scrap_shot_cooldown[slot] = cooldown
+			continue
 		apply_in_range(wd, center, radius, budget, kind, float(reduction),
 			bool(TD._tower_def(name).get("hunt_frozen", false)))
 		var dot := TD.tower_dot(name) * Effects.debuff_damage_mult(wd.player) * dt
@@ -49,7 +64,9 @@ static func apply(wd, dt: float) -> void:
 
 ## 怪物已按距核心的剩余时间稳定排序；伤害仅在本塔射程内结转，未使用伤害不储存。
 static func apply_in_range(wd, center: Vector2, radius: float, budget: float,
-		kind: String, reduction: float, hunt_frozen: bool = false) -> void:
+		kind: String, reduction: float, hunt_frozen: bool = false,
+		shot_cost: int = 0, slot: int = -1) -> bool:
+	var dealt_damage := false
 	var targets: Array = wd.monsters
 	if hunt_frozen:
 		targets = []
@@ -67,8 +84,15 @@ static func apply_in_range(wd, center: Vector2, radius: float, budget: float,
 			factor -= clampf(CT.effective_resist(String(m.proto), kind, reduction), 0.0, 1.0)
 		if factor <= 0.0:
 			continue
+		if shot_cost > 0:
+			wd.runtime.scrap -= shot_cost
+			wd.scrap_shot.emit(slot, center, m.pos(wd.v0_), int(m.index))
 		var hit := minf(float(m.hp), budget * factor)
 		m.hp = maxf(0.0, float(m.hp) - hit)
 		budget -= hit / factor
+		dealt_damage = true
 		if float(m.hp) <= 0.0:
 			wd._record_monster_kill(m)
+		if shot_cost > 0:
+			break
+	return dealt_damage

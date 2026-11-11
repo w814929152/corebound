@@ -175,7 +175,7 @@ func _test_a_table() -> void:
 			else:
 				seen_pack[s] = String(p["id"])
 	_ok("A6c 一张卡只属于一个包%s" % ("" if dup.is_empty() else " → " + str(dup)), dup.is_empty())
-	_eq_int("A6d 卡位总数 = 82 张", seen_pack.size(), 82)
+	_eq_int("A6d 卡位总数 = 83 张", seen_pack.size(), 83)
 	_ok("A7 不含 RerollD", not all.has("RerollD"))
 	# 塔与强化成对（每个包内至少有一座塔）
 	var bad_pairs: Array = []
@@ -325,10 +325,10 @@ func _test_d_pool() -> void:
 	# Each selected package contributes its ten unique buildings in stable pack order.
 	_eq_arr("D1 卡池顺序 = 包序 → 包内序（一卡一包，无需去重）",
 		names,
-		["Foundry", "Arrow", "Cannon", "Frost", "Scout", "Kinetic", "Ranger", "Sentry", "Catapult", "Harrier",
+		["Foundry", "Arrow", "Cannon", "Frost", "Scout", "Kinetic", "Ranger", "Sentry", "Catapult", "Harrier", "Scrapcannon",
 		 "Vanguard", "Ember", "Blaze", "Cinder", "Pyre", "Maul", "Furnace", "Wildfire", "Ashen", "Hellfire", "Pyroclasm",
 		 "Thunder", "Tesla", "Bolt", "Storm", "Arc", "Spark", "Coil", "Overcharge", "Thunderhead", "Circuit"])
-	_eq_int("D2 含熔炉包时卡池张数 = 31", names.size(), 31)
+	_eq_int("D2 含泛用包和熔炉包时卡池张数 = 32", names.size(), 32)
 	# 权重和 = 各卡权重之和（现查，不硬编码）
 	var want := 0.0
 	for nm in names:
@@ -338,7 +338,7 @@ func _test_d_pool() -> void:
 	# 换包必须立即生效（静态缓存清理）；顺序只跟包序走，不跟"点选顺序"走
 	_ShopRuntime.set_active_packs(["pierce", "arc", "core"])
 	_eq_arr("D7 换包后卡池立即变化（按包序）", _ShopRuntime.player_card_names(),
-		["Foundry", "Arrow", "Cannon", "Frost", "Scout", "Kinetic", "Ranger", "Sentry", "Catapult", "Harrier",
+		["Foundry", "Arrow", "Cannon", "Frost", "Scout", "Kinetic", "Ranger", "Sentry", "Catapult", "Harrier", "Scrapcannon",
 		 "Martyr", "Lance", "Javelin", "Ballista", "Sniper", "Arcane", "Longbow", "Needle", "Hemorrhage", "Impaler",
 		 "Thunder", "Tesla", "Bolt", "Storm", "Arc", "Spark", "Coil", "Overcharge", "Thunderhead", "Circuit"])
 	# 与扩展包开关同时开：卡包模式优先，扩展包不叠加（卡包表已含全部卡）
