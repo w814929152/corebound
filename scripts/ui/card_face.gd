@@ -16,6 +16,7 @@ const CardText := preload("res://scripts/data/card_text.gd")
 const SIZE := Vector2(210.0, 340.0)
 const FRAME_DIR := "res://art/2d/ui/"
 const DESC_LINES := 1   # 牌面只留一行基础信息（「远程单体」这类），完整文本在悬停浮卡
+static var _pack_badges: Dictionary = {}
 
 ## 与 shop_overlay 同值（信息区米白 / 卡名近黑 / 摘要柔黑）。
 const C_CREAM := Color(0.980, 0.933, 0.882, 1.0)
@@ -70,6 +71,7 @@ static func build(nm: String) -> Control:
 	var edge := _picture(root, "ui_card_edge_v3_%d.png" % clampi(int(row.get("bw", 2)), 1, 3),
 		0.0, 0.0, 210.0, 340.0)
 	edge.modulate = Style.rarity_color(rar)
+	add_pack_badge(root).texture = pack_badge_texture(nm)
 	_picture(root, "ui_card_badge_v3.png", 8.0, 268.0, 194.0, 20.0)
 
 	# ---- 3. 右上：图鉴没有价格，改放稀有度 ▲（描边保证压在插画上也读得出）----
@@ -83,12 +85,12 @@ static func build(nm: String) -> Control:
 	root.add_child(pips)
 
 	# ---- 4. 信息区：卡名 28 / 类型 14 / 摘要 14×2（→ 悬停/商店看完整 3 行）----
-	_label(root, CardText.display_name(nm), 28, C_BLACK, 12.0, 229.0, 186.0, 36.0, "display")
+	_label(root, CardText.display_name(nm), 28, C_BLACK, 12.0, 233.0, 186.0, 36.0, "display")
 	var tag := CardText.tag_of(nm)
 	# 类型条文案与商店卡面逐字同口径（`shop_overlay` L747–749）：有 Tag 用「建筑 · 火」，
 	# 通用卡用「建筑 · 常规」；图鉴没有购买语境，所以不写价格、也不写"种别"。
 	var tag_txt := "建筑 · 常规" if tag == "" else "建筑 · %s" % CardText.tag_cn(tag)
-	var tag_l := _label(root, tag_txt, 14, C_CREAM, 12.0, 265.0, 186.0, 20.0, "medium")
+	var tag_l := _label(root, tag_txt, 14, C_CREAM, 12.0, 267.0, 186.0, 20.0, "medium")
 	# 标记卡面小字（类型 / 摘要）：与商店卡面同一例外，供字号断言识别（§9.1 唯一豁免）。
 	tag_l.set_meta("card_face_small", true)
 	var lines: PackedStringArray = CardText.describe(nm).split("\n")
@@ -103,6 +105,20 @@ static func build(nm: String) -> Control:
 	return root
 
 
+static func add_pack_badge(parent: Control) -> TextureRect:
+	return _picture(parent, "", 80.5, 217.0, 49.0, 22.0)
+
+
+static func pack_badge_texture(card_name: String) -> Texture2D:
+	if card_name.is_empty():
+		return null
+	var pack_id := Style.card_pack_id(card_name)
+	if not _pack_badges.has(pack_id):
+		var path := FRAME_DIR + "ui_card_pack_%s.png" % pack_id
+		_pack_badges[pack_id] = load(path) if ResourceLoader.exists(path) else null
+	return _pack_badges[pack_id]
+
+
 static func _picture(parent: Control, file: String, x: float, y: float, w: float, h: float) -> TextureRect:
 	var t := TextureRect.new()
 	t.position = Vector2(x, y)
@@ -111,7 +127,7 @@ static func _picture(parent: Control, file: String, x: float, y: float, w: float
 	t.stretch_mode = TextureRect.STRETCH_SCALE
 	t.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var path := FRAME_DIR + file
-	if ResourceLoader.exists(path):
+	if not file.is_empty() and ResourceLoader.exists(path):
 		t.texture = load(path)
 	parent.add_child(t)
 	return t

@@ -82,7 +82,7 @@ func run() -> void:
 	check(name_px >= 26 and name_px <= 28, "卡名 26–28px（实测 %d）" % name_px)
 	check(tag_px >= 13 and tag_px <= 14, "类型标签 13–14px（实测 %d）" % tag_px)
 	check(desc_px >= 13 and desc_px <= 14, "效果摘要 13–14px（实测 %d）" % desc_px)
-	check(price_px >= 22 and price_px <= 24, "费用数字 22–24px（实测 %d）" % price_px)
+	check(price_px == 19, "费用数字 19px（实测 %d）" % price_px)
 
 	# ---- 4. 摘要只留一行基础信息（「远程单体」这类），完整文本在悬停 ----
 	check(Shop.CARD_DESC_LINES == 1, "卡面基础信息行数 = 1（实测 %d）" % Shop.CARD_DESC_LINES)
@@ -121,9 +121,9 @@ func run() -> void:
 	hover.show_card("Arrow", Rect2(0, 0, 210, 340), "价格：12 废料", false, true)
 	var htxt := String(hover.body.text)
 	check(hover.panel.visible, "悬停浮卡可见（0.4s 触发后）")
-	check(htxt.contains("单体") and htxt.contains("伤害 8"), "悬停正文含完整机制与数值")
+	check(htxt.contains("单个敌人") and htxt.contains("伤害 8"), "悬停正文含攻击描述与数值")
 	check(htxt.contains("12 废料"), "悬停正文含商店上下文（价格）")
-	check(htxt.count("单体，无附加") == 1, "describe 与 details 相同的卡不重复渲染正文")
+	check(htxt.count("向单个敌人射箭") == 1, "describe 与 details 相同的卡不重复渲染正文")
 	hover.free()
 
 	print("卡面实装断言：%d 项，失败 %d 项" % [checks, failures])

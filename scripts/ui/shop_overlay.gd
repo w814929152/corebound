@@ -35,6 +35,7 @@ const _TSM := preload("res://scripts/engine/time_state_machine.gd")
 const _ShopLayout := preload("res://scripts/ui/shop_layout.gd")
 const _Style := preload("res://scripts/ui/ui_style.gd")
 const _CardText := preload("res://scripts/data/card_text.gd")
+const _CardFace := preload("res://scripts/ui/card_face.gd")
 
 const SLOT_COUNT := 3        # 恒为 3（A4：保底不新增第 4 位）
 
@@ -91,6 +92,7 @@ var _slot_desc: Array = []    # 🆕 效果描述块（恒 3 行，`card_text.gd
 var _slot_note: Array = []
 var _slot_can_buy: Array = [] # 牌面购买可用状态
 var _slot_lock: Array = []
+var _slot_pack_badges: Array[TextureRect] = []
 var _stat_vals: Array = []    # Array[Label]
 var _budget_fill: Panel
 var _budget_label: Label
@@ -483,18 +485,19 @@ func _make_slot(_i: int) -> PanelContainer:
 	var edge := _picture(root, "ui_card_edge_v3_2.png", 0.0, 0.0, 210.0, 340.0)
 	edge.modulate = _Style.C_STEEL
 	_slot_edge.append(edge)
-	_picture(root, "ui_card_cost_v3.png", 146.0, 9.0, 55.0, 26.0)
+	_slot_pack_badges.append(_CardFace.add_pack_badge(root))
+	_picture(root, "ui_card_cost_v3.png", 146.0, 4.0, 60.0, 25.0)
 	# 🆕 v3.1：类型条改为 194×20（横线一直延伸到面板内边，对齐参考图）
 	_picture(root, "ui_card_badge_v3.png", 8.0, 268.0, 194.0, 20.0)
 
 	# 2c 信息区：卡名（30px 近黑）/ 类型徽章文字（16px 米白）/ 描述首行（17px 柔黑）
 	#   🔴 标签高度必须 ≥ 字体行高（16px ≈ 25、30px ≈ 47），否则字形会被控件矩形裁掉；
 	#     这里给足高度并关掉 clip_text，视觉位置由垂直居中决定，不靠 clip 收口。
-	var nm := _fixed_label(root, "—", 28, C_CARD_BLACK, 12.0, 229.0, 186.0, 36.0, "display")
+	var nm := _fixed_label(root, "—", 28, C_CARD_BLACK, 12.0, 233.0, 186.0, 36.0, "display")
 	nm.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	nm.clip_text = false
 	_slot_name.append(nm)
-	var tag_chip := _fixed_label(root, "—", 14, C_CARD_CREAM, 12.0, 265.0, 186.0, 20.0, "medium")
+	var tag_chip := _fixed_label(root, "—", 14, C_CARD_CREAM, 12.0, 267.0, 186.0, 20.0, "medium")
 	tag_chip.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	tag_chip.clip_text = false
 	_slot_tag.append(tag_chip)
@@ -518,15 +521,16 @@ func _make_slot(_i: int) -> PanelContainer:
 	#      顶栏只剩锁头 + 费用，和参考图的干净顶边一致。
 
 	var price_row := HBoxContainer.new()
-	price_row.position = Vector2(168.0, 9.0)
-	price_row.size = Vector2(33.0, 26.0)
+	# 预览角标左侧是废料锭，右侧留给实时费用。
+	price_row.position = Vector2(174.0, 4.0)
+	price_row.size = Vector2(27.0, 25.0)
 	price_row.add_theme_constant_override("separation", 0)
 	price_row.alignment = BoxContainer.ALIGNMENT_CENTER
 	price_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	price_row.hide()
 	root.add_child(price_row)
 	_slot_price_row.append(price_row)
-	var price_num := _Style.label("--", 24, C_CARD_CREAM)   # 实装说明：费用数字 22–24px
+	var price_num := _Style.label("--", 19, C_CARD_CREAM)
 	_Style.apply_font(price_num, "num")
 	price_num.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	price_row.add_child(price_num)
@@ -630,17 +634,25 @@ func _edge_texture(rarity: String) -> Texture2D:
 
 
 func _draw_lock(icon: Control) -> void:
-	var locked := bool(icon.get_meta("locked", false))
-	var color := C_ACCENT if locked else C_TEXT
 	if not bool(icon.get_meta("enabled", false)):
-		color = C_DIM
-	# 闭合 / 打开的锁梁以形状区分状态，避免依赖字体字形。
-	var center := Vector2(14.0, 11.0) if locked else Vector2(19.0, 8.0)
-	icon.draw_arc(center, 5.0, PI, TAU, 20, color, 1.6, true)
-	icon.draw_line(center + Vector2(-5, 0), Vector2(center.x - 5, 15), color, 1.6, true)
-	icon.draw_line(center + Vector2(5, 0), center + Vector2(5, 4), color, 1.6, true)
-	icon.draw_rect(Rect2(7, 14, 14, 11), color, false, 1.6)
-	icon.draw_circle(Vector2(14, 19), 1.5, color)
+		return
+	var locked := bool(icon.get_meta("locked", false))
+	var color := C_ACCENT if locked else C_CARD_CREAM
+	var plate := PackedVector2Array([
+		Vector2(6, 2), Vector2(22, 2), Vector2(26, 6), Vector2(26, 21),
+		Vector2(22, 25), Vector2(6, 25), Vector2(2, 21), Vector2(2, 6),
+	])
+	icon.draw_colored_polygon(plate, Color("#20232d"))
+	plate.append(plate[0])
+	icon.draw_polyline(plate, color, 1.2, true)
+	# 两态共用锁身。打开时锁梁向右移并露出缺口。
+	var shackle := Vector2(14, 11) if locked else Vector2(16, 10)
+	icon.draw_arc(shackle, 3.2, PI, TAU, 12, color, 1.5, true)
+	icon.draw_line(shackle + Vector2(-3.2, 0), Vector2(shackle.x - 3.2, 14), color, 1.5, true)
+	if locked:
+		icon.draw_line(shackle + Vector2(3.2, 0), Vector2(17.2, 14), color, 1.5, true)
+	icon.draw_rect(Rect2(9, 13, 10, 7), color)
+	icon.draw_circle(Vector2(14, 16), 1.0, Color("#20232d"), true, -1.0, true)
 
 
 ## v3：外框、分区与装饰全部由 ui_card_plate_v3.png / ui_card_edge_v3_{1,2,3}.png 承担。
@@ -661,6 +673,7 @@ func _refresh_shop() -> void:
 		for i in STAT_KEYS.size():
 			_stat_vals[i].text = "--"
 		for i in SLOT_COUNT:
+			_slot_pack_badges[i].texture = null
 			_slot_name[i].text = "—"
 			_slot_art[i].visible = false
 			_slot_art[i].get_parent().hide()
@@ -697,6 +710,7 @@ func _refresh_shop() -> void:
 
 	for i in SLOT_COUNT:
 		var nm := String(s["offers"][i])
+		_slot_pack_badges[i].texture = _CardFace.pack_badge_texture(nm)
 		var price := float(s["prices"][i])
 		var ok := bool(s["affordable"][i]) and bool(s["legal"][i])
 		# C2 高亮事实（H2/H3/H5/H6/H9；H1/H4/H8 已在 affordable/at_cap/notes）

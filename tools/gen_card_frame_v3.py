@@ -14,7 +14,7 @@
 产出（v3.1 · 2026-11-11 细修）：
   art/2d/ui/ui_card_plate_v3.png     420×680
   art/2d/ui/ui_card_edge_v3_{1,2,3}.png  420×680（三档线宽 = 稀有度第二通道）
-  art/2d/ui/ui_card_cost_v3.png      110×52
+  art/2d/ui/ui_card_cost_v3.png      120×50
   art/2d/ui/ui_card_badge_v3.png     388×40（194×20 逻辑，横线贯穿面板）
   art/_review/card-redesign-baseline-v3.png   基准合成效果图（不含文字进资源）
   art/_review/card-redesign-thumbs-v3.png     10% / 25% 缩略图测试接触表
@@ -29,6 +29,17 @@ UI_DIR = os.path.join(ROOT, "art", "2d", "ui")
 REVIEW_DIR = os.path.join(ROOT, "art", "_review")
 FONT_DIR = os.path.join(ROOT, "assets", "fonts")
 CARD_DIR = os.path.join(ROOT, "art", "2d", "cards")
+CARD_REFERENCE = os.path.join(ROOT, "output", "imagegen", "arrow-card-redesign-preview.png")
+PACK_BADGE_COLORS = {
+    "core": "#54EEE7",
+    "cinder": "#FF8059",
+    "rime": "#65E4F4",
+    "pierce": "#FFD670",
+    "arc": "#AD94FF",
+    "sunder": "#F670A1",
+    "hex": "#62C4B9",
+    "true": "#FF637B",
+}
 
 # ---------------------------------------------------------------------------
 # 色板（design/art/card-redesign-2026-11-11.md §3，唯一来源）
@@ -102,6 +113,20 @@ def down(img, size=(OUT_W, OUT_H)):
     return img.resize(size, Image.LANCZOS)
 
 
+def reference_emblem(bounds, outline, clear_number=False):
+    """提取已确认的 AI 预览元件，裁掉周围插画。"""
+    with Image.open(CARD_REFERENCE) as reference:
+        art = reference.crop(bounds).convert("RGBA")
+    x, y = bounds[:2]
+    mask = Image.new("L", art.size)
+    ImageDraw.Draw(mask).polygon([(px - x, py - y) for px, py in outline], fill=255)
+    if clear_number:
+        # 抹掉示例价格，数字由 Godot 实时绘制。
+        ImageDraw.Draw(art).rectangle((133, 22, 221, 87), fill=(33, 35, 44, 255))
+    art.putalpha(mask)
+    return art
+
+
 # ---------------------------------------------------------------------------
 # 1. 卡框底板：外框 + 分区 + 中缝六边形 + 底部箭头（插画区保持透明）
 # ---------------------------------------------------------------------------
@@ -148,24 +173,45 @@ def gen_plate():
     stroke_poly(d, band, FRAME, 0.8, alpha=195)
     stroke_poly(d, cut_rect(12.4, 234.4, 185.2, 93.2, 4.6), FRAME, 0.6, alpha=90)
 
-    # ---- 7. 中缝六边形徽章（跨分区线）+ 两侧青箭头 ----
-    hx = hex_h(83, 214, 44, 28, 9)
-    fill_poly(d, hex_h(81.5, 212.5, 47, 31, 10), BLACK, alpha=200)  # 暗色垫底，隔开插画
-    fill_poly(d, hx, INK)
-    stroke_poly(d, hx, CREAM, 1.5, alpha=245)
-    stroke_poly(d, hex_h(86, 217, 38, 22, 7), CYAN, 0.6, alpha=140)
-    # 简化箭头（右上方指向）
-    arrow = [(99, 236), (111, 224), (106, 224), (117, 213),
-             (113, 226), (108, 226), (119, 236)]
-    fill_poly(d, arrow, CREAM)
-    # 两侧青箭头（参考图中缝处指向徽章的小箭头）
-    fill_poly(d, [(69.0, 222.2), (78.2, 228.0), (69.0, 233.8), (73.6, 228.0)], CYAN)
-    fill_poly(d, [(141.0, 222.2), (131.8, 228.0), (141.0, 233.8), (136.4, 228.0)], CYAN)
-
-    # ---- 8. 底部青色刻口（参考图跨在「面板下沿 / 框带」之间的梯形）----
+    # ---- 7. 底部青色刻口（参考图跨在「面板下沿 / 框带」之间的梯形）----
     fill_poly(d, [(98.0, 330.4), (112.0, 330.4), (116.0, 336.2), (94.0, 336.2)], CYAN)
     stroke_poly(d, cut_rect(2.5, 2.5, 205, 335, 8), BLACK, 0.5, alpha=120)
     return down(im)
+
+
+def gen_pack_badge(pack_id):
+    """复用预览徽章外壳和游戏内卡包图标，输出 2x 接缝徽记。"""
+    emblem = reference_emblem(
+        (389, 1008, 615, 1107),
+        [(389, 1060), (443, 1010), (553, 1010), (614, 1059),
+         (556, 1105), (451, 1105)],
+    )
+    if pack_id != "core":
+        color = rgba(PACK_BADGE_COLORS[pack_id])
+        for y in range(emblem.height):
+            for x in range(emblem.width):
+                r, g, b, a = emblem.getpixel((x, y))
+                if a and g > r + 35 and b > r + 30:
+                    emblem.putpixel((x, y), (*color[:3], a))
+        ImageDraw.Draw(emblem).polygon(
+            [(75, 11), (157, 11), (170, 29), (152, 87), (65, 87), (52, 67)],
+            fill=rgba(FRAME),
+        )
+        icon_path = os.path.join(ROOT, "art", "2d", "icons", f"ic_pack_{pack_id}_small_v1.png")
+        with Image.open(icon_path) as icon:
+            inset = icon.convert("RGB").crop((16, 16, 48, 48))
+        # 卡包图标的底色本身不透明。用亮度范围保留中央符号及其抗锯齿边缘。
+        alpha = Image.new("L", inset.size)
+        alpha.putdata([max(0, min(255, round((max(pixel) - 65) * 255 / 75)))
+                       for pixel in inset.getdata()])
+        alpha = alpha.crop(alpha.getbbox())
+        ratio = 62 / max(alpha.size)
+        alpha = alpha.resize(tuple(round(side * ratio) for side in alpha.size), Image.LANCZOS)
+        glyph = Image.new("RGBA", alpha.size, color)
+        glyph.putalpha(alpha)
+        emblem.alpha_composite(glyph, ((emblem.width - glyph.width) // 2,
+                                       (emblem.height - glyph.height) // 2))
+    return emblem.resize((98, 44), Image.LANCZOS)
 
 
 def _header_chip(im, d):
@@ -217,29 +263,25 @@ def gen_edge(bw: float = 2):
     w_outer = {1: 1.4, 2: 2.2, 3: 3.2}.get(int(bw), 2.2)
     stroke_poly(d, cut_rect(2.5, 2.5, 205, 335, 8), white, w_outer, alpha=240)
     stroke_poly(d, cut_rect(6.6, 6.6, 196.8, 326.8, 6.4), white, 0.9, alpha=165)
-    stroke_poly(d, hex_h(83, 214, 44, 28, 9), white, 1.0, alpha=225)
+    # 🔴 中缝徽章已改为 AI 生图元件（自带米白描边），描边层不再画六边形：
+    #    否则稀有度色会在徽章外面再套一圈蓝/紫/金，和参考图不符。
     # 底部刻口（梯形）轮廓：与外框同色，供稀有度 / 悬停染色
     stroke_poly(d, [(98.0, 330.4), (112.0, 330.4), (116.0, 336.2), (94.0, 336.2)], white, 0.8, alpha=190)
     return down(im)
 
 
 # ---------------------------------------------------------------------------
-# 3. 费用六边形胶囊（110×52 @2x = 逻辑 55×26，不含数字）
+# 3. 费用角标（120×50 @2x = 逻辑 60×25，不含数字）
 # ---------------------------------------------------------------------------
 def gen_cost():
-    im = new_canvas(55 * U, 26 * U)
-    d = ImageDraw.Draw(im)
-    body = cut_rect(0.8, 0.8, 53.4, 24.4, 6)
-    fill_poly(d, body, INK)
-    stroke_poly(d, body, CREAM, 1.0, alpha=230)
-    # 右下角青色斜切高光
-    fill_poly(d, [(47.5, 24.4), (54.2, 17.7), (54.2, 24.4)], CYAN)
-    fill_poly(d, [(48.0, 1.0), (51.0, 1.0), (54.2, 4.2), (54.2, 7.2)], CYAN, alpha=210)
-    # 废料图标：两块叠放的斜切平行四边形（米白）
-    fill_poly(d, [(8, 15), (14, 9), (21, 9), (15, 15)], CREAM)
-    fill_poly(d, [(8, 15), (15, 15), (21, 9), (21, 18), (14, 24), (8, 24)], CREAM, alpha=225)
-    line(d, (11, 18), (17, 12), INK, 0.8, alpha=170)
-    return down(im, (110, 52))
+    """从预览提取费用角标，输出 120×50，数字由 Godot 绘制。"""
+    emblem = reference_emblem(
+        (689, 37, 960, 150),
+        [(690, 91), (730, 40), (922, 38), (959, 82),
+         (955, 131), (945, 149), (727, 149), (690, 98)],
+        clear_number=True,
+    )
+    return emblem.resize((120, 50), Image.LANCZOS)
 
 
 # ---------------------------------------------------------------------------
@@ -310,24 +352,25 @@ def gen_baseline(plate, edge, cost, badge):
     tint = Image.new("RGBA", e.size, rgba(STEEL))
     tint.putalpha(e.getchannel("A"))
     im.alpha_composite(tint)
+    im.alpha_composite(gen_pack_badge("core"), (round(80.5 * K), 217 * K))
     # 费用胶囊 + 数字
-    im.alpha_composite(cost, (146 * K, 9 * K))
+    im.alpha_composite(cost, (146 * K, 4 * K))
     # 类型徽章（加长横线版：194 宽，从面板左边到右边）
     im.alpha_composite(badge, (8 * K, 270 * K))
 
     d = ImageDraw.Draw(im)
-    # 字号按「箭塔卡面实装说明」：卡名 26–28、类型 13–14、摘要 13–14、费用 22–24
+    # 卡名 28、类型与摘要 14、费用 19，和实机卡面一致。
     f_title = load_font("NotoSansSC.ttf", 28 * K, 900)
     f_type = load_font("NotoSansSC.ttf", 14 * K, 700)
     f_desc = load_font("NotoSansSC.ttf", 14 * K, 500)
-    f_num = load_font("JetBrainsMono.ttf", 24 * K, 700)
+    f_num = load_font("JetBrainsMono.ttf", 19 * K, 700)
     f_small = load_font("JetBrainsMono.ttf", 16 * K, 700)
     text_center(d, (105 * K, 250 * K), "箭塔", f_title, BLACK)
     text_center(d, (105 * K, 279 * K), "建筑 · 泛用", f_type, CREAM)
     # 实机文案取 card_text.describe(nm) 前两行；Arrow = 「单体，无附加／伤害…」
     text_center(d, (105 * K, 302 * K), "单体，无附加", f_desc, BLACK)
     text_center(d, (105 * K, 322 * K), "伤害 12 · 攻速 80%", f_desc, BLACK)
-    text_center(d, (182 * K, 22 * K), "12", f_num, CREAM)
+    text_center(d, (round(187.5 * K), round(16.5 * K)), "12", f_num, CREAM)
     # v3.1：卡面已无编号 01（快捷购买移除），基准图同步去掉
     return im
 
@@ -370,6 +413,8 @@ def main():
     ]
     for bw, img in edges.items():
         outputs.append((os.path.join(UI_DIR, "ui_card_edge_v3_%d.png" % bw), img))
+    for pack_id in PACK_BADGE_COLORS:
+        outputs.append((os.path.join(UI_DIR, f"ui_card_pack_{pack_id}.png"), gen_pack_badge(pack_id)))
     for path, img in outputs:
         img.save(path, "PNG")
         print("WROTE", os.path.relpath(path, ROOT), img.size)
