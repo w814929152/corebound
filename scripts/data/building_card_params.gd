@@ -191,7 +191,7 @@ const TOWERS_EXT := {
 	#   用户口径：「类似塔的效果 —— **回合开始时** / **防御塔上场时** / **防御塔死亡时** 增加等级」。
 	#   （明确否掉两种做法：光环被动加等级、三合一升星。）
 	#   实现 = 事件触发的一次性 +等级，`effect.on` 三选一，`effect.scope` = self / all。
-	#   🔴 等级封顶 `TowerEffects.LEVEL_CAP = 8`（触发不会无限叠；合成升级仍无硬上限）。
+	#   触发升级可持续叠加。
 	#   🔴 只走**玩家路线**（`wave_director` / `shop_runtime`）；金标本走 `wave_sim` 且
 	#      只买 `TOWERS` 基础塔 → 本表不进金标本 → 逐位零扰动。
 	#   🔴 死亡触发在**当波不生效**（dps 在波首已算死）→ 下一波吃到，见 `tower_effects.gd`。

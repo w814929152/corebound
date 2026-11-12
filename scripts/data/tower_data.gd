@@ -250,7 +250,7 @@ static func tower_buff_debuff_dmg(ctype: String) -> float:
 	return float(TOWERS_EXT[ctype].get("buff_debuff_dmg", 0.0))
 
 
-## 🆕 击杀升级：任意怪物被击杀时，本塔 +1 级（封顶 `TowerEffects.LEVEL_CAP` = 8）。
+## 🆕 击杀升级：任意怪物被击杀时，本塔 +1 级。
 static func tower_on_kill_lv(ctype: String) -> bool:
 	if not TOWERS_EXT.has(ctype):
 		return false

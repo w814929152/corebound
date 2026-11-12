@@ -728,16 +728,12 @@ func legal_note(slot: int) -> String:
 		return "此位无卡"
 	match _card_kind(nm):
 		"tower":
-			# E1：塔位已满且场上无同原型塔 → 无合法目标（H8 置灰）
+			# 自由摆放先买入背包，塔数与格点合法性在落子时检查。
+			if free_placement:
+				return ""
 			for t in player.towers:
 				if String(t.ctype) == nm:
 					return ""                                  # 同原型 → 升级（合法）
-			if free_placement:
-				# 🆕 自由摆放：几何合法性由网格在**落子时**判（点哪判哪），
-				#   商店阶段不枚举全盘 ~900 格。这里唯一会挡住的闸门是塔数上限。
-				if player.towers.size() >= tower_cap():
-					return "塔位已满"
-				return ""
 			var mt = cfg.get("max_towers")
 			if mt == null:
 				mt = {"A": 2, "B": int(cfg["n_slots"])}       # 同 `enumerate_actions()` 的口径
@@ -1020,6 +1016,21 @@ func placing_card_name() -> String:
 	return String(pending[_placing_index])
 
 
+func merge_target_slots(card: String) -> Array[int]:
+	var slots: Array[int] = []
+	if card.is_empty() or player == null or geo == null:
+		return slots
+	for tower in player.towers:
+		var slot := int(tower.slot)
+		if String(tower.ctype) != card or slot < 0 or slot >= geo.slots.size():
+			continue
+		var cell := _BuildGrid.snap(geo.slots[slot])
+		if _BuildGrid.buildable(cell) and _slot_at(cell) == slot:
+			slots.append(slot)
+	slots.sort()
+	return slots
+
+
 ## 落子：空塔位 = 新建（build）· 同原型 = 升级（up）· 其余 = Invalid（不落子、不退卡）
 func placement_mode_for(slot: int) -> String:
 	if _placing_index < 0 or _placing_index >= pending.size():
@@ -1099,10 +1110,9 @@ func placement_mode_at(pos: Vector2) -> Dictionary:
 			if String(player.towers[ti].ctype) == nm:
 				return {"mode": "upgrade", "slot": existing, "reason": ""}
 			return {"mode": "invalid", "slot": existing, "reason": "这格已有「%s」" % _CardText.display_name(String(player.towers[ti].ctype))}
-		return {"mode": "new", "slot": existing, "reason": ""}
 	if player.towers.size() >= tower_cap():
 		return {"mode": "invalid", "slot": -1, "reason": "塔数已满 %d / %d" % [player.towers.size(), tower_cap()]}
-	return {"mode": "new", "slot": -1, "reason": ""}
+	return {"mode": "new", "slot": existing, "reason": ""}
 
 
 ## 🆕 自由摆放落子：世界坐标 → 吸附格点 → 新建 / 升级 / 拒绝。
@@ -1139,7 +1149,7 @@ func confirm_placement_at(pos: Vector2) -> bool:
 				return false
 			mode = "upgrade"
 		# ti < 0 = 拆塔残留的空槽 → 直接复用（mode 保持 "new"）
-	elif player.towers.size() >= tower_cap():
+	if mode == "new" and player.towers.size() >= tower_cap():
 		last_error = "塔数已满（%d / %d）" % [player.towers.size(), tower_cap()]
 		return false
 

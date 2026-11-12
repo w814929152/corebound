@@ -105,7 +105,7 @@ const PACKS: Array = [
 		"unlock_wave": 0,
 	},
 	{
-		"id": "cinder", "name": "熔炉包", "tag_line": "火：灼烧 · 充能爆发 · 自爆",
+		"id": "cinder", "name": "熔炉包", "tag_line": "火：灼烧 · 充能爆发 · 焚祭",
 		"cards": ["Vanguard", "Ember", "Blaze", "Cinder", "Pyre", "Maul", "Furnace", "Wildfire", "Ashen", "Hellfire", "Pyroclasm"],
 		"unlock_wave": 0,
 	},

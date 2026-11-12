@@ -388,7 +388,7 @@ func _test_three_way_routing() -> void:
 	rt9.offers = ["FireUp"]
 	_check_str("E9 效果卡停用 → 场上无塔时置灰", rt9.legal_note(0), "需先建造一座塔")
 
-	# ---- E1：塔数填满且无同原型 → 建筑卡无合法目标 ----
+	# ---- 自由摆放：塔数填满仍可买卡，落子时限制新建 ----
 	# 🆕 自由摆放：闸门是 `tower_cap`（塔数上限），**不是** `n_slots`（金标本槽位数）。
 	#   这里把上限压到 3 便于构造，落子走**坐标**（`confirm_placement_at`）。
 	var rt1 = _mk_runtime(2024)
@@ -406,9 +406,21 @@ func _test_three_way_routing() -> void:
 		k += 1
 	_check_int("[E1] 塔数填满（tower_cap）", rt1.player.towers.size(), cap)
 	rt1.offers = ["Cannon"]
-	_log("   [info] E1 置灰理由 = 「%s」（H8 无合法目标）" % rt1.legal_note(0))
-	_tally("E1 建筑卡无合法目标 → 置灰", rt1.legal_note(0) != "")
-	_check_bool("E1 买不了", rt1.buy(0), false)
+	_check_bool("满塔位时建筑卡可购买", rt1.can_buy(0), true)
+	_check_bool("满塔位时购买成功", rt1.buy(0), true)
+	_check_bool("购入的炮塔可从背包拖出", rt1.begin_placement(0), true)
+	var empty_cell: Vector2 = _BuildGrid.cell(-4, 2)
+	_check_str("满塔位时空格预览不可新建", String(rt1.placement_mode_at(empty_cell)["mode"]), "invalid")
+	_check_bool("满塔位时拒绝新建", rt1.confirm_placement_at(empty_cell), false)
+	rt1.geo.add_slot(empty_cell)
+	_check_str("满塔位时空槽预览不可新建", String(rt1.placement_mode_at(empty_cell)["mode"]), "invalid")
+	_check_bool("满塔位时拒绝复用空槽新建", rt1.confirm_placement_at(empty_cell), false)
+	_check_int("无法落子的卡留在背包", rt1.pending.size(), 1)
+	rt1.offers = ["Arrow"]
+	_check_bool("满塔位时可购买升级卡", rt1.buy(0), true)
+	_check_bool("购入的箭塔可从背包拖出", rt1.begin_placement(1), true)
+	_check_bool("满塔位时仍可同格升级", rt1.confirm_placement_at(_BuildGrid.cell(4, -2)), true)
+	_check_int("升级后塔数仍为上限", rt1.player.towers.size(), cap)
 
 	# ---- ✅ D-4（shop-reroll §9.2 v1.3）：玩家路线发牌池**移除 RerollD**（空卡，买后 +0%）----
 	var pool := _ShopRuntime.player_card_names() as Array

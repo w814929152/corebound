@@ -1,4 +1,4 @@
-﻿extends Node
+extends Node
 ##
 ## 波次导演 `WaveDirector` —— GDD `wave-spawner` v0.2 §3.4 · 🔴 **时间轴权威**
 ##
@@ -115,6 +115,17 @@ signal run_won(w: int)
 var tower_aggro_enabled: bool = false
 ## 正式关卡建筑攻防；默认关闭，保留历史模拟的漏怪结算。
 var structure_attacks_enabled: bool = false
+
+## Player campaign only; the simulation and its reference wave tables stay intact.
+var mechanical_siege_enabled: bool = false
+const SIEGE_HP_SCALE := 0.55
+const SIEGE_ATTACK_SCALE := 0.45
+
+func _siege_count(base_count: int, wave: int) -> int:
+	if not mechanical_siege_enabled:
+		return base_count
+	var scale := [1.25, 1.4, 1.5, 1.75]
+	return ceili(base_count * float(scale[clampi(wave - 1, 0, 3)]))
 ## 🔒 T1 反制窗口 M-1：战斗内即时被动复活（**产品开关**，与 proto/elite/aggro 同族）。
 ##   MVP 默认 false → `_revive_mode()` 读 cfg（默认 0）→ off 路径逐位不变（金标本零扰动）。
 ##   🟢 与 `repair_on_disable` 解耦：那个枚举的 0/1/2 是 V-7 诊断臂、9/11 是 V-8 扫描档；
@@ -293,6 +304,16 @@ func bind_runtime(rt) -> void:
 	rt.range_director = self
 	setup(rt.player, rt.cfg, rt.geo)
 
+func restore_preparation(rt, completed_wave: int) -> void:
+	bind_runtime(rt)
+	w = completed_wave
+	state = State.SAFE_WINDOW if w > 0 else State.IDLE
+	monsters.clear()
+	minions.clear()
+	last_result.clear()
+	cur_spec.clear()
+
+
 func recover_preparation_buildings() -> void:
 	if runtime != null and runtime.recover_preparation_buildings():
 		core_hp = float(player.core_hp)
@@ -351,6 +372,12 @@ func start_wave(p_w: int) -> void:
 			n = int(cur_spec["n"])
 			hp_unit = float(cur_spec["hp"])
 	spk = float(ms["scrap_per_kill"])
+	if mechanical_siege_enabled:
+		var original_count := n
+		n = _siege_count(n, w)
+		hp_unit *= SIEGE_HP_SCALE
+		# Keep the full-clear base scrap budget constant as the crowd grows.
+		spk *= float(original_count) / float(maxi(1, n))
 	t_reach = float(ms["t_reach"])
 	var D := float(ms["D"])
 	# 🔴 R1：本波打的是**上波买出来的构筑** → 波首算一次 DPS，波内恒定（与金标本同）
@@ -929,15 +956,16 @@ func _release_fire_blast(tower, params: Dictionary) -> void:
 	_apply_fire_area_damage(center, radius, damage, "pyroclasm")
 
 
-## 两种火焰爆炸共享魔抗、击杀奖励与演出；爆炸不会再次附加火焰。
-func _apply_fire_area_damage(center: Vector2, radius: float, damage: float, kind: String) -> void:
+## 火焰爆炸共用击杀奖励与演出；爆炸不会再次附加火焰。
+func _apply_fire_area_damage(center: Vector2, radius: float, damage: float, kind: String,
+		damage_type: String = _CombatTypes.MAGIC) -> void:
 	_fire_blasts.append({"pos": center, "radius": radius, "ttl": 0.6, "kind": kind})
 	for m in monsters:
 		if float(m.hp) <= 0.0 or int(m.state) == MState.LEAKED or center.distance_squared_to(m.pos(v0_)) > radius * radius + 1e-6:
 			continue
 		var factor := 1.0
-		if combat_types_enabled:
-			factor -= clampf(_CombatTypes.effective_resist(String(m.proto), _CombatTypes.MAGIC, _magic_reduct), 0.0, 1.0)
+		if combat_types_enabled and damage_type == _CombatTypes.MAGIC:
+			factor -= clampf(_CombatTypes.effective_resist(String(m.proto), damage_type, _magic_reduct), 0.0, 1.0)
 		m.hp = maxf(0.0, float(m.hp) - damage * factor)
 		if float(m.hp) <= 0.0:
 			_record_monster_kill(m)
@@ -957,6 +985,7 @@ func _update_minions(dt: float) -> void:
 		mn["ttl"] = float(mn["ttl"]) - dt
 		if float(mn["ttl"]) <= 0.0:
 			minions.remove_at(mi)
+			_on_ally_death(mn["pos"])
 			continue
 		if alive.is_empty():
 			continue
@@ -1011,6 +1040,7 @@ func _apply_structure_attacks() -> void:
 			player.core_hp = core_hp
 			if core_hp<=0.0:
 				run_failed = true
+				_on_ally_death(_SpaceModel.core_pos())
 				emit_signal("run_lost",w)
 				break
 
@@ -1122,8 +1152,8 @@ func _damage_tower(m, sapper_mult: float) -> void:
 		# 🆕 触发型建筑 · 阵亡（`death`）：本塔死亡时给其它塔加等级。
 		#   🔴 放在 dps 重算**之前** → 后续子步立刻吃到新等级（不用等下一波）。
 		_TowerEffects.apply_trigger(player, "death", {"tower": t})
-		# 🆕 死亡爆炸（Pyre 等）：对周围敌人造成一次大额真实伤害。
-		_death_explode(t)
+		if geo != null and int(t.slot) >= 0 and int(t.slot) < geo.slots.size():
+			_on_ally_death(_tower_pos(t))
 		# 🔴 塔死亡 → 全场 DPS 立即下降（disabled 乘数生效）。本波 dps 是波首算的
 		#    常量，此处重算让**下一子步**的集火用新 DPS（批处理镜像同处理 → 逐位一致）。
 		dps = _DE.dps_only(player, cfg, geo)
@@ -1319,6 +1349,14 @@ func _count_disabled_towers() -> int:
 
 ## 准备阶段只读预告，与实际生成共享角度、波表数量和地形边界；不推进波次或 RNG。
 func spawn_angle(idx: int, wave: int) -> float:
+	if mechanical_siege_enabled and wave >= 1 and wave <= 3:
+		var arcs := _SpaceModel.active_spawn_arcs()
+		if not arcs.is_empty():
+			# W1–2 share the same front; W3 adds a flank as defenses grow.
+			var fronts := mini(1 if wave <= 2 else 2, arcs.size())
+			var arc_index := floori(float(idx % fronts * arcs.size()) / float(fronts))
+			var arc: Dictionary = arcs[arc_index]
+			return deg_to_rad(lerpf(float(arc["a0"]), float(arc["a1"]), 0.5))
 	return _TacticalCombat.spawn_theta(idx, wave, stage_id) if tactical_combat_enabled else _SpaceModel.spawn_theta(idx, wave)
 
 
@@ -1333,7 +1371,7 @@ func preview_spawn_positions(wave: int) -> PackedVector2Array:
 		var spec := _StageWaves.wave_spec(stage_id, wave, cfg, escalation)
 		if not spec.is_empty() and not bool(spec.get("neutral", false)):
 			count = int(spec["n"])
-	for i in range(count):
+	for i in range(_siege_count(count, wave)):
 		points.append(_SpaceModel.radial_pos_of_t(_SpaceModel.T_REACH, 1.0, spawn_angle(i, wave)))
 	return points
 
@@ -1346,6 +1384,8 @@ func _spawn_one(idx: int) -> void:
 	var tr := t_reach / mspd
 	var m = _Monster.new()
 	m.setup(idx, proto, elite, hp, mspd, tr)
+	if mechanical_siege_enabled:
+		m.m_dps *= SIEGE_ATTACK_SCALE
 	# 🆕 径向模式：注入黄金角出生角（确定性 · 零 RNG · 不碰商店发牌流，E-4/Q-R6）。
 	#   PATH 模式下 set_theta 被忽略（恒 0），位置仍走折线 → 逐位等价。
 	if _SpaceModel.mode == _SpaceModel.Mode.RADIAL:
@@ -1380,34 +1420,18 @@ func _stable_sort_by_remain() -> void:
 		i += 1
 
 
-## 🆕 战斗类型：单一类型伤害池的实时集火（🔴 仅 combat_types_enabled 时调用）。
-##   🔴 与 `WaveSim._apply_pool` 语义同构（同 SSOT `CombatTypes` → 实时↔批处理逐位等价）。
-## 🆕 死亡爆炸（2026-11-07）：塔阵亡时对半径内敌人造成一次真实伤害（无视抗性）。
-##   🔴 只有玩家路线会出现带 `death_blast` 的塔；金标本无此字段 → 不触发（逐位不变）。
-func _death_explode(t) -> void:
-	var blast := _TD.tower_death_blast(String(t.ctype))
-	if blast <= 0.0:
+## 焚祭由仍在场的塔提供，停机不解除。一次友军阵亡只触发一次爆炸。
+func _on_ally_death(center: Vector2) -> void:
+	if not tactical_combat_enabled or player == null:
 		return
-	var radius := _TD.tower_death_blast_r(String(t.ctype))
-	var tp := Vector2.ZERO
-	var has_pos := false
-	if geo != null:
-		var slots: Array = geo.slots
-		var si := int(t.slot)
-		if si >= 0 and si < slots.size() and slots[si] is Vector2:
-			tp = slots[si]
-			has_pos = true
-	for m in monsters:
-		if float(m.hp) <= 0.0:
-			continue
-		if has_pos:
-			var mp: Vector2 = m.pos(v0_)
-			if mp.distance_to(tp) > radius:
-				continue
-		m.hp = maxf(0.0, float(m.hp) - blast)
-		if float(m.hp) <= 0.0:
-			_record_monster_kill(m)
+	for tower in player.towers:
+		var name := String(tower.ctype)
+		var damage := _TD.tower_death_blast(name)
+		if damage > 0.0:
+			_apply_fire_area_damage(center, _TD.tower_death_blast_r(name), damage, "pyre", _CombatTypes.TRUE)
+			return
 
+## 战斗类型：单一类型伤害池的实时集火，与 `WaveSim._apply_pool` 同口径。
 ##   每只怪按**有效抗性**（静态抗性 − 破甲量）减免，溢出结转；击杀走 `monster_killed` 信号。
 func _apply_pool_live(dmg: float, dmg_type: String, reduction: float = 0.0) -> void:
 	if dmg <= 0.0:

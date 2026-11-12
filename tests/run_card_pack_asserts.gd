@@ -36,6 +36,7 @@ const _DE := preload("res://scripts/engine/damage_engine.gd")
 const _Cfg := preload("res://scripts/engine/mvp_config.gd")
 const _Geo6 := preload("res://scripts/geo/geo6.gd")
 const _PS := preload("res://scripts/engine/player_state.gd")
+const _WaveDirector := preload("res://scripts/gameplay/wave_director.gd")
 ## 🆕 触发型建筑（登场 / 整备 / 阵亡 加等级）
 const _TowerEffects := preload("res://scripts/engine/tower_effects.gd")
 const _PackUI := preload("res://scripts/ui/pack_select_overlay.gd")
@@ -43,6 +44,12 @@ const _PackUI := preload("res://scripts/ui/pack_select_overlay.gd")
 ## 老口径常量（与 `run_ext_pack_asserts.gd` 同值，改动前基线）
 const POOL_TOTAL_6 := 0.47
 const FONT_MIN := 16
+
+class PositionedMonster extends "res://scripts/gameplay/monster.gd":
+	var location := Vector2.ZERO
+
+	func pos(_speed: float, _length: float = 101.0) -> Vector2:
+		return location
 
 var _pass := 0
 var _fail := 0
@@ -538,12 +545,10 @@ func _test_g_ui() -> void:
 #  H 触发型建筑：登场 / 整备 / 阵亡 加等级（2026-11-07）
 # ---------------------------------------------------------------------------
 ## 🔴 用户口径：「类似塔的效果 —— 回合开始时 / 防御塔上场时 / 防御塔死亡时增加等级」。
-##   本段钉住四件事：①三种时机各自触发；②只影响该影响的塔；③等级封顶 8；
-##   ④上限常量为 8（形态满级 / Focus 预热满额同档）。
+## 覆盖触发时机、受益对象和 8 级以上的成长。
 func _test_h_triggers() -> void:
 	_log("")
-	_log("--- [H] 触发型建筑：登场 / 整备 / 阵亡 加等级（封顶 8）---")
-	_eq_int("H0 触发升级上限 = 8（形态满级）", _TowerEffects.LEVEL_CAP, 8)
+	_log("--- [H] 触发型建筑：登场 / 整备 / 阵亡 加等级---")
 
 	var p = _PS.new()
 	p.path = "B"
@@ -564,27 +569,33 @@ func _test_h_triggers() -> void:
 	_eq_int("H5 整备后先锋升到 3 级", int(p.towers[0].h), 3)
 	_eq_int("H6 整备后箭塔 2 级", int(p.towers[1].h), 2)
 
-	# ③ 封顶：继续整备到 8 级，再触发不再升
-	var n3 := _TowerEffects.apply_trigger(p, "prepare")
-	_eq_int("H7 第二次整备全场 3 座都升", n3, 3)
-	_eq_int("H8 箭塔升到 3 级", int(p.towers[1].h), 3)
-	var guard := 0
-	while _TowerEffects.apply_trigger(p, "prepare") > 0 and guard < 64:
-		guard += 1
-	_eq_int("H9 先锋封顶 8 级", int(p.towers[0].h), 8)
-	_eq_int("H10 箭塔封顶 8 级", int(p.towers[1].h), 8)
-	_eq_int("H11 封顶后再整备 0 座变化", _TowerEffects.apply_trigger(p, "prepare"), 0)
+	# 继续整备，验证多次触发可跨过原 8 级上限。
+	for wave in range(10):
+		_TowerEffects.apply_trigger(p, "prepare")
+	_eq_int("整备使先锋升到 13 级", int(p.towers[0].h), 13)
+	_eq_int("整备使箭塔升到 12 级", int(p.towers[1].h), 12)
+	_eq_int("高等级先锋登场仍升一级", _TowerEffects.apply_trigger(p, "enter", {"tower": p.towers[0]}), 1)
+	_eq_int("先锋升到 14 级", int(p.towers[0].h), 14)
 
 	# ④ 阵亡：只升其它塔，死者自己不吃
 	var p2 = _PS.new()
 	p2.path = "B"
 	p2.towers = []
 	p2.towers.append(_PS.make_tower(0, "Martyr", 1, {}))
-	p2.towers.append(_PS.make_tower(1, "Arrow", 1, {}))
+	p2.towers.append(_PS.make_tower(1, "Arrow", 8, {}))
 	var n4 := _TowerEffects.apply_trigger(p2, "death", {"tower": p2.towers[0]})
 	_eq_int("H12 阵亡触发 1 座其它塔", n4, 1)
-	_eq_int("H13 箭塔升到 2 级", int(p2.towers[1].h), 2)
+	_eq_int("H13 阵亡使箭塔从 8 级升到 9 级", int(p2.towers[1].h), 9)
 	_eq_int("H14 阵亡的塔自身不加级", int(p2.towers[0].h), 1)
+
+	var killer = _PS.make_tower(2, "Thunder", 8, {})
+	p2.towers.append(killer)
+	_TowerEffects.on_kill(p2)
+	_TowerEffects.on_kill(p2)
+	_eq_int("击杀让雷霆从 8 级升到 10 级", int(killer.h), 10)
+	killer.disabled = true
+	_TowerEffects.on_kill(p2)
+	_eq_int("停机的雷霆塔不触发击杀升级", int(killer.h), 10)
 
 # ---------------------------------------------------------------------------
 #  I 赏金塔：存活时全队累计击杀到阈值 → 发废料（2026-11-07）
@@ -731,7 +742,36 @@ func _test_o_death_blast() -> void:
 	_ok("O2 Pyre 爆炸半径 = 6.0", absf(_TD.tower_death_blast_r("Pyre") - 6.0) < 1e-9)
 	_ok("O3 普通塔无爆炸（Arrow）", absf(_TD.tower_death_blast("Arrow")) < 1e-9)
 	_ok("O4 Rift 不带爆炸（只有 Pyre 有）", absf(_TD.tower_death_blast("Rift")) < 1e-9)
-	_ok("O5 Pyre 卡面写明「阵亡：爆炸 40」", _CardText.describe("Pyre").find("阵亡：爆炸 40") >= 0)
+	_ok("O5 Pyre 卡面写明「友军阵亡引爆」", _CardText.describe("Pyre").contains("友军阵亡引爆"))
+	var player = _PS.new()
+	player.towers.append(_PS.make_tower(0, "Pyre", 1))
+	player.towers.append(_PS.make_tower(1, "Arrow", 1))
+	var director = _WaveDirector.new()
+	director.setup(player, _Cfg.cfg_of("B"), _Geo6.build_by_slots(6))
+	director.tactical_combat_enabled = true
+	director.structure_attacks_enabled = true
+	director.combat_types_enabled = true
+	var attacker := PositionedMonster.new()
+	attacker.setup(0, "Rush", false, 200.0, 1.0, 10.0)
+	var distant := PositionedMonster.new()
+	distant.setup(1, "Rush", false, 200.0, 1.0, 10.0)
+	distant.location = Vector2(200.0, 0.0)
+	director.monsters = [attacker, distant]
+	for slot in [0, 1]:
+		player.towers[slot].hp = 0.01
+		attacker.target_slot = slot
+		attacker.location = director.geo.slots[slot]
+		director._damage_tower(attacker, 1.0)
+	_ok("O6 焚祭塔自身阵亡和停机后的友塔阵亡各引爆一次", is_equal_approx(attacker.hp, 120.0) and director._fire_blasts.size() == 2)
+	director.minions = [{"pos": attacker.location, "ttl": 0.01}]
+	director._update_minions(0.02)
+	director._update_minions(0.02)
+	_ok("O7 召唤物消亡引爆一次，范围外敌人不受伤", is_equal_approx(attacker.hp, 80.0) and is_equal_approx(distant.hp, 200.0) and director._fire_blasts.size() == 3)
+	player.towers.remove_at(0)
+	director.minions = [{"pos": attacker.location, "ttl": 0.01}]
+	director._update_minions(0.02)
+	_ok("O8 拆除焚祭塔后友军消亡不再引爆", is_equal_approx(attacker.hp, 80.0) and director._fire_blasts.size() == 3)
+	director.free()
 
 # ---------------------------------------------------------------------------
 #  P 召唤小兵：塔每波召唤可移动单位攻击敌人（2026-11-07）

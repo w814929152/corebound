@@ -195,7 +195,7 @@ const ROLE := {
 	"Rangebeacon": "光环 · 增加射程",
 	"Blaze": "近距范围点火",
 	"Cinder": "单体点火",
-	"Pyre": "阵亡：爆炸 40",
+	"Pyre": "友军阵亡引爆",
 	"Glacier": "十层冻结 2 秒",
 	"Hail": "范围减速",
 	"Permafrost": "持续减速",
@@ -493,28 +493,26 @@ static func details(nm: String) -> String:
 	if definition.is_empty():
 		return describe(nm)
 	var shot_scrap := _TD.tower_shot_scrap(nm)
-	if shot_scrap > 0:
-		return "%s\n物理单体 · 射程 %s\n每次开火消耗 %d 废料；余额不足时停火。" % [
-			stat_line(nm), _num(float(definition["rng"])), shot_scrap]
 	var charge := _TD.tower_fire_charge(nm)
 	if not charge.is_empty():
 		return "不自动攻击\n全场每触发一次火焰十层引爆，充能一次；累计 %d 次后发射。\n爆发伤害 %s · 半径 %s" % [int(charge["capacity"]),_num(float(charge["damage"])),_num(float(charge["radius"]))]
+	var initial := _Range.profile(nm)
+	if initial.x <= 0.0:
+		return describe(nm)
+	var reach := _range_details(nm, initial)
+	if shot_scrap > 0:
+		return "%s\n物理单体\n每次开火消耗 %d 废料；余额不足时停火。\n%s" % [stat_line(nm), shot_scrap, reach]
 	if nm == "Icehunter":
-		return "优先攻击射程内完全冻结的单位。\n对冻结目标无视所有抗性；解冻后恢复正常抗性结算。\n单体魔法攻击，自身不附加冰冻。\n%s · 射程 %s" % [stat_line(nm), _num(float(definition["rng"]))]
+		return "优先攻击射程内完全冻结的单位。\n对冻结目标无视所有抗性；解冻后恢复正常抗性结算。\n单体魔法攻击，自身不附加冰冻。\n%s\n%s" % [stat_line(nm), reach]
 	var has_fire := String(definition.get("tag",""))=="fire" and float(definition.get("dps",0.0))>0.0
 	var has_frost := float(definition.get("slow",0.0))>0.0 and float(definition.get("dps",0.0))>0.0
-	var initial := _Range.profile(nm)
-	var merged := _Range.profile(nm, 1)
-	if nm == "Arrow":
-		return "圆形射程 %s\n同卡合成：半径 +%s，最高 %s" % [_num(initial.x), _num(merged.x - initial.x), _num(_Range.profile(nm, 20).x)]
-	if not has_fire and not has_frost and initial == merged:
-		return describe(nm)
-	var shape := "扇形 %d° · 射程 %s" % [roundi(rad_to_deg(initial.y)), _num(initial.x)] if initial.y < TAU else "射程 %s" % _num(initial.x)
-	var lines: Array = [role(nm), stat_line(nm), "%s · %s攻击" % [shape, "群体" if bool(definition["aoe"]) else "单体"]]
-	if merged.x > initial.x:
-		lines.append("同卡合成：半径 +%s，最高 %s" % [_num(merged.x - initial.x), _num(_Range.profile(nm, 20).x)])
-	elif merged.y > initial.y:
-		lines.append("同卡合成：扇角 +%d°，最高 %d°" % [roundi(rad_to_deg(merged.y - initial.y)), roundi(rad_to_deg(_Range.profile(nm, 20).y))])
+	if not has_fire and not has_frost:
+		return reach
+	var lines: Array = [stat_line(nm), reach, "群体攻击" if bool(definition["aoe"]) else "单体攻击"]
+	var death_blast := _TD.tower_death_blast(nm)
+	if death_blast > 0.0:
+		lines.append("焚祭：此塔在场即生效，停机后仍有效。友方建筑阵亡或召唤物消亡时，在其位置引爆，对半径 %s 内的敌人造成 %s 点真实伤害。每次阵亡只引爆一次。" % [
+			_num(_TD.tower_death_blast_r(nm)), _num(death_blast)])
 	if has_fire:
 		var fire: Dictionary = _TD.FIRE_EFFECT
 		lines.append("火焰：攻击附加1层，持续 %s 秒；重复附加刷新时间。" % _num(float(fire["duration"])))
@@ -530,3 +528,14 @@ static func details(nm: String) -> String:
 	if float(definition.get("dot",0.0))>0.0:
 		lines.append("持续伤害：每秒 %s" % _num(float(definition["dot"])))
 	return _join_sep(lines,"\n")
+
+
+static func _range_details(nm: String, initial: Vector2) -> String:
+	var shape := "扇形 %d° · 射程 %s" % [roundi(rad_to_deg(initial.y)), _num(initial.x)] if initial.y < TAU else "圆形射程 %s" % _num(initial.x)
+	var merged := _Range.profile(nm, 1)
+	var maximum := _Range.maximum(nm)
+	if merged.x > initial.x:
+		return shape + "\n同卡合成：半径 +%s，最高 %s" % [_num(merged.x - initial.x), _num(maximum.x)]
+	if merged.y > initial.y:
+		return shape + "\n同卡合成：扇角 +%d°，最高 %d°" % [roundi(rad_to_deg(merged.y - initial.y)), roundi(rad_to_deg(maximum.y))]
+	return shape
