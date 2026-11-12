@@ -6,6 +6,13 @@ const TC := preload("res://scripts/gameplay/tactical_combat.gd")
 const TowerRange := preload("res://scripts/gameplay/tower_range.gd")
 const Battle := preload("res://tests/run_fire_charge_asserts.gd")
 const TD := preload("res://scripts/data/tower_data.gd")
+const Packs := preload("res://scripts/data/card_packs.gd")
+const Profiles := preload("res://scripts/data/tower_range_profiles.gd")
+
+class ZeroCoverageGeometry extends "res://scripts/geo/geo.gd":
+	func cov_at(_slot: int, _ctype: String) -> float:
+		return 0.0
+
 var checks := 0
 var failures := 0
 
@@ -18,7 +25,25 @@ func check(ok: bool, message: String) -> void:
 		failures += 1
 		push_error(message)
 
+func _check_profile_catalog() -> void:
+	var cards := Packs.all_cards()
+	check(Profiles.PROFILES.size() == cards.size(), "所有卡包建筑都有显式的攻击范围设计")
+	for card in cards:
+		var initial := TowerRange.profile(card)
+		var merged := TowerRange.profile(card, 1)
+		var maximum := TowerRange.maximum(card)
+		check(Profiles.PROFILES.has(card), "%s 已逐卡配置" % card)
+		check(TowerRange.profile(card, 4, false).is_equal_approx(Vector2(TD.tower_rng(card), TAU)),
+			"%s 保留模拟基准射程" % card)
+		if TD.tower_dps(card) <= 0.0:
+			check(initial.x == 0.0 and maximum.x == 0.0, "%s 使用独立的辅助或充能规则" % card)
+			continue
+		check(initial.x > 0.0 and initial.y > 0.0 and merged != initial and maximum.y <= TAU + 0.000001
+			and TowerRange.profile(card, 100) == maximum, "%s 的攻击范围与合成上限有效" % card)
+
+
 func run() -> void:
+	_check_profile_catalog()
 	Space.mode = Space.Mode.RADIAL
 	Space.terrain_enabled = true
 	root.size = Vector2i(1600,900)
@@ -27,6 +52,7 @@ func run() -> void:
 	var scene = load("res://scenes/battle_shop.tscn").instantiate()
 	scene.auto_start_run = false
 	root.add_child(scene)
+	scene.wave_director.tactical_combat_enabled = true
 	scene.wave_director.stage_waves_enabled = true
 	scene.wave_director.set_stage("0-1")
 	scene.controller.start_new_run()
@@ -36,7 +62,6 @@ func run() -> void:
 	var ml = scene.get_node("Battlefield/MonsterLayer")
 	var rt = scene.controller.runtime
 	if "--sector-playtest" in OS.get_cmdline_user_args():
-		scene.wave_director.tactical_combat_enabled = true
 		rt.pending = ["Sniper", "Ember", "Arcbeacon", "Arcbeacon", "Rangebeacon", "Rangebeacon"]
 		rt.pending_cost = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
 		scene.controller.shop_changed.emit()
@@ -47,20 +72,20 @@ func run() -> void:
 	check(Grid.buildable(target),"预览测试目标可建")
 	ml.probe_hover_world = target+Vector2(0.3,0.4)
 	check(ml.placement_range_preview().is_empty(),"平常不显示放置射程")
-	rt.pending = ["Blaze","Lance","Foundry"]
+	rt.pending = ["Blaze","Frost","Foundry"]
 	rt.pending_cost = [12.0,12.0,12.0]
 	check(scene.controller.request_placement(1),"选择背包中第二张卡")
 	var preview: Dictionary = ml.placement_range_preview()
-	check(float(preview.radius)==TD.tower_rng("Lance"),"射程取自正在拖动的卡牌，而非第一张")
+	check(float(preview.radius)==TowerRange.profile("Frost").x,"射程取自正在拖动的卡牌，而非第一张")
 	check(preview.center==target and preview.valid,"圆心与合法吸附落点一致")
 	var screen_center: Vector2 = ml.world_to_screen(preview.center)
 	var screen_edge: Vector2 = ml.world_to_screen(preview.center+Vector2(preview.radius,0))
-	check(is_equal_approx(screen_center.distance_to(screen_edge),TD.tower_rng("Lance")*ml.world_scale()),"屏幕半径与真实战斗射程一致")
+	check(is_equal_approx(screen_center.distance_to(screen_edge),TowerRange.profile("Frost").x*ml.world_scale()),"屏幕半径与真实战斗射程一致")
 	Camera.zoom_at(1.5,Vector2(960,500),root.get_visible_rect().size)
 	Camera.pan(Vector2(-100,40),root.get_visible_rect().size)
 	scene.get_node("BattlefieldNavigation")._refresh()
 	preview = ml.placement_range_preview()
-	check(preview.center==target and float(preview.radius)==TD.tower_rng("Lance"),"镜头拖动缩放不改变实际范围")
+	check(preview.center==target and float(preview.radius)==TowerRange.profile("Frost").x,"镜头拖动缩放不改变实际范围")
 	check(ml.screen_to_world_position(ml.world_to_screen(target)).distance_to(target)<0.001,"拖放换算与预览一致")
 	if DisplayServer.get_name()!="headless" and "--sector-preview" not in OS.get_cmdline_user_args() and "--aura-preview" not in OS.get_cmdline_user_args():
 		await process_frame
@@ -77,7 +102,7 @@ func run() -> void:
 	scene.controller.request_placement(1)
 	scene.director.place_at_requested.emit(target)
 	check(ml.placement_range_preview().is_empty(),"完成放置后隐藏范围")
-	rt.pending.append("Lance")
+	rt.pending.append("Frost")
 	rt.pending_cost.append(12.0)
 	scene.controller.request_placement(rt.pending.size()-1)
 	preview = ml.placement_range_preview()
@@ -92,14 +117,13 @@ func run() -> void:
 	var over_bag: Vector2 = scene.tower_backpack.position+Vector2(160,50)
 	check(ml._placement_hover_world(over_bag)==null,"背包区域不显示地图范围")
 	scene.director.exit_placement(false)
-	scene.wave_director.tactical_combat_enabled = true
 	rt.pending = ["Sniper", "Sniper"]
 	rt.pending_cost = [12.0, 12.0]
 	var sniper_pos := Grid.snap(Space.RADIAL_CORE + Vector2(12, 3))
 	ml.probe_hover_world = sniper_pos
 	check(scene.controller.request_placement(0), "进入狙击塔放置")
 	preview = ml.placement_range_preview()
-	check(preview.valid and preview.radius == 44.0 and is_equal_approx(rad_to_deg(preview.angle), 40.0), "狙击塔显示 40 度、半径 44")
+	check(preview.valid and preview.radius == 53.0 and is_equal_approx(rad_to_deg(preview.angle), 40.0), "狙击塔显示 40 度、半径 53")
 	var initial_facing: float = preview.facing
 	var rotate := InputEventKey.new()
 	rotate.keycode = KEY_E
@@ -112,7 +136,7 @@ func run() -> void:
 	check(is_equal_approx(angle_difference(sniper.range_facing, preview.facing), 0.0), "落子保留预览朝向")
 	check(scene.controller.request_placement(0), "进入同卡合成")
 	preview = ml.placement_range_preview()
-	check(preview.mode == "upgrade" and preview.radius == 47.0 and preview.before.x == 44.0, "合成同时预览半径 44 和 47")
+	check(preview.mode == "upgrade" and preview.radius == 56.0 and preview.before.x == 53.0, "合成同时预览半径 53 和 56")
 	check(is_equal_approx(angle_difference(sniper.range_facing, preview.facing), 0.0), "合成沿用塔的朝向")
 	if DisplayServer.get_name() != "headless" and "--sector-preview" in OS.get_cmdline_user_args():
 		Camera.overview()
@@ -156,12 +180,12 @@ func run() -> void:
 	ml._input(escape)
 	ml._update_tower_details()
 	check(not ml._move_dragging and ml._tower_details.panel.visible, "取消移位后恢复选中塔的详情")
-	check(TowerRange.profile("Ember", 9).is_equal_approx(Vector2(14.0, deg_to_rad(150.0))), "余烬塔扩角封顶")
-	check(TowerRange.profile("Arrow", 9).x == TD.tower_rng("Arrow") + 4.0, "箭塔射程成长封顶")
+	check(TowerRange.profile("Ember", 9).is_equal_approx(Vector2(17.0, deg_to_rad(150.0))), "余烬塔扩角封顶")
+	check(TowerRange.profile("Arrow", 9).x == TowerRange.profile("Arrow").x + 4.0, "箭塔射程成长封顶")
 	var fixture := Battle.new()
 	var battle = fixture.make_battle(["Sniper"])
 	battle.geo = preload("res://scripts/geo/geo.gd").new([Vector2.ZERO])
-	fixture.set_positions(battle, [Vector2(20, 21), Vector2(45, 0), Vector2(20, 0)])
+	fixture.set_positions(battle, [Vector2(20, 21), Vector2(54, 0), Vector2(20, 0)])
 	TC.apply(battle, 1.0)
 	check(battle.monsters[0].hp == 1000.0 and battle.monsters[1].hp == 1000.0 and battle.monsters[2].hp < 1000.0,
 		"战斗跳过扇外和超射程敌人，伤害扇内敌人")
@@ -186,7 +210,7 @@ func run() -> void:
 	check(scene.controller.request_placement(0), "可预览受光环加成的同卡合成")
 	ml.probe_hover_world = sniper_pos
 	preview = ml.placement_range_preview()
-	check(preview.before.x == 49.0 and preview.radius == 52.0 and is_equal_approx(rad_to_deg(preview.angle), 50.0),
+	check(preview.before.x == 58.0 and preview.radius == 61.0 and is_equal_approx(rad_to_deg(preview.angle), 50.0),
 		"合成预览同时计入既有叠层、两种光环和新增叠层")
 	if DisplayServer.get_name() != "headless" and "--aura-preview" in OS.get_cmdline_user_args():
 		await process_frame
@@ -197,11 +221,11 @@ func run() -> void:
 	battle = fixture.make_battle(["Sniper", "Arcbeacon", "Arcbeacon", "Rangebeacon"])
 	battle.geo = preload("res://scripts/geo/geo.gd").new([Vector2.ZERO, Vector2(0, 8), Vector2(3, 0), Vector2(-3, 0)])
 	battle.player.towers[3].h = 2
-	var new_target := Vector2.from_angle(deg_to_rad(28)) * 47.0
+	var new_target := Vector2.from_angle(deg_to_rad(28)) * 56.0
 	fixture.set_positions(battle, [new_target])
 	var auras := TowerRange.active_auras(battle.player.towers, battle.geo)
 	var arrow := TowerRange.with_auras(TowerRange.profile("Arrow"), Vector2.ZERO, auras)
-	check(arrow.is_equal_approx(Vector2(TD.tower_rng("Arrow") + 4.0, TAU)), "圆形塔只获得射程加成")
+	check(arrow.is_equal_approx(Vector2(TowerRange.profile("Arrow").x + 4.0, TAU)), "圆形塔只获得射程加成")
 	check(TowerRange.with_auras(TowerRange.profile("Sniper"), Vector2(20, 0), auras) == TowerRange.profile("Sniper"),
 		"离开光环范围后无加成")
 	TC.apply(battle, 1.0)
@@ -214,6 +238,15 @@ func run() -> void:
 	battle.player.towers[3].h = 1
 	TC.apply(battle, 1.0)
 	check(battle.monsters[0].hp == 1000.0, "少一层延程时，目标仍在射程外")
+	battle.free()
+
+	battle = fixture.make_battle(["Lance"])
+	battle.geo = ZeroCoverageGeometry.new([Vector2.ZERO])
+	battle.cfg["coverage_mode"] = "geometry"
+	fixture.set_positions(battle, [Vector2(0, 36), Vector2(36, 0)])
+	TC.apply(battle, 1.0)
+	check(battle.monsters[0].hp == 1000.0 and battle.monsters[1].hp < 1000.0,
+		"长枪塔可命中超出旧射程、落在新扇形里的目标，即使基准路径覆盖为零")
 	battle.free()
 	fixture.free()
 	scene.queue_free()

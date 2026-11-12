@@ -104,7 +104,7 @@ static func _apply_converters(ts: Array, eff_type: Array, geo) -> void:
 #   geo:    Geo（null 时若 coverage_mode=="geometry" 会退回路径常量）
 #   返回 { "total": float, "info": Dictionary }  —— 与 v08 的 (total, info) 一一对应
 # ---------------------------------------------------------------------------
-static func compute_dps(player, cfg: Dictionary, geo = null) -> Dictionary:
+static func compute_dps(player, cfg: Dictionary, geo = null, live_range: bool = false) -> Dictionary:
 	var ts: Array = player.towers
 	var n := ts.size()
 	if n == 0:
@@ -319,6 +319,10 @@ static func compute_dps(player, cfg: Dictionary, geo = null) -> Dictionary:
 			cov = geo.cov_at(int(t.slot), ctype)
 		else:
 			cov = float(cfg["path_coverage"][path])
+
+		# 实战逐塔判距。基准采样未覆盖的塔也可攻击真正进入射程的目标。
+		if live_range and cov <= 0.0:
+			cov = 1.0
 
 		# ★ 乘法次序与 v08 逐字一致（左结合）
 		var dps_i := base * stack * syn * res * foc * ali * cov

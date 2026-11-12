@@ -22,7 +22,7 @@ static func apply(wd, dt: float) -> void:
 	if wd.player == null or wd.geo == null:
 		return
 	var auras := TowerRange.active_auras(wd.player.towers, wd.geo)
-	var result: Dictionary = DE.compute_dps(wd.player, wd.cfg, wd.geo)
+	var result: Dictionary = DE.compute_dps(wd.player, wd.cfg, wd.geo, true)
 	var info: Dictionary = result.get("info", {})
 	var rows: Array = info.get("per_tower", [])
 	var global_mult := float(info.get("aoe", 1.0)) * float(info.get("crossfire", 1.0)) \

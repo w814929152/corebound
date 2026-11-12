@@ -2,16 +2,23 @@ extends RefCounted
 
 const TD := preload("res://scripts/data/tower_data.gd")
 
+const Profiles := preload("res://scripts/data/tower_range_profiles.gd")
+
 static func profile(card: String, merges: int = 0, enabled: bool = true) -> Vector2:
-	if enabled:
-		match card:
-			"Sniper":
-				return Vector2(minf(56.0, 44.0 + 3.0 * merges), deg_to_rad(40.0))
-			"Ember":
-				return Vector2(14.0, deg_to_rad(minf(150.0, 100.0 + 10.0 * merges)))
-			"Arrow":
-				return Vector2(TD.tower_rng(card) + minf(4.0, float(merges)), TAU)
-	return Vector2(TD.tower_rng(card), TAU)
+	var data: Array = Profiles.PROFILES.get(card, [])
+	if not enabled or data.is_empty():
+		return Vector2(TD.tower_rng(card), TAU)
+	if float(data[0]) <= 0.0:
+		return Vector2(0.0, TAU)
+	var growth := clampi(merges, 0, int(data[4]))
+	return Vector2(float(data[0]) + float(data[2]) * growth,
+		deg_to_rad(float(data[1]) + float(data[3]) * growth))
+
+
+static func maximum(card: String) -> Vector2:
+	var data: Array = Profiles.PROFILES.get(card, [])
+	return profile(card, int(data[4]) if not data.is_empty() else 0)
+
 
 static func contains(offset: Vector2, radius: float, angle: float = TAU, facing: float = 0.0) -> bool:
 	return offset.length_squared() <= radius * radius and (

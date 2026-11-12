@@ -39,7 +39,6 @@ const _TowerData := preload("res://scripts/data/tower_data.gd")
 const MARGIN := 48.0
 
 # ---- 阵营配色（与 `monster_layer.gd` 同源 hex，误差 0）----
-const P_ALLY := Color(0.243, 0.816, 0.910)        # #3ED0E8 耀青
 const P_ENEMY := Color(1.000, 0.420, 0.239)       # #FF6B3D 熔橙
 const P_ENEMY_DARK := Color(0.541, 0.184, 0.110)  # #8A2F1C 焦褐
 const P_ELITE := Color(0.910, 0.263, 0.498)       # #E8437F 噬品红
@@ -53,10 +52,14 @@ const VFX_MAX_KF_PARTS := 288      # 击杀碎片总量硬上限
 # ---- A1 投射物（§1）----
 const BOLT_DUR_MIN := 0.10                 # 固定滞空下限（s，与距离无关）
 const BOLT_DUR_MAX := 0.15                 # 固定滞空上限（s）
-const BOLT_LEN := 19.0                     # 梭形长（px，16–22；屏幕空间恒定）
-const BOLT_WID := 6.0                      # 梭形宽（px，5–7；长宽比 ≈3.2 ≥ 2）
-const BOLT_TAIL := 8.0                     # 尾迹长（px，6–10）
-const BOLT_TIP := Color(0.918, 0.984, 1.000)   # 尖端高光 #EAFBFF
+const AREA_IMPACT_LIFE := 0.24
+const SECTOR_ATTACK_LIFE := 0.26
+## 直接扫过攻击范围的塔。炮击、溅射、弹射和贯穿塔沿用弹道。
+const SECTOR_ATTACK_TOWERS := {
+	"Ember": true, "Blaze": true, "Furnace": true, "Hellfire": true, "Maul": true,
+	"Hail": true, "Whiteout": true, "Breaker": true, "Ruin": true,
+	"Blight": true, "Malison": true, "Eraser": true,
+}
 const DPS_FULL := 300.0                    # dps 归一化满标（放缩 ×1→×3）
 
 # ---- A2 伤害数字（§2）----
@@ -103,6 +106,7 @@ var _hp_cache: Dictionary = {}         # index → {"hp","hp_max","pos"}（帧�
 var _hp_cache_w: int = -1              # 缓存所属波号（变化即清）
 var _kill_set: Dictionary = {}         # index → true（本帧被击杀；区分"击杀消失"vs"漏怪/收尾消失"）
 var _bolts: Array = []                 # A1 装饰弹池（world 坐标）
+var _sector_attacks: Dictionary = {}    # 塔位 → 当前范围攻击演出（world 坐标）
 var _bolt_t: Dictionary = {}           # slot → 发射计时累积（s）
 var _dmg: Array = []                   # A2 伤害数字池（screen 坐标）
 var _dmg_grid: Dictionary = {}         # Vector2i 网格单元 → 失效时刻（`_vfx_t`）
@@ -132,7 +136,7 @@ func bind_director(d: Node) -> void:
 
 func _on_scrap_shot(slot: int, origin: Vector2, target: Vector2, target_index: int) -> void:
 	if _bolts.size() < VFX_MAX_BOLTS:
-		_spawn_bolt(slot, origin, target, target_index)
+		_spawn_bolt(slot, origin, target, target_index, _Style.card_pack_id("Scrapcannon"))
 
 
 func bind_time_director(d: Node) -> void:
@@ -184,12 +188,13 @@ func _process(delta: float) -> void:
 		# 🔴 VFX-PATH-01 修复（quality-lead 边界探察）：守卫**必须与下方清理动作逐一对应**。
 		#   此前守卫只测 5 个容器、动作实清 7 个 → `_dmg_grid` / `_kill_set` **非空时守卫不触发**
 		#   → 二者残留（`_kill_set` 在 PATH 下由 `_on_monster_killed` 逐杀写入 :150、却从不被清）。
-		#   现按清理动作的**同序 8 个容器**判据，判据 ≡ 动作（新增 `_dmg_by_owner` 一并纳入）。
+		#   判据与下方清理动作覆盖相同的容器。
 		if not (_bolts.is_empty() and _dmg.is_empty() and _dmg_grid.is_empty()
 				and _dmg_by_owner.is_empty()
 				and _kf_parts.is_empty() and _kf_rings.is_empty()
-				and _hp_cache.is_empty() and _kill_set.is_empty()):
+				and _hp_cache.is_empty() and _kill_set.is_empty() and _sector_attacks.is_empty()):
 			_bolts = []
+			_sector_attacks.clear()
 			_dmg = []
 			_dmg_grid = {}
 			_dmg_by_owner = {}
@@ -492,21 +497,30 @@ func _fmt_dmg(v: float) -> String:
 ## 装饰弹流：每塔按 `fire_hz = clamp(2+0.5h,2,12) × dps 放缩(×1→×3)` 朝**最前活怪**发一视觉弹，
 ##   固定滞空 0.10–0.15s；目标消失则**重定向**到新的最前怪。🔴 纯装饰，与真实伤害无因果（§1.4）。
 func _update_bolts(dt: float) -> void:
+	for slot in _sector_attacks.keys():
+		var pulse: Dictionary = _sector_attacks[slot]
+		pulse["age"] = float(pulse["age"]) + dt
+		if float(pulse["age"]) >= SECTOR_ATTACK_LIFE:
+			_sector_attacks.erase(slot)
 	if not _bolts.is_empty():
 		var front := _front_monster()
 		var front_idx := int(front.get("index", -1))
 		var front_pos: Vector2 = front.get("pos", Vector2.ZERO)
 		var keep: Array = []
 		for b in _bolts:
-			b["t"] = float(b["t"]) + dt / maxf(0.0001, float(b["dur"]))
-			var tp := _monster_pos_by_index(int(b["tgt"]))
-			if tp == Vector2.INF:
-				if front_idx >= 0 and not bool(_snap.get("tactical_combat", false)):
+			var was_flying := float(b["t"]) < 1.0
+			var duration := maxf(0.0001, float(b["dur"]))
+			b["t"] = float(b["t"]) + dt / duration
+			# 冲击波固定在弹丸落地时的位置。
+			if was_flying:
+				var tp := _monster_pos_by_index(int(b["tgt"]))
+				if tp != Vector2.INF:
+					b["to"] = tp
+				elif front_idx >= 0 and not bool(_snap.get("tactical_combat", false)):
 					b["tgt"] = front_idx
 					b["to"] = front_pos
-			else:
-				b["to"] = tp
-			if float(b["t"]) < 1.0:
+			var impact_life := AREA_IMPACT_LIFE if float(b.get("impact_radius", 0.0)) > 0.0 else 0.0
+			if float(b["t"]) < 1.0 + impact_life / duration:
 				keep.append(b)
 		_bolts = keep
 	if controller == null or controller.runtime == null:
@@ -519,35 +533,51 @@ func _update_bolts(dt: float) -> void:
 	var gscale := clampf(1.0 + float(_snap.get("dps", 0.0)) / DPS_FULL, 1.0, 3.0)
 	var slot_pos: Array = _slots_arr()
 	var rt = controller.runtime
-	var auras := _Range.active_auras(rt.player.towers, rt.geo, bool(_snap.get("tactical_combat", false)))
+	var tactical := bool(_snap.get("tactical_combat", false))
+	var auras := _Range.active_auras(rt.player.towers, rt.geo, tactical)
 	for tw in rt.snapshot().get("slots", []):
 		if bool(tw.get("empty", true)):
 			continue
 		if bool(tw.get("disabled", false)):
 			continue
-		if _TowerData.tower_dps(String(tw.get("ctype", "Arrow"))) <= 0.0:
+		var tower_name := String(tw.get("ctype", "Arrow"))
+		if _TowerData.tower_dps(tower_name) <= 0.0:
 			continue
-		if _TowerData.tower_shot_scrap(String(tw.get("ctype", "Arrow"))) > 0:
+		if _TowerData.tower_shot_scrap(tower_name) > 0:
 			continue
 		var slot := int(tw.get("slot", -1))
 		if slot < 0 or slot >= slot_pos.size():
 			continue
 		var target := front2
-		if bool(_snap.get("tactical_combat", false)):
-			var coverage := _Range.with_auras(_Range.profile(String(tw.get("ctype", "Arrow")), int(tw.get("range_merges", 0))), slot_pos[slot], auras)
-			target = _front_in_range(slot_pos[slot], coverage, float(tw.get("range_facing", 0.0)))
+		var coverage := Vector2.ZERO
+		var facing := float(tw.get("range_facing", 0.0))
+		if tactical:
+			coverage = _Range.with_auras(_Range.profile(tower_name, int(tw.get("range_merges", 0))), slot_pos[slot], auras)
+			target = _front_in_range(slot_pos[slot], coverage, facing)
 			if target.is_empty():
 				_bolt_t.erase(slot)
 				continue
 		var hz := clampf(2.0 + 0.5 * float(int(tw.get("h", 1))), 2.0, 12.0) * gscale
-		hz *= _TowerData.tower_attack_speed(String(tw.get("ctype", "Arrow")))
+		hz *= _TowerData.tower_attack_speed(tower_name)
 		var interval := 1.0 / maxf(0.5, hz)
 		var acc := float(_bolt_t.get(slot, _bolt_phase(slot))) + dt
+		if tactical and SECTOR_ATTACK_TOWERS.has(tower_name):
+			if acc >= interval:
+				if not _sector_attacks.has(slot):
+					_sector_attacks[slot] = {"center": slot_pos[slot], "coverage": coverage,
+						"facing": facing, "pack": _Style.card_pack_id(tower_name), "age": 0.0}
+				acc = fposmod(acc, interval)
+			_bolt_t[slot] = acc
+			continue
 		var guard := 0
+		var splash := _TowerData.tower_splash(tower_name)
+		var is_area := bool(_TowerData._tower_def(tower_name).get("aoe", false)) or splash > 0
+		var impact_radius := 3.0 + 0.6 * splash if is_area else 0.0
 		while acc >= interval and _bolts.size() < VFX_MAX_BOLTS and guard < 4:
 			guard += 1
 			acc -= interval
-			_spawn_bolt(slot, slot_pos[slot], target.get("pos", front_pos2), int(target.get("index", front_idx2)))
+			_spawn_bolt(slot, slot_pos[slot], target.get("pos", front_pos2),
+				int(target.get("index", front_idx2)), _Style.card_pack_id(tower_name), impact_radius)
 		_bolt_t[slot] = acc
 
 
@@ -593,13 +623,15 @@ func _bolt_phase(slot: int) -> float:
 	return fmod(float(slot) * 0.083, 1.0)
 
 
-func _spawn_bolt(slot: int, tower_world: Vector2, to_world: Vector2, tgt_idx: int) -> void:
+func _spawn_bolt(slot: int, tower_world: Vector2, to_world: Vector2, tgt_idx: int,
+		pack_id: String, impact_radius: float = 0.0) -> void:
 	var d := to_world - tower_world
 	var dir := d.normalized() if d.length_squared() > 1e-9 else Vector2(1.0, 0.0)
 	# 🔴 起点取塔缘外（§1.4「不得遮塔轮廓」）→ 弹体出生即离开塔体。
 	var from := tower_world + dir * (1.70 + 0.30)      # 1.70u = U_TOWER（塔半径）
 	var dur := BOLT_DUR_MIN + (BOLT_DUR_MAX - BOLT_DUR_MIN) * fmod(float(slot) * 0.37, 1.0)
-	_bolts.append({"from": from, "to": to_world, "t": 0.0, "dur": dur, "tgt": tgt_idx})
+	_bolts.append({"from": from, "to": to_world, "t": 0.0, "dur": dur, "tgt": tgt_idx,
+		"pack": pack_id, "impact_radius": impact_radius})
 
 
 # ---------------------------------------------------------------------------
@@ -664,32 +696,149 @@ func _draw() -> void:
 	if not _SpaceModel.is_radial():
 		return
 	var sc := _sc()
+	_draw_sector_attacks(sc)
+	_draw_area_impacts(sc)
 	_draw_bolts()
 	_draw_kill_rings(sc)
 	_draw_kill_fragments(sc)
 	_draw_dmg_numbers()
 
 
+func _draw_sector_attacks(sc: float) -> void:
+	for pulse in _sector_attacks.values():
+		var center := _to_screen(pulse["center"])
+		var coverage: Vector2 = pulse["coverage"]
+		var radius := coverage.x * sc
+		var facing := float(pulse["facing"])
+		var start := facing - coverage.y * 0.5
+		var end := facing + coverage.y * 0.5
+		var progress := float(pulse["age"]) / SECTOR_ATTACK_LIFE
+		var fade := 1.0 - progress
+		var color := _Style.pack_color(String(pulse["pack"])).lerp(Color.WHITE, 0.25)
+		if coverage.y >= TAU:
+			draw_circle(center, radius, Color(color, 0.11 * fade), true, -1.0, true)
+		else:
+			var points := PackedVector2Array([center])
+			for step in range(49):
+				points.append(center + Vector2.from_angle(lerpf(start, end, float(step) / 48.0)) * radius)
+			draw_colored_polygon(points, Color(color, 0.11 * fade))
+			draw_line(center, points[1], Color(color, 0.32 * fade), 1.5, true)
+			draw_line(center, points[-1], Color(color, 0.32 * fade), 1.5, true)
+		draw_arc(center, radius, start, end, 48, Color(color, 0.48 * fade), 1.5, true)
+		var wave_radius := radius * lerpf(0.16, 1.0, 1.0 - fade * fade)
+		draw_arc(center, wave_radius, start, end, 48, Color(color, 0.82 * fade), 3.0, true)
+
+
 func _draw_bolts() -> void:
 	for b in _bolts:
+		if float(b["t"]) >= 1.0:
+			continue
 		var sf := _to_screen(b["from"])
 		var st := _to_screen(b["to"])
 		var p := clampf(float(b["t"]), 0.0, 1.0)
 		var e := 1.0 - pow(1.0 - p, 2.0)          # EASE_OUT（"干脆"）
 		var fp := sf.lerp(st, e)
-		var d := st - sf
-		var dir := d.normalized() if d.length_squared() > 1e-6 else Vector2(1.0, 0.0)
-		var perp := Vector2(-dir.y, dir.x)
-		var half_l := BOLT_LEN * 0.5
-		var half_w := BOLT_WID * 0.5
-		# 尾迹（沿速度反向 6–10px 渐隐）
-		draw_line(fp - dir * half_l, fp - dir * (half_l + BOLT_TAIL),
-			Color(P_ALLY.r, P_ALLY.g, P_ALLY.b, 0.55 * (1.0 - p)), maxf(1.0, half_w * 0.5), true)
-		# 梭形（尖端朝飞行方向；长:宽 ≈ 3.2 ≥ 2）
-		draw_colored_polygon(PackedVector2Array([
-			fp + dir * half_l, fp + perp * half_w, fp - dir * half_l, fp - perp * half_w]), P_ALLY)
-		# 尖端高光（"读得动"的关键）
-		draw_circle(fp + dir * half_l, maxf(1.0, BOLT_WID * 0.35), BOLT_TIP)
+		draw_set_transform(fp, (st - sf).angle())
+		_draw_pack_bolt(String(b.get("pack", "core")), 1.0 - p)
+	draw_set_transform(Vector2.ZERO)
+
+
+func _draw_area_impacts(sc: float) -> void:
+	for b in _bolts:
+		var impact_radius := float(b.get("impact_radius", 0.0))
+		if float(b["t"]) < 1.0 or impact_radius <= 0.0:
+			continue
+		var progress := clampf((float(b["t"]) - 1.0) * float(b["dur"]) / AREA_IMPACT_LIFE, 0.0, 1.0)
+		var radius := clampf(impact_radius * sc, 12.0, 56.0)
+		_draw_area_impact(_to_screen(b["to"]), radius, progress, String(b["pack"]))
+
+
+## 半径用于演出。群伤与溅射沿用战斗层的伤害结算。
+func _draw_area_impact(center: Vector2, radius: float, progress: float, pack_id: String) -> void:
+	var color := _Style.pack_color(pack_id).lerp(Color.WHITE, 0.22)
+	if pack_id == "cinder" or pack_id == "core":
+		color = Color("#ff9a56") if pack_id == "cinder" else Color("#ffe0a6")
+	var fade := 1.0 - progress
+	var ring := radius * lerpf(0.28, 1.0, 1.0 - fade * fade)
+	draw_circle(center, ring, Color(color, 0.18 * fade), true, -1.0, true)
+	var edge := Color(color, 0.78 * fade)
+	match pack_id:
+		"hex", "true":
+			var sides := 6 if pack_id == "hex" else 24
+			draw_arc(center, ring, 0.0, TAU, sides, edge, 2.0, true)
+			draw_arc(center, ring * lerpf(0.82, 0.35, progress), 0.0, TAU, sides, edge, 1.3, true)
+		"arc", "sunder", "rime":
+			var sides := 12 if pack_id == "arc" else 8
+			var points := PackedVector2Array()
+			for i in range(sides + 1):
+				var angle := TAU * float(i) / float(sides) - PI * 0.5
+				var offset := 1.0 if i % 2 == 0 else 0.68
+				points.append(center + Vector2.from_angle(angle) * ring * offset)
+			draw_polyline(points, edge, 2.0, true)
+			if pack_id != "arc":
+				for i in range(0, sides, 2):
+					var dir := (points[i] - center).normalized()
+					draw_line(points[i], points[i] + dir * (4.0 * fade), edge, 2.0, true)
+		_:
+			draw_arc(center, ring, 0.0, TAU, 24, edge, 2.0, true)
+			for i in range(6):
+				var dir := Vector2.from_angle(TAU * float(i) / 6.0)
+				draw_circle(center + dir * ring * 0.78, 2.5 * fade, edge, true, -1.0, true)
+
+
+## 弹丸沿局部 +X 飞行，尺寸用屏幕像素，缩到总览也能分辨轮廓。
+func _draw_pack_bolt(pack_id: String, fade: float) -> void:
+	var color := _Style.pack_color(pack_id).lerp(Color.WHITE, 0.20)
+	var highlight := color.lerp(Color.WHITE, 0.66)
+	var trail := Color(color, 0.62 * fade)
+	match pack_id:
+		"cinder": # 火团与散开的余烬
+			draw_colored_polygon(PackedVector2Array([
+				Vector2(-15, -3), Vector2(-4, -4), Vector2(0, 3), Vector2(-8, 2)]), trail)
+			draw_circle(Vector2(2, 0), 5.0, color, true, -1.0, true)
+			draw_circle(Vector2(4, -1), 2.5, highlight, true, -1.0, true)
+			draw_circle(Vector2(-12, 4), 1.4, trail, true, -1.0, true)
+		"rime": # 冰晶与两片冰屑
+			draw_colored_polygon(PackedVector2Array([
+				Vector2(10, 0), Vector2(-2, 5), Vector2(-7, 2), Vector2(-4, -5)]), color)
+			draw_line(Vector2(-4, -3), Vector2(8, 0), highlight, 1.6, true)
+			draw_line(Vector2(-9, -2), Vector2(-15, -4), trail, 1.5, true)
+			draw_line(Vector2(-8, 3), Vector2(-12, 5), trail, 1.5, true)
+		"pierce": # 长针与双翼
+			draw_line(Vector2(-20, 0), Vector2(-6, 0), trail, 1.5, true)
+			draw_colored_polygon(PackedVector2Array([
+				Vector2(14, 0), Vector2(-9, 3), Vector2(-5, 0), Vector2(-9, -3)]), color)
+			draw_line(Vector2(-6, 0), Vector2(13, 0), highlight, 1.4, true)
+		"arc": # 双层折线电弧
+			var zigzag := PackedVector2Array([
+				Vector2(-13, 2), Vector2(-5, -4), Vector2(-2, 2), Vector2(5, -3), Vector2(10, 0)])
+			draw_polyline(zigzag, color, 4.5, true)
+			draw_polyline(zigzag, highlight, 1.5, true)
+			draw_line(Vector2(-13, 2), Vector2(-18, 4), trail, 1.8, true)
+		"sunder": # 楔形弹头与碎甲屑
+			draw_colored_polygon(PackedVector2Array([
+				Vector2(8, -2), Vector2(5, 5), Vector2(-6, 4), Vector2(-8, -3), Vector2(-1, -5)]), color)
+			draw_polyline(PackedVector2Array([Vector2(1, -4), Vector2(-2, 0), Vector2(1, 4)]), highlight, 1.5, true)
+			draw_rect(Rect2(-13, -4, 3, 3), trail)
+			draw_rect(Rect2(-16, 2, 4, 2), trail)
+		"hex": # 符环与十字咒印
+			draw_arc(Vector2.ZERO, 6.0, 0.0, TAU, 16, color, 2.2, true)
+			draw_line(Vector2(-3, 0), Vector2(3, 0), highlight, 1.6, true)
+			draw_line(Vector2(0, -3), Vector2(0, 3), highlight, 1.6, true)
+			draw_circle(Vector2(-11, 0), 1.8, trail, true, -1.0, true)
+			draw_circle(Vector2(-16, 0), 1.2, trail, true, -1.0, true)
+		"true": # 暗心裂隙与分叉红边
+			var rift := PackedVector2Array([
+				Vector2(-9, -5), Vector2(1, -3), Vector2(10, 0), Vector2(1, 3), Vector2(-9, 5), Vector2(-4, 0)])
+			draw_colored_polygon(rift, Color("#200e25"))
+			draw_polyline(rift, color, 2.0, true)
+			draw_line(Vector2(3, 0), Vector2(9, 0), highlight, 1.5, true)
+			draw_line(Vector2(-9, 0), Vector2(-18, 0), trail, 2.0, true)
+		_: # 钢弹与弹壳色尾焰
+			draw_line(Vector2(-8, 0), Vector2(-17, 0), Color("#ffc678", 0.65 * fade), 2.4, true)
+			draw_colored_polygon(PackedVector2Array([
+				Vector2(9, 0), Vector2(4, 3), Vector2(-7, 3), Vector2(-7, -3), Vector2(4, -3)]), color)
+			draw_line(Vector2(-5, -1), Vector2(4, -1), highlight, 1.4, true)
 
 
 func _draw_kill_rings(sc: float) -> void:
