@@ -27,6 +27,7 @@ var director: Node = null
 var world_layer: Node = null
 var _pending: Array = []
 var _drag_index := -1
+var _clicked_index := -1
 var _first_visible := 0
 var _drag_name := ""
 var _panel_box: StyleBoxFlat
@@ -108,6 +109,11 @@ func _input(event: InputEvent) -> void:
 		if mb.pressed and _drag_index < 0:
 			var local := mb.global_position - position
 			var index := _card_at(local)
+			var double_click := mb.double_click and index == _clicked_index
+			_clicked_index = -1
+			if double_click and index >= 0 and controller != null and controller.request_auto_merge(index):
+				get_viewport().set_input_as_handled()
+				return
 			if index >= 0 and controller != null and controller.request_placement(index):
 				_drag_index = index
 				_drag_name = String(_pending[index])
@@ -115,6 +121,8 @@ func _input(event: InputEvent) -> void:
 				queue_redraw()
 				get_viewport().set_input_as_handled()
 		elif not mb.pressed and _drag_index >= 0:
+			if _card_at(mb.global_position - position) == _drag_index:
+				_clicked_index = _drag_index
 			_drop_at(mb.global_position)
 			get_viewport().set_input_as_handled()
 	elif _drag_index >= 0 and event is InputEventMouseMotion:
@@ -172,6 +180,7 @@ func _draw() -> void:
 		font = ThemeDB.fallback_font
 	draw_string(font, Vector2(18.0, 39.0), "建筑背包", HORIZONTAL_ALIGNMENT_LEFT, -1, 18, C_TEXT)
 	draw_string(font, Vector2(18.0, 65.0), "拖动部署", HORIZONTAL_ALIGNMENT_LEFT, 104.0, 16, C_DIM)
+	draw_string(font, Vector2(18.0, 87.0), "双击合成", HORIZONTAL_ALIGNMENT_LEFT, 104.0, 16, C_DIM)
 	if _pending.is_empty():
 		draw_string(font, Vector2(136.0, 57.0), "暂无建筑", HORIZONTAL_ALIGNMENT_LEFT, size.x - 160.0, 18, C_DIM)
 	var visible := _visible_count()

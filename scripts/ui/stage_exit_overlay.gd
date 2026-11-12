@@ -2,6 +2,10 @@ extends CanvasLayer
 ## 关卡内退出确认，只发意图；暂停由 TimeDirector 统一应用。
 const Style := preload("res://scripts/ui/ui_style.gd")
 signal exit_confirmed()
+signal save_requested()
+var can_save: Callable
+var _message: Label
+var _save_button: Button
 var director: Node
 var active := false
 var confirming := false
@@ -32,14 +36,26 @@ func _ready() -> void:
 	box.add_theme_constant_override("separation", 18)
 	panel.add_child(box)
 	box.add_child(Style.label("退出当前关卡？", 26))
-	box.add_child(Style.label("本局进度将放弃，不结算奖励。\n返回选关后可重新挑战。", 18))
+	_message = Style.label("", 18)
+	box.add_child(_message)
 	var buttons := HBoxContainer.new()
+	buttons.add_theme_constant_override("separation", 12)
 	box.add_child(buttons)
-	for title in ["继续游戏", "确认退出"]:
+	for title in ["继续游戏", "保存并退出", "放弃本局"]:
 		var button := Button.new()
 		button.text = title
-		Style.button(button, "normal" if title == "继续游戏" else "danger")
-		button.pressed.connect(cancel_exit if title == "继续游戏" else confirm_exit)
+		button.custom_minimum_size = Vector2(140, 44)
+		match title:
+			"继续游戏":
+				Style.button(button, "normal")
+				button.pressed.connect(cancel_exit)
+			"保存并退出":
+				Style.button(button, "primary")
+				button.pressed.connect(_request_save)
+				_save_button = button
+			"放弃本局":
+				Style.button(button, "danger")
+				button.pressed.connect(confirm_exit)
 		buttons.add_child(button)
 	get_viewport().size_changed.connect(_layout)
 	_layout()
@@ -49,7 +65,7 @@ func _layout() -> void:
 	var size := get_viewport().get_visible_rect().size
 	exit_button.position = Vector2(size.x - 150, 80)
 	exit_button.size = Vector2(126, 44)
-	panel.size = Vector2(460, 230)
+	panel.size = Vector2(560, 190)
 	panel.position = (size - panel.size) * 0.5
 
 func set_active(value: bool) -> void:
@@ -64,7 +80,20 @@ func request_exit() -> void:
 		return
 	confirming = true
 	director.set_external_pause(true)
+	var available := can_save.is_valid() and bool(can_save.call())
+	_save_button.visible = available
+	_message.text = "保存后可从主菜单继续。放弃本局将丢失当前进度。" if available else \
+		"可在准备阶段保存。放弃本局将丢失当前进度。"
 	modal.show()
+
+
+func _request_save() -> void:
+	if confirming and _save_button.visible:
+		save_requested.emit()
+
+
+func show_error(message: String) -> void:
+	_message.text = message
 
 func cancel_exit() -> void:
 	if not confirming:

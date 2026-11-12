@@ -15,8 +15,7 @@ extends SceneTree
 ##     · 金标本零扰动（本系统只在玩家路线被读，金标本引擎不引用它）。
 ##
 ## 🔴 判据设计原则：全部用**纯函数 / 纯数据**验证，不依赖场景树、不依赖 headless 之外的
-##   任何环境。存档读写用 `user://save.json`（与 run_meta 的 `card_packs.json` 隔离），
-##   测完清理，不污染真实存档。
+##   任何环境。存档读写用按进程命名的临时文件，测完删除。
 ##
 ## 跑法（本文件 `extends SceneTree`，故两种入口等价）：
 ##   <godot> --headless --path . --script res://tests/run_campaign_asserts.gd      # 只跑本套件
@@ -38,6 +37,7 @@ const _StageSelect := preload("res://scripts/ui/stage_select_overlay.gd")
 
 var _pass := 0
 var _fail := 0
+var _save_path := "user://campaign-test-%d.json" % OS.get_process_id()
 
 
 func _initialize() -> void:
@@ -62,6 +62,7 @@ func run_all() -> bool:
 	_test_map_variants()
 	_test_map_switching()
 	_test_world_map()
+	DirAccess.remove_absolute(_save_path)
 
 	_log("")
 	_log("-".repeat(78))
@@ -149,7 +150,7 @@ func _same_set(a: Array, b: Array) -> bool:
 func _test_progression_graph() -> void:
 	_log("")
 	_log("--- [2] 图状解锁（外环任选起点 / 中环两条来路）---")
-	var c = _Campaign.new()
+	var c = _Campaign.new(_save_path)
 	_check("初始：0-1 解锁", c.is_unlocked("0-1"))
 	_check("初始：1-1 锁定（要先通中枢）", not c.is_unlocked("1-1"))
 	_check("初始：8-1 锁定（地区门槛）", not c.is_unlocked("8-1"))
@@ -185,7 +186,7 @@ func _test_progression_graph() -> void:
 	_check("重复通关 1-1：Ember 递减", int(r3["ember_gained"]) == _CampaignData.EMBER_REPLAY)
 
 	# 未知关卡 → 拒绝
-	var cx = _Campaign.new()
+	var cx = _Campaign.new(_save_path)
 	_check("未知关卡拒绝", not bool(cx.on_cleared("9-9")["ok"]))
 
 
@@ -195,7 +196,7 @@ func _test_progression_graph() -> void:
 func _test_gates() -> void:
 	_log("")
 	_log("--- [3] 内环门槛 ---")
-	var c = _Campaign.new()
+	var c = _Campaign.new(_save_path)
 	c.on_cleared("0-1")
 	# 守 3 区（外环）
 	for sid in ["1-1", "2-1", "3-1"]:
@@ -226,7 +227,7 @@ func _test_gates() -> void:
 	_check("内环两关不增加地区数", c.regions_cleared() == 7)
 
 	# 门槛关不可用 Ember 跳过
-	var c2 = _Campaign.new()
+	var c2 = _Campaign.new(_save_path)
 	c2.on_cleared("0-1")
 	c2.on_cleared("1-1")
 	var u: Dictionary = c2.unlock_stage_with_ember("8-1", 5)
@@ -240,7 +241,7 @@ func _test_gates() -> void:
 func _test_deck_unlock() -> void:
 	_log("")
 	_log("--- [4] 科技包 = 守住地区的产物 ---")
-	var c = _Campaign.new()
+	var c = _Campaign.new(_save_path)
 	_check("初始：熔炉科技未解锁", not c.deck_unlocked("cinder"))
 	_check("包 → 关卡映射：cinder 由 1-1 打出", _CampaignData.deck_unlock_stage("cinder") == "1-1")
 	_check("包 → 关卡映射：true 由 7-1 打出", _CampaignData.deck_unlock_stage("true") == "7-1")
@@ -260,7 +261,7 @@ func _test_deck_unlock() -> void:
 	# 🆕 `cleared_regions()` = 卡包解锁判据的唯一数据源（2026-11-08 接线）。
 	#   🔴 它和 `regions_cleared()` 必须同源同数：一个喂 `S`（波表加压），一个喂科技包，
 	#      两者漂移就会出现「难度按 3 区算，但科技包只给了 2 个」这种玩家看不懂的状态。
-	var c2 = _Campaign.new()
+	var c2 = _Campaign.new(_save_path)
 	_check("初始：已守地区为空", c2.cleared_regions().is_empty())
 	c2.on_cleared("0-1")
 	_check("通中枢不算守住地区（region 为空）", c2.cleared_regions().is_empty())
@@ -289,7 +290,7 @@ func _every_deck_has_stage() -> bool:
 func _test_ember_economy() -> void:
 	_log("")
 	_log("--- [5] Ember 局外货币 ---")
-	var c = _Campaign.new()
+	var c = _Campaign.new(_save_path)
 	_check_int("初始 Ember = 0", c.ember(), 0)
 
 	c.on_cleared("0-1")
@@ -318,13 +319,13 @@ func _test_ember_economy() -> void:
 func _test_save_roundtrip() -> void:
 	_log("")
 	_log("--- [6] 存档往返 ---")
-	var c = _Campaign.new()
+	var c = _Campaign.new(_save_path)
 	c.on_cleared("0-1")
 	c.on_cleared("1-1")
 	c.on_cleared("2-1")
 	var snap_before: Dictionary = c.snapshot()
 
-	var c2 = _Campaign.new()
+	var c2 = _Campaign.new(_save_path)
 	c2.load_save()
 	var snap_after: Dictionary = c2.snapshot()
 	_check("存档往返：cleared 一致", _dict_eq(snap_before["cleared"], snap_after["cleared"]))
@@ -333,7 +334,7 @@ func _test_save_roundtrip() -> void:
 	_check_int("存档往返：S 一致", int(snap_after["regions_cleared"]), int(snap_before["regions_cleared"]))
 
 	_wipe_save()
-	var c3 = _Campaign.new()
+	var c3 = _Campaign.new(_save_path)
 	c3.load_save()
 	_check("清空后回到空状态（首次启动语义）",
 		c3.ember() == 0 and not c3.is_unlocked("1-1") and c3.current_stage() == _CampaignData.START_STAGE)
@@ -354,13 +355,13 @@ func _test_save_migration() -> void:
 		"ember": 42,
 		"current_stage": "2-1",
 	}
-	var f := FileAccess.open(_Campaign.SAVE_PATH, FileAccess.WRITE)
+	var f := FileAccess.open(_save_path, FileAccess.WRITE)
 	if f != null:
 		f.store_string(JSON.stringify(v1))
 		f.close()
-	_check("v1 存档已写入", FileAccess.file_exists(_Campaign.SAVE_PATH))
+	_check("v1 存档已写入", FileAccess.file_exists(_save_path))
 
-	var c = _Campaign.new()
+	var c = _Campaign.new(_save_path)
 	c.load_save()
 	_check_int("迁移后 Ember 全额保留（42）", c.ember(), 42)
 	_check("迁移后进度归零为「只通中枢」", c.is_cleared("0-1") and not c.is_cleared("1-1"))
@@ -584,7 +585,7 @@ func _test_world_map() -> void:
 	_check_int("节点位置互不重合", seen.size(), pts.size())
 
 	# --- 交互：锁定关进不去 ---
-	var c = _Campaign.new()
+	var c = _Campaign.new(_save_path)
 	var got: Array = []
 	ov.stage_selected.connect(func(sid: String) -> void: got.append(sid))
 	ov.open(c)
@@ -679,7 +680,7 @@ func _wipe_save() -> void:
 		"cleared": {}, "decks": {}, "ember": 0,
 		"current_stage": _CampaignData.START_STAGE,
 	}
-	var f := FileAccess.open(_Campaign.SAVE_PATH, FileAccess.WRITE)
+	var f := FileAccess.open(_save_path, FileAccess.WRITE)
 	if f != null:
 		f.store_string(JSON.stringify(d))
 		f.close()

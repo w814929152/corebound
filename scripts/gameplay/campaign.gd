@@ -41,6 +41,8 @@ const SAVE_VERSION := 2
 
 
 # ---- 运行时状态（唯一持有处）----
+var _save_path: String
+var save_hook: Callable
 var _cleared: Dictionary = {}     # stage_id -> true（已通关）
 var _decks: Dictionary = {}       # deck_id -> true（已解锁）
 var _ember: int = 0               # Ember 余额
@@ -50,13 +52,17 @@ var _current_stage: String = _CampaignData.START_STAGE  # 当前选中的关卡�
 # ---------------------------------------------------------------------------
 #  加载 / 保存
 # ---------------------------------------------------------------------------
+func _init(save_path: String = SAVE_PATH) -> void:
+	_save_path = save_path
+
+
 ## 从磁盘加载（无存档 / 解析失败 → 空状态，不崩、不报错向上抛）。
 func load_save() -> void:
 	_cleared = {}
 	_decks = {}
 	_ember = 0
 	_current_stage = _CampaignData.START_STAGE
-	var f := FileAccess.open(SAVE_PATH, FileAccess.READ)
+	var f := FileAccess.open(_save_path, FileAccess.READ)
 	if f == null:
 		return                       # 首次启动，无存档
 	var txt := f.get_as_text()
@@ -64,7 +70,10 @@ func load_save() -> void:
 	var parsed = JSON.parse_string(txt)
 	if typeof(parsed) != TYPE_DICTIONARY:
 		return                       # 解析失败 → 空状态（防坏档崩溃）
-	var d: Dictionary = parsed
+	restore_progress(parsed)
+
+
+func restore_progress(d: Dictionary) -> void:
 	var ver := int(d.get("version", 0))
 	if ver == 1:
 		d = _migrate_v1_to_v2(d)     # 旧十关 → 世界主线十关（见函数头注）
@@ -79,15 +88,19 @@ func load_save() -> void:
 
 
 ## 写盘（覆盖写）。返回是否成功。
-func save() -> bool:
-	var d := {
+func progress_snapshot() -> Dictionary:
+	return {
 		"version": SAVE_VERSION,
-		"cleared": _cleared,
-		"decks": _decks,
+		"cleared": _cleared.duplicate(),
+		"decks": _decks.duplicate(),
 		"ember": _ember,
 		"current_stage": _current_stage,
 	}
-	var f := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
+func save() -> bool:
+	var d := progress_snapshot()
+	if save_hook.is_valid():
+		return save_hook.call(d) == OK
+	var f := FileAccess.open(_save_path, FileAccess.WRITE)
 	if f == null:
 		return false
 	f.store_string(JSON.stringify(d, "  "))

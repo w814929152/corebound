@@ -26,6 +26,8 @@ extends CanvasLayer
 ##
 
 signal start_requested
+signal resume_requested
+signal profiles_requested
 signal quit_requested
 
 const _Style := preload("res://scripts/ui/ui_style.gd")
@@ -70,6 +72,11 @@ var _menu_buttons: Array = []      # Array[Button]
 var _menu_markers: Array = []      # Array[Label]（▶ 焦点标记）
 var _focus_idx: int = 0
 var _status: Label = null
+var _save_status: Label
+const RESUME_ITEM := 4
+const PROFILES_ITEM := 5
+var _profile_status: Label
+var menu_blocked := false
 
 var _lib_head: Label = null
 var _lib_scroll: ScrollContainer = null
@@ -236,7 +243,7 @@ func _build_menu() -> Control:
 	gap2.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	col.add_child(gap2)
 
-	# 四个入口（按钮 = 320×52，同一列左对齐；▶ 是键盘焦点标记，形状通道）
+	# 主菜单入口（按钮 = 320×52，同一列左对齐；▶ 是键盘焦点标记）
 	# 🆕 入口独立成 VBox（separation 10）：ghost 改成下划线式之后有了可见按钮体，
 	#    沿用 `col` 的 6px 会把三个入口挤成一整块，与上方标题块失去分组感。
 	var btn_box := VBoxContainer.new()
@@ -244,7 +251,7 @@ func _build_menu() -> Control:
 	btn_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	col.add_child(btn_box)
 
-	var defs := [["开始游戏", "primary"], ["卡组图鉴", "normal"], ["怪物图鉴", "normal"], ["退出游戏", "ghost"]]
+	var defs := [["开始游戏", "primary"], ["卡组图鉴", "normal"], ["怪物图鉴", "normal"], ["退出游戏", "ghost"], ["继续游戏", "primary"], ["存档管理", "normal"]]
 	for i in defs.size():
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation", 4)
@@ -265,6 +272,20 @@ func _build_menu() -> Control:
 		btn_box.add_child(row)
 		_menu_buttons.append(b)
 		_menu_markers.append(mk)
+
+	# Keep the existing action indices while showing Continue above Start.
+	btn_box.move_child(btn_box.get_child(RESUME_ITEM), 0)
+	_menu_buttons[RESUME_ITEM].tooltip_text = "继续后，离开前可再次保存本局。"
+	_save_status = _Style.label("", 16, _Style.C_TEXT_DIM)
+	_save_status.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	btn_box.add_child(_save_status)
+	btn_box.move_child(_save_status, 1)
+	btn_box.move_child(_menu_buttons[PROFILES_ITEM].get_parent(), 3)
+	_profile_status = _Style.label("", 16, _Style.C_TEXT_DIM)
+	_profile_status.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	col.add_child(_profile_status)
+	set_profiles_enabled(false)
+	set_save_status("", false)
 
 	var gap3 := Control.new()
 	gap3.custom_minimum_size = Vector2(0.0, 22.0)
@@ -546,6 +567,27 @@ func close() -> void:
 	visible = false
 
 
+func set_profiles_enabled(enabled: bool) -> void:
+	_menu_buttons[PROFILES_ITEM].get_parent().visible = enabled
+	_profile_status.visible = enabled
+
+
+func set_active_profile(slot: int, write_failed: bool = false) -> void:
+	_profile_status.text = "当前存档  %d" % (slot + 1) if slot >= 0 else "尚未选择存档"
+	if write_failed:
+		_profile_status.text += " · 写入失败，请在存档管理重试"
+
+
+func set_save_status(message: String, available: bool) -> void:
+	var button: Button = _menu_buttons[RESUME_ITEM]
+	button.get_parent().visible = available
+	_Style.button(_menu_buttons[0], "normal" if available else "primary")
+	_save_status.text = message
+	_save_status.visible = not message.is_empty()
+	_focus_idx = RESUME_ITEM if available else 0
+	_refresh_focus()
+
+
 func current_page() -> int:
 	return _page
 
@@ -604,7 +646,12 @@ func _focus_on(i: int) -> void:
 func _move_focus(dir: int) -> void:
 	if _menu_buttons.is_empty():
 		return
-	_focus_idx = wrapi(_focus_idx + dir, 0, _menu_buttons.size())
+	var order := [0, 1, 2, 3]
+	if _menu_buttons[PROFILES_ITEM].is_visible_in_tree():
+		order.insert(1, PROFILES_ITEM)
+	if _menu_buttons[RESUME_ITEM].is_visible_in_tree():
+		order.push_front(RESUME_ITEM)
+	_focus_idx = order[wrapi(order.find(_focus_idx) + dir, 0, order.size())]
 	_refresh_focus()
 
 
@@ -619,11 +666,16 @@ func _activate(i: int) -> void:
 			show_monsters()
 		3:
 			quit_requested.emit()
+		PROFILES_ITEM:
+			profiles_requested.emit()
+		RESUME_ITEM:
+			if _menu_buttons[RESUME_ITEM].is_visible_in_tree():
+				resume_requested.emit()
 
 
 ## Esc：图鉴页 → 回菜单；菜单页 → 不响应（主界面没有「上一级」）。
 func _unhandled_input(event: InputEvent) -> void:
-	if not visible:
+	if not visible or menu_blocked:
 		return
 	if not (event is InputEventKey) or not event.pressed or event.echo:
 		return

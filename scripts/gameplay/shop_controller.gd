@@ -204,6 +204,22 @@ func start_new_run() -> void:
 	start_run(1)
 
 
+func restore_run(data: Dictionary) -> void:
+	const RunSave := preload("res://scripts/gameplay/run_save.gd")
+	over = false
+	campaign_result = {}
+	_pending_result = {}
+	last_realtime_result = {}
+	runtime.setup("B", DEFAULT_RUN_SEED)
+	RunSave.restore(runtime, data)
+	wave_director.restore_preparation(runtime, data.next_wave - 1)
+	# The opening shop is dealt in preparation. Later shops refresh on wave start.
+	_prepared_wave = 1 if data.next_wave == 1 else -1
+	director.prepare_run(data.next_wave)
+	_emit_shop()
+	_emit_run()
+
+
 func _on_quit_requested() -> void:
 	print("[shop_controller] 退出本局（headless 下仅记录；图形端可 get_tree().quit()）")
 
@@ -438,6 +454,21 @@ func request_placement(pending_index: int) -> bool:
 		runtime.cancel_placement()
 		return false
 	_emit_shop()
+	return true
+
+
+func request_auto_merge(pending_index: int) -> bool:
+	if runtime == null or director == null or over or director.external_pause:
+		return false
+	if int(director.sm.state) == _TSM.State.PLACEMENT_MODE or pending_index < 0 or pending_index >= runtime.pending.size():
+		return false
+	var slots: Array[int] = runtime.merge_target_slots(String(runtime.pending[pending_index]))
+	if slots.is_empty() or not request_placement(pending_index):
+		return false
+	_on_place_at_requested(runtime.geo.slots[slots[0]])
+	if int(director.sm.state) == _TSM.State.PLACEMENT_MODE:
+		director.exit_placement(false)
+		return false
 	return true
 
 

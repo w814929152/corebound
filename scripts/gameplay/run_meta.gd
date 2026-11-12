@@ -29,6 +29,7 @@ const SAVE_VER := 1
 
 ## 静态状态（进程内唯一）：窗口模式下跨"再来一局"保持，重启进程后从文件恢复。
 static var _loaded: bool = false
+static var _save_hook: Callable
 static var _best_wave: int = 0
 static var _runs: int = 0
 static var _wins: int = 0
@@ -56,26 +57,42 @@ static func _ensure_loaded() -> void:
 	var parsed = JSON.parse_string(txt)
 	if not (parsed is Dictionary):
 		return
-	var d: Dictionary = parsed
+	_restore_progress(parsed)
+
+
+static func use_profile(data: Dictionary, save_hook: Callable) -> void:
+	_loaded = true
+	_save_hook = save_hook
+	_restore_progress(data)
+
+
+static func _restore_progress(d: Dictionary) -> void:
 	_best_wave = maxi(0, int(d.get("best_wave", 0)))
 	_runs = maxi(0, int(d.get("runs", 0)))
 	_wins = maxi(0, int(d.get("wins", 0)))
 	var arr: Array = []
-	for nm in (d.get("packs", []) as Array):
+	var packs = d.get("packs", [])
+	for nm in (packs if packs is Array else []):
 		arr.append(String(nm))
 	_packs = arr
 
 
-static func save() -> void:
-	if not _save_enabled:
-		return
-	var d := {
+static func progress_snapshot() -> Dictionary:
+	_ensure_loaded()
+	return {
 		"ver": SAVE_VER,
 		"best_wave": _best_wave,
 		"runs": _runs,
 		"wins": _wins,
 		"packs": _packs.duplicate(),
 	}
+static func save() -> void:
+	if not _save_enabled:
+		return
+	var d := progress_snapshot()
+	if _save_hook.is_valid():
+		_save_hook.call(d)
+		return
 	var f := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
 	if f == null:
 		return
@@ -166,7 +183,7 @@ static func reset_progress() -> void:
 	_wins = 0
 	_packs = []
 	_loaded = true
-	if _save_enabled and FileAccess.file_exists(SAVE_PATH):
+	if _save_enabled and not _save_hook.is_valid() and FileAccess.file_exists(SAVE_PATH):
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(SAVE_PATH))
 	save()
 

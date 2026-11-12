@@ -744,7 +744,7 @@ func _test_k_free_placement() -> void:
 #  L 主界面 + 卡组图鉴（2026-11-07）
 # ---------------------------------------------------------------------------
 ## 🔴 三条口径（缺一条主界面就会退化成"装饰页"）：
-##   ① 三个入口都存在，且按钮四态走 `ui_style`（§5.1 禁止系统默认控件）；
+##   ① 基础入口始终可用，继续游戏随存档显隐，按钮四态走 `ui_style`；
 ##   ② 图鉴必须**一遍看到全部**：8 包 × 10 张 = 80 个卡位、覆盖 `all_cards()` 的每一张，
 ##      未解锁包压暗但仍可见（解锁是节奏阀，不是内容保密）；
 ##   ③ 每张卡的说明非空 —— 图鉴若只有卡名，等于把商店卡面的「这张卡干什么」又丢一次。
@@ -756,12 +756,16 @@ func _test_l_main_menu() -> void:
 	menu._build()
 
 	_check("【主界面】默认页 = 菜单", menu.current_page() == _MainMenu.PAGE_MENU)
-	_check_int("【主界面】四个入口（开始 / 卡组 / 怪物 / 退出）", menu._menu_buttons.size(), 4)
+	_check_int("【主界面】六个入口（含继续游戏和存档管理）", menu._menu_buttons.size(), 6)
 	var texts: Array = []
 	for b in menu._menu_buttons:
 		texts.append(String((b as Button).text))
-	_check("【主界面】入口文案 = 开始游戏 / 卡组图鉴 / 退出游戏",
-		texts == ["开始游戏", "卡组图鉴", "怪物图鉴", "退出游戏"])
+	_check("【主界面】基础入口与续玩文案",
+		texts == ["开始游戏", "卡组图鉴", "怪物图鉴", "退出游戏", "继续游戏", "存档管理"])
+	var resume_row: Control = menu._menu_buttons[_MainMenu.RESUME_ITEM].get_parent()
+	_check("【主界面】无存档时隐藏继续游戏", not resume_row.visible)
+	menu.set_save_status("铁砧·中继站 · 准备第 1 / 10 波", true)
+	_check("【主界面】有存档时显示继续游戏与摘要", resume_row.visible and menu._save_status.visible)
 	_check_all_buttons("主界面", menu)
 
 	# 字号（两个页面的 Label 一起查）

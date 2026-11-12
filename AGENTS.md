@@ -42,14 +42,20 @@ GODOT="C:/Program Files (x86)/Steam/steamapps/common/Godot Engine/godot.windows.
 
 ## 当前状态（2026-11-12 快照，详见 handoff-2026-11-12-progress.md）
 
-- **2026-11-12 快照**：HEAD `9f2d969` 与 `origin/master` 一致，**无待推送提交**；工作区无已跟踪改动，
+- **2026-11-12 快照**：HEAD 与 `origin/master` 一致（收口后 `e8520b3` + 本轮三笔提交）；工作区无已跟踪改动，
   只剩未跟踪试稿（`output/`、`art/_review`、`art/2d/sprites_ai_v3`、AI 工具、`.appdata`），按约定不入库。
-  本轮实跑默认回归 **exit 0**、`world` **14/14 PASS**（含 `stage_exit`、`card_spec`）、`towersprites` **85/85 PASS**。
+  本轮实跑默认回归 **exit 0**、`world` **15/15 PASS**（新增 `run_save`）、`towersprites` **85/85 PASS**。
   ⚠️ 本机 SSH 22 端口被代理拦截（`kex_exchange_identification`），推送 / 拉取走 HTTPS：
   `git push https://github.com/w814929152/corebound.git HEAD:master`。
 - 2026-11-11 晚新增：熔币重炮（每发耗废料）、扇形射程 + 可叠加射程光环（展域塔 +10°/层、延程塔 +2 射程/层，
   光环半径 8）、背包完整展示卡面；卡面 v3.2 / v3.3（精简牌面 + 悬停浮卡）见 `handoff-2026-11-11-card-spec.md`。
   塔原型与贴图已达 **85**（`TOWERS`(3) + `TOWERS_EXT`(82)）。
+- 2026-11-12 收口（另一会话中途停下的批次，见 `handoff-2026-11-12-takeover.md`）：**三存档位 + 待续关卡**
+  （`user://profiles.save` / `suspended_run.save`，主菜单「存档管理 / 继续游戏」，退出关卡「保存并退出」）、
+  逐塔射程与卡包攻击特效（`tower_range_profiles.gd`）、焚祭改为友军阵亡引爆、机械围城、
+  满塔位仍可购卡（落子时判塔数）、双击快速合成、卡面稀有度徽记。
+  ⚠️ **口径变更待平衡拍板**：① 取消 `TowerEffects.LEVEL_CAP = 8`（触发升级可无限叠加）；
+  ② 机械围城（波 1–4 数量 ×1.25/1.4/1.5/1.75，单怪 HP ×0.55、攻击 ×0.45）；③ 普攻基础半径 +≈20%。
 
 - 卡面 v3.2（210×340 卡槽 / 插画 ≈70% / 信息区 ≈30% / 卡名 28 · 类型与摘要 14 / 锁左上 · 费用右上）+ 主菜单「怪物图鉴」+ 移除 `1/2/3` 快捷购买（购买只走点击整卡，焦点位随鼠标悬停）：见 `docs/phase6/handoff-2026-11-11-card-spec.md`、`monster-library.md`。默认全量回归 exit 0，`card_spec` 专项（20 项）已进默认回归。**卡组图鉴同步改用同一套竖版卡面**（`scripts/ui/card_face.gd`，7 列网格）。**牌面已精简为「插画 + 卡名 + 类型条 + 一行基础信息」**（如「远程单体」，商店另含价格/锁头），完整机制与数值改由**悬停浮卡**展示（`card_hover.gd` 深色实心面板，商店 0.4s / 图鉴 0.35s 触发）。⚠️ 卡面 14px 是 §9.1「玩家可见文本 ≥16px」的唯一例外，**待拍板**。
 
@@ -78,11 +84,12 @@ GODOT="C:/Program Files (x86)/Steam/steamapps/common/Godot Engine/godot.windows.
 
 1. 处理 `attrition8`（先查数值，再考虑 ADR 重标定），跑 CI 第 4 步复验。
 2. 跑 CI 第 6–9 步 MC 门禁，确认数值漂移影响面。
-3. 窗口试玩中文界面、退出确认与 200% 近景。
+3. 窗口试玩：中文界面、退出确认、200% 近景，并手测**三存档位 / 存档管理 / 连续续玩 / 双击合成**。
 4. 数值表稳定后全量重跑塔贴图生成器并刷新预览（当前总览是 81 张快照）。
 5. 决定 AI 版是否落地；用 Steam 版 Godot 重导出 Windows 包。
-6. 推送：2026-11-12 已与 origin 同步（HEAD `9f2d969`）；本机 SSH 22 被代理拦截，推送走
+6. 推送：本轮已推送（`1dea4c7` + 三笔收口提交，HEAD 以 Git 为准）；本机 SSH 22 被代理拦截，推送走
    `git push https://github.com/w814929152/corebound.git HEAD:master`。
+7. 拍板本轮口径变更（取消 8 级封顶、机械围城、普攻半径 +≈20%）；不认可时可按提交单独 revert。
 
 ## 关键文件
 

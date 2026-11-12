@@ -24,6 +24,10 @@ const StageSelect := preload("res://scripts/ui/stage_select_overlay.gd")
 ## 🆕 主界面（2026-11-07）：启动第一屏 —— 开始游戏 / 卡组图鉴 / 退出。
 const StageExit := preload("res://scripts/ui/stage_exit_overlay.gd")
 const MainMenu := preload("res://scripts/ui/main_menu_overlay.gd")
+const RunSave := preload("res://scripts/gameplay/run_save.gd")
+const Profiles := preload("res://scripts/gameplay/profile_store.gd")
+const ProfileOverlay := preload("res://scripts/ui/profile_overlay.gd")
+const Confirm := preload("res://scripts/ui/salvage_confirm_dialog.gd")
 
 ## 🆕 关卡推进总开关（2026-11-07 起**实机默认开**：开局先在「裂隙航图」大地图选关）。
 ##    🔴 打开后：实机按「当前关卡」注入波数（wave_count）并在通关/失败时记账；
@@ -56,6 +60,12 @@ var _pack_select: CanvasLayer = null
 var _campaign = null
 var _stage_select: CanvasLayer = null
 var _main_menu: CanvasLayer = null
+var _profiles: Profiles
+var _profile_overlay: CanvasLayer
+var _suspended_run: Dictionary = {}
+var _settling_result := false
+var _profile_write_failed := false
+var _replace_dialog: CanvasLayer
 
 
 func _ready() -> void:
@@ -121,6 +131,7 @@ func _ready() -> void:
 		#    🔴 一行回滚：删掉下一行即退回旧口径。
 		bs.wave_director.combat_types_enabled = true
 		bs.wave_director.tactical_combat_enabled = CAMPAIGN_ENABLED
+		bs.wave_director.mechanical_siege_enabled = CAMPAIGN_ENABLED
 		print("[boot] proto/elite/aggro/revive/combat_types 全 ON（战斗类型系统 · RADIAL 实机口径）")
 		print("[boot] SpaceModel.mode = RADIAL（径向核心围攻 · 实机默认）")
 		print("[boot] Corebound MVP · 切片4（实时商店覆盖层 + 完整商店逻辑接线）")
@@ -145,13 +156,28 @@ func _ready() -> void:
 		#   🔴 主界面自己**不写任何玩法状态**：只发 `start_requested`，由本文件决定
 		#      下面走哪条既有流程 —— 与 pack_select / stage_select 同一分层纪律。
 		_main_menu = MainMenu.new()
+		bs.director.set_external_pause(true)
 		add_child(_main_menu)
 		_main_menu.start_requested.connect(_on_main_start)
+		_main_menu.resume_requested.connect(_on_resume_run)
+		_replace_dialog = Confirm.new()
+		add_child(_replace_dialog)
+		_replace_dialog.layer = MainMenu.LAYER + 1
+		_replace_dialog.cancelled.connect(_open_main_menu)
 		_main_menu.quit_requested.connect(_on_main_quit)
 		# 🆕 关卡推进：加载存档（默认关 = 不注入波数，见 CAMPAIGN_ENABLED）。
 		if CAMPAIGN_ENABLED:
-			_campaign = Campaign.new()
-			_campaign.load_save()
+			_profiles = Profiles.new()
+			_profiles.load_profiles()
+			_load_active_profile()
+			_profile_overlay = ProfileOverlay.new()
+			add_child(_profile_overlay)
+			_profile_overlay.closed.connect(_open_main_menu)
+			_profile_overlay.selected.connect(_on_profile_selected)
+			_profile_overlay.save_requested.connect(_on_profile_saved)
+			_profile_overlay.delete_requested.connect(_on_profile_deleted)
+			_main_menu.profiles_requested.connect(_open_profiles)
+			_main_menu.set_profiles_enabled(true)
 			# 🆕 把「已守地区」注入卡包判据，并设好本关的「借用科技」。
 			#    🔴 必须在主界面打开**之前**同步：图鉴页会读解锁态，晚一帧就会先闪一遍
 			#       "全部锁着"再跳成正确状态。
@@ -168,6 +194,8 @@ func _ready() -> void:
 		_stage_exit.director = bs.director
 		add_child(_stage_exit)
 		_stage_exit.exit_confirmed.connect(_on_stage_exit)
+		_stage_exit.can_save = _can_save_run
+		_stage_exit.save_requested.connect(_on_save_and_exit)
 		call_deferred("_open_main_menu")
 
 
@@ -184,7 +212,83 @@ func _open_main_menu() -> void:
 	if _has_cmd_flag("--open-library"):
 		_main_menu.show_library()
 	else:
+		_main_menu.menu_blocked = false
 		_main_menu.open()
+		_refresh_save_status()
+
+
+func _refresh_save_status() -> void:
+	var data := _suspended_run
+	_main_menu.set_active_profile(_profiles.active if _profiles != null else -1, _profile_write_failed)
+	if not data.is_empty():
+		var stage: Dictionary = CampaignData.STAGES[data.stage]
+		_main_menu.set_save_status("%s · 准备第 %d / %d 波" % [
+			stage.name, data.next_wave, CampaignData.wave_count(data.stage)], true)
+	else:
+		_main_menu.set_save_status("", false)
+
+
+func _open_profiles() -> void:
+	_main_menu.menu_blocked = true
+	_profile_overlay.open(_profiles)
+
+
+func _load_active_profile() -> void:
+	_profile_write_failed = false
+	var profile := _profiles.get_slot(_profiles.active) if _profiles.active >= 0 else {}
+	_campaign = Campaign.new()
+	_campaign.restore_progress(profile.get("campaign", {}))
+	_campaign.save_hook = _persist_profile
+	RunMeta.use_profile(profile.get("meta", {}), _persist_profile)
+	_suspended_run = profile.get("run", {})
+	_sync_deck_unlock()
+
+
+func _profile_snapshot() -> Dictionary:
+	return {"campaign": _campaign.progress_snapshot(),
+		"meta": RunMeta.progress_snapshot(), "run": _suspended_run}
+
+
+func _persist_profile(_progress: Dictionary = {}) -> Error:
+	if _settling_result:
+		return OK
+	if _profiles.active < 0:
+		return ERR_UNCONFIGURED
+	var result := _profiles.put(_profiles.active, _profile_snapshot())
+	_profile_write_failed = result != OK
+	return result
+
+
+func _on_profile_selected(slot: int) -> void:
+	if _profile_write_failed and _persist_profile() != OK:
+		_profile_overlay.open(_profiles, "当前进度还未写入，请检查存档目录后重试。")
+		return
+	var result: Error
+	if _profiles.get_slot(slot).is_empty():
+		result = _profiles.put(slot, {"campaign": Campaign.new().progress_snapshot(), "meta": {}, "run": {}}, true)
+	else:
+		result = _profiles.activate(slot)
+	if result != OK:
+		_profile_overlay.open(_profiles, "无法读取或创建该存档，请检查存档目录。")
+		return
+	_load_active_profile()
+	_profile_overlay.hide()
+	_open_main_menu()
+
+
+func _on_profile_saved(slot: int) -> void:
+	var result := _persist_profile() if slot == _profiles.active else _profiles.put(slot, _profile_snapshot())
+	_refresh_save_status()
+	_profile_overlay.open(_profiles, "已保存到存档 %d。" % (slot + 1) if result == OK else "保存失败，请检查存档目录。")
+
+
+func _on_profile_deleted(slot: int) -> void:
+	var was_active := slot == _profiles.active
+	var result := _profiles.erase(slot)
+	if result == OK and was_active:
+		_load_active_profile()
+		_refresh_save_status()
+	_profile_overlay.open(_profiles, "已删除存档 %d。" % (slot + 1) if result == OK else "删除失败，请检查存档目录。")
 
 
 func _has_cmd_flag(flag: String) -> bool:
@@ -192,7 +296,21 @@ func _has_cmd_flag(flag: String) -> bool:
 
 
 func _on_main_start() -> void:
+	if _profiles != null and _profiles.active < 0:
+		_open_profiles()
+		return
+	if not _suspended_run.is_empty():
+		_main_menu.menu_blocked = true
+		_replace_dialog.show_confirm("开始新挑战？",
+			"新关卡开始时会清除当前的局内存档。",
+			_open_new_run_selection, "开始新挑战")
+		return
+	_open_new_run_selection()
+
+
+func _open_new_run_selection() -> void:
 	if _main_menu != null:
+		_main_menu.menu_blocked = false
 		_main_menu.close()
 	if CAMPAIGN_ENABLED:
 		_open_stage_select()
@@ -218,7 +336,7 @@ func _on_stage_back() -> void:
 	if _stage_select != null:
 		_stage_select.close()
 	if _main_menu != null:
-		_main_menu.open()
+		_open_main_menu()
 
 
 func _on_stage_selected(sid: String) -> void:
@@ -267,38 +385,83 @@ func _begin_run(packs: Array) -> void:
 	#    或外部直接调用本函数，也必须保证界面不压在新一局上面。
 	if _pack_select != null:
 		_pack_select.close()
-	ShopRuntime.set_active_packs(packs)
-	# 🆕 关卡推进：开波前按「当前关卡」注入波数（不注入 = 20 波金标本口径）。
+	if not _suspended_run.is_empty() and _set_suspended_run({}) != OK:
+		_open_main_menu()
+		_main_menu.set_save_status("无法清除旧关卡记录，请检查存档目录。", true)
+		return
 	if CAMPAIGN_ENABLED and _campaign != null:
-		var sid: String = _campaign.current_stage()
-		var st: Dictionary = CampaignData.STAGES.get(sid, {})
-		var wc: int = CampaignData.wave_count(sid)
-		if _bs != null and _bs.wave_director != null:
-			# 🆕 关卡波表：`set_stage` 成功 = 它已按**波表长度**接管波数控制；
-			#    失败（开关关 / 无表）→ 退回按关卡表注入波数（旧行为）。
-			_bs.wave_director.stage_waves_enabled = STAGE_WAVES_ENABLED
-			if not _bs.wave_director.set_stage(sid, _campaign.regions_cleared()):
-				_bs.wave_director.set_max_wave(wc)
-		# 🆕 运行时换图：按当前关卡注入活动地图（未实现自动回落 tri-fissure）。
-		var mid: String = CampaignData.resolve_map_id(sid)
-		SpaceModel.set_active_map(mid)
-		print("[boot] 本局关卡 %s（%s）· %d 波 · 地图 %s · S=%d%s" % [
-			sid, String(st.get("name", "")), wc, SpaceModel.active_map_id,
-			_campaign.regions_cleared(),
-			"" if not STAGE_WAVES_ENABLED else "（波表）"])
-	var names: Array = []
-	for pid in packs:
-		names.append(CardPacks.pack_name(String(pid)))
-	print("[boot] 本局卡包：%s（卡池 %d 张）" % [_join(names, "、"), ShopRuntime.player_card_names().size()])
+		_configure_battle(_campaign.current_stage(), _campaign.regions_cleared())
+	ShopRuntime.set_active_packs(packs)
 	_bs.director.set_external_pause(false)
 	_bs.controller.start_new_run()
 	if _stage_exit != null:
 		_stage_exit.set_active(true)
 
 
+func _configure_battle(sid: String, escalation: int) -> void:
+	var wc := CampaignData.wave_count(sid)
+	var wave_director = _bs.wave_director
+	wave_director.stage_waves_enabled = STAGE_WAVES_ENABLED
+	if not wave_director.set_stage(sid, escalation):
+		wave_director.set_max_wave(wc)
+	SpaceModel.set_active_map(CampaignData.resolve_map_id(sid))
+
+
+func _can_save_run() -> bool:
+	if _profiles == null or _profiles.active < 0 or _bs.controller.over:
+		return false
+	var wave_director = _bs.wave_director
+	var next_wave: int = _bs.director.sm.wave + 1
+	return next_wave <= CampaignData.wave_count(_campaign.current_stage()) and (
+		wave_director.state == wave_director.State.IDLE
+		or wave_director.state == wave_director.State.SAFE_WINDOW)
+
+
+func _on_save_and_exit() -> void:
+	if not _can_save_run():
+		return
+	var data := RunSave.capture(_bs.controller.runtime, _campaign.current_stage(),
+		ShopRuntime.active_pack_ids(), _bs.director.sm.wave + 1, _bs.wave_director.escalation)
+	if _set_suspended_run(data) != OK:
+		_stage_exit.show_error("存档写入失败，请检查存档目录后重试。")
+		return
+	_bs.controller.abandon_run()
+	_stage_exit.set_active(false)
+	_open_main_menu()
+
+
+func _set_suspended_run(data: Dictionary) -> Error:
+	var previous := _suspended_run
+	_suspended_run = data
+	var result := _persist_profile()
+	if result != OK:
+		_suspended_run = previous
+	return result
+
+
+func _on_resume_run() -> void:
+	var data := _suspended_run
+	if data.is_empty():
+		_refresh_save_status()
+		return
+	if _set_suspended_run({}) != OK:
+		_main_menu.set_save_status("无法读取并移交存档，请检查存档目录后重试。", true)
+		return
+	_campaign.set_current_stage(data.stage)
+	_sync_deck_unlock(data.stage)
+	_configure_battle(data.stage, data.escalation)
+	ShopRuntime.set_active_packs(data.packs)
+	_main_menu.close()
+	_bs.controller.restore_run(data)
+	_bs.director.set_external_pause(false)
+	_stage_exit.set_active(true)
+
+
+
 func _on_run_finished(won: bool, wave: int) -> void:
 	if _stage_exit != null:
 		_stage_exit.set_active(false)
+	_settling_result = _profiles != null
 	var fresh: Array = RunMeta.record_run(won, wave)
 	var best := RunMeta.best_wave()
 	var names: Array = []
@@ -331,6 +494,9 @@ func _on_run_finished(won: bool, wave: int) -> void:
 				print("[boot] 关卡推进 · %s 失败 · 余烬 +%d" % [sid, int(r.get("ember_gained", 0))])
 		# 🆕 守住新地区 → 立刻把它并入卡包判据（下一局选包 / 图鉴都读同一份）。
 		_sync_deck_unlock()
+	if _settling_result:
+		_settling_result = false
+		_persist_profile()
 
 
 ## 字符串拼接（`String.join` 只吃 PackedStringArray，这里避开隐式转换坑）

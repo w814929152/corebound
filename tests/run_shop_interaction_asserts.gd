@@ -12,10 +12,11 @@ func key_tab() -> void:
 	key.pressed = true
 	root.push_input(key, true)
 
-func mouse_button(point: Vector2, pressed: bool) -> void:
+func mouse_button(point: Vector2, pressed: bool, double_click: bool = false) -> void:
 	var event := InputEventMouseButton.new()
 	event.button_index = MOUSE_BUTTON_LEFT
 	event.pressed = pressed
+	event.double_click = double_click
 	event.position = point
 	event.global_position = point
 	root.push_input(event, true)
@@ -84,11 +85,32 @@ func run() -> void:
 	assert(rt.player.towers.size() == 1 and rt.player.towers[0].h == 2)
 	assert(rt.pending == [remaining] and backpack._pending == [remaining])
 	assert(rt.pending_cost.size() == 1 and rt.last_error == "")
+	# 双击走真实背包输入与坐标落子，只消费被双击的同类卡。
+	var deployed = rt.player.towers[0]
+	var matching := String(deployed.ctype)
+	rt.pending = ["Foundry", matching]
+	rt.pending_cost = [5.0, 12.0]
+	scene.controller.shop_changed.emit()
+	var other_card: Vector2 = backpack.position + Vector2(150, 60)
+	var matching_card: Vector2 = other_card + Vector2(backpack.CARD_W + backpack.GAP, 0)
+	mouse_button(other_card, true)
+	mouse_button(other_card, false)
+	mouse_button(other_card, true, true)
+	mouse_button(other_card, false)
+	assert(rt.pending == ["Foundry", matching] and deployed.h == 2)
+	mouse_button(matching_card, true)
+	assert(rt.merge_target_slots(rt.placing_card_name()) == [int(deployed.slot)])
+	mouse_button(matching_card, false)
+	mouse_button(matching_card, true, true)
+	mouse_button(matching_card, false)
+	assert(rt.player.towers.size() == 1 and rt.player.towers[0].h == 3)
+	assert(rt.pending == ["Foundry"] and backpack._pending == rt.pending and rt.pending_cost == [5.0])
+	assert(backpack._drag_index == -1 and td.sm.state == TSM.State.SAFE_WINDOW)
 	# 买不起时不换牌、不扣费、不改变背包。
 	rt.scrap = 0.0
 	before = rt.offers.duplicate()
 	assert(not rt.buy(0))
-	assert(rt.offers == before and rt.pending == [remaining])
-	print("Shop interactions passed: replacement, focused Tab, real drag/drop, view sync, invalid drop, failed purchase")
+	assert(rt.offers == before and rt.pending == ["Foundry"])
+	print("Shop interactions passed: replacement, focused Tab, drag/drop, double-click merge, view sync, invalid drop, failed purchase")
 	paused = false
 	quit()

@@ -130,6 +130,7 @@ const RADIAL8_DIAG_HEAVY: Array = [
 const WORLD_GATES: Array = [
 	{"name": "spawn_preview", "script": "res://tests/run_spawn_preview_asserts.gd"},
 	{"name": "stage_exit", "script": "res://tests/run_stage_exit.gd"},
+	{"name": "run_save", "script": "res://tests/run_run_save.gd"},
 	{"name": "building_only", "script": "res://tests/run_building_only_shop_asserts.gd"},
 	{"name": "shop_overlay", "script": "res://tests/run_shop_overlay_asserts.gd"},
 	{"name": "card_spec", "script": "res://tests/run_card_spec_asserts.gd"},

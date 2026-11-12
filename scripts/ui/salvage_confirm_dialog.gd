@@ -122,12 +122,22 @@ func _build() -> void:
 
 
 ## 展示确认弹窗。`body` 为已渲染好的多行文案（调用方负责数值口径）。
-func show_confirm(title: String, body: String, on_confirm: Callable = Callable()) -> void:
+func show_confirm(title: String, body: String, on_confirm: Callable = Callable(),
+		confirm_text: String = "确认拆除") -> void:
 	_build()                             # 兜底：headless / 同步调用时 _ready 可能未 flush
 	_on_confirm = on_confirm
 	_title_label.text = title
 	_body_label.text = body
+	_confirm_btn.text = confirm_text
 	visible = true
+	if is_inside_tree():
+		_cancel_btn.grab_focus()
+
+
+func _unhandled_key_input(event: InputEvent) -> void:
+	if visible and event.pressed and not event.echo and event.keycode == KEY_ESCAPE:
+		get_viewport().set_input_as_handled()
+		_on_cancel_pressed()
 
 
 func _on_confirm_pressed() -> void:
