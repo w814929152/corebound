@@ -93,6 +93,7 @@ var _slot_note: Array = []
 var _slot_can_buy: Array = [] # 牌面购买可用状态
 var _slot_lock: Array = []
 var _slot_pack_badges: Array[TextureRect] = []
+var _slot_rarity_badges: Array[Control] = []
 var _stat_vals: Array = []    # Array[Label]
 var _budget_fill: Panel
 var _budget_label: Label
@@ -486,6 +487,7 @@ func _make_slot(_i: int) -> PanelContainer:
 	edge.modulate = _Style.C_STEEL
 	_slot_edge.append(edge)
 	_slot_pack_badges.append(_CardFace.add_pack_badge(root))
+	_slot_rarity_badges.append(_CardFace.add_rarity_badge(root))
 	_picture(root, "ui_card_cost_v3.png", 146.0, 4.0, 60.0, 25.0)
 	# 🆕 v3.1：类型条改为 194×20（横线一直延伸到面板内边，对齐参考图）
 	_picture(root, "ui_card_badge_v3.png", 8.0, 268.0, 194.0, 20.0)
@@ -674,6 +676,7 @@ func _refresh_shop() -> void:
 			_stat_vals[i].text = "--"
 		for i in SLOT_COUNT:
 			_slot_pack_badges[i].texture = null
+			_CardFace.update_rarity_badge(_slot_rarity_badges[i], "")
 			_slot_name[i].text = "—"
 			_slot_art[i].visible = false
 			_slot_art[i].get_parent().hide()
@@ -716,6 +719,7 @@ func _refresh_shop() -> void:
 		# C2 高亮事实（H2/H3/H5/H6/H9；H1/H4/H8 已在 affordable/at_cap/notes）
 		var hl: Dictionary = s.get("highlights", {}).get(str(i), {})
 		if nm == "":
+			_CardFace.update_rarity_badge(_slot_rarity_badges[i], "")
 			_slot_name[i].text = "—"
 			_slot_art[i].visible = false
 			_slot_art[i].get_parent().hide()
@@ -742,9 +746,10 @@ func _refresh_shop() -> void:
 			_slot_art[i].texture = art_tex
 			_slot_art[i].visible = art_tex != null
 			_slot_art[i].get_parent().visible = art_tex != null
-			# 🆕 稀有度（§2.3 · P1-6）：边框色/粗细 + ▲ 角标数 —— 双通道，不只靠颜色。
+			# 稀有度由边框和顶栏晶核形态共同表示。
 			#    稀有度由 card_text 只读派生自抽取权重（SSOT），改权重卡面自动跟随。
 			var rar := _CardText.rarity(nm)
+			_CardFace.update_rarity_badge(_slot_rarity_badges[i], rar)
 			_slots[i].set_meta("rarity", rar)
 			var backdrop: TextureRect = _slot_art[i].get_meta("rarity_backdrop")
 			backdrop.texture = _Style.card_backdrop(rar, nm)

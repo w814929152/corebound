@@ -1111,7 +1111,8 @@ func next_spawn_preview() -> PackedVector2Array:
 	var wave: int = int(time_director.sm.wave) + 1
 	var key: Array = [director.get_instance_id(), wave, director.stage_id,
 		_SpaceModel.active_map_id, _SpaceModel.layout_enabled, _SpaceModel.uses_terrain(),
-		director.tactical_combat_enabled, director.stage_waves_enabled, director.escalation, director.cfg.hash()]
+		director.tactical_combat_enabled, director.stage_waves_enabled, director.mechanical_siege_enabled,
+		director.escalation, director.cfg.hash()]
 	if key != _spawn_preview_key:
 		_spawn_preview_key = key
 		_spawn_preview_points = director.preview_spawn_positions(wave)
@@ -1669,6 +1670,19 @@ func _draw_placement_marks(sc: float, phase: String = "bg") -> void:
 			_draw_placement_range(sc)
 		return                      # 背景段到此为止（塔之上还要再调一次 fg 段）
 
+	var runtime = controller.runtime
+	var pulse := 1.0 + 0.10 * sin(_vfx_t * TAU / 0.9)
+	for slot in runtime.merge_target_slots(runtime.placing_card_name()):
+		var cell := _BuildGrid.snap(runtime.geo.slots[slot])
+		var outline := PackedVector2Array()
+		for vertex in _BuildGrid.corners(cell):
+			outline.append(_to_screen(vertex))
+		outline.append(outline[0])
+		draw_polyline(outline, P_GOLD, maxf(3.0, 0.16 * sc), true)
+		var radius := _BuildGrid.HEX_R * 0.58 * pulse * sc
+		var badge := _to_screen(cell) - Vector2(0.0, _BuildGrid.HEX_HALF_H * sc + radius * 1.30)
+		_draw_place_badge(badge, radius, "upgrade", P_GOLD, sc)
+
 	# ---- ③ 悬停格预览 ----
 	# 鼠标在商店浮层 / HUD 上时不高亮；命中区域与地图坐标映射分开。
 	var hovered = _placement_hover_world()
@@ -1677,18 +1691,15 @@ func _draw_placement_marks(sc: float, phase: String = "bg") -> void:
 	var wp: Vector2 = hovered
 	var info: Dictionary = controller.runtime.placement_mode_at(wp)
 	var mode := String(info["mode"])
-	if mode == "":
+	if mode in ["", "upgrade"]:
 		return
 	var cellc := _BuildGrid.snap(wp)          # 吸附后的**世界格心**（六边形轮廓要它，不是鼠标点）
 	var c := _to_screen(cellc)
-	var pulse := 1.0 + 0.10 * sin(_vfx_t * TAU / 0.9)
 	var col: Color
 	var live := true                       # 这一格现在点下去会不会落子
 	match mode:
 		"new":
 			col = P_ALLY                   # 耀青：可新建
-		"upgrade":
-			col = P_GOLD                   # 辉金：可升级（同格同原型）
 		"blocked":
 			col = Color(P_SLOT.r, P_SLOT.g, P_SLOT.b, 0.55)   # 钢灰：几何不可建
 			live = false
@@ -1705,12 +1716,8 @@ func _draw_placement_marks(sc: float, phase: String = "bg") -> void:
 		hex.append(sv)
 		ring.append(sv)
 	ring.append(ring[0])
-	if mode == "upgrade":
-		# 升级态只描边不填充 —— 填充会把塔身整块染色，看不清原来那座塔是什么。
-		draw_polyline(ring, col, maxf(3.0, 0.16 * sc), true)
-	else:
-		draw_colored_polygon(hex, Color(col.r, col.g, col.b, 0.26 if live else 0.10))
-		draw_polyline(ring, col, maxf(2.0, 0.12 * sc), true)
+	draw_colored_polygon(hex, Color(col.r, col.g, col.b, 0.26 if live else 0.10))
+	draw_polyline(ring, col, maxf(2.0, 0.12 * sc), true)
 	# 徽标：格子正上方（不压塔身），暗盘衬底保证深底 / 亮塔上都可读。
 	#   偏移按六边形的**半高**（边心距）算 —— 用半宽会顶到邻格里去。
 	if live:
@@ -1775,10 +1782,11 @@ func _draw_placement_range(sc: float) -> void:
 		_draw_range_label(center, "Q / E", P_ALLY)
 
 
-func _can_inspect_towers() -> bool:
+func _can_inspect_towers(allow_placement: bool = false) -> bool:
 	return controller != null and not controller.over and controller.runtime != null \
 		and time_director != null and time_director.sm != null and not time_director.external_pause \
-		and time_director.sm.state == _TSM.State.SAFE_WINDOW and controller.runtime.geo != null
+		and (time_director.sm.state == _TSM.State.SAFE_WINDOW or (allow_placement and _in_placement())) \
+		and controller.runtime.geo != null
 
 
 func _update_tower_details() -> void:
@@ -1808,9 +1816,10 @@ func _update_tower_details() -> void:
 
 
 func _draw_preparation_ranges(sc: float) -> void:
-	if not _can_inspect_towers():
+	if not _can_inspect_towers(true):
 		return
 	var rt = controller.runtime
+	var placing := _in_placement()
 	var relocating := _moving_slot >= 0 and _move_dragging
 	var destination := _BuildGrid.snap(_to_world(_move_pointer)) if relocating else Vector2.ZERO
 	var valid_move: bool = relocating and rt.can_relocate_tower(_moving_slot, destination)
@@ -1818,18 +1827,16 @@ func _draw_preparation_ranges(sc: float) -> void:
 	var auras := _Range.active_auras(rt.player.towers, rt.geo, directional, _moving_slot if valid_move else -1, destination)
 	for tower in rt.player.towers:
 		var slot := int(tower.slot)
-		if not relocating and slot != rt.selected_tower_slot:
+		if not placing and not relocating and slot != rt.selected_tower_slot:
 			continue
 		var position: Vector2 = rt.geo.slots[slot]
-		var color := P_ALLY
-		var opacity := 0.09
-		if relocating:
-			if slot == _moving_slot:
-				position = destination
-				color = P_ALLY if valid_move else P_ALERT
-			else:
-				color = Color(P_ALLY, 0.45)
-				opacity = 0.0
+		var is_moving_tower := relocating and slot == _moving_slot
+		var is_background_range := placing or (relocating and not is_moving_tower)
+		var color := Color(P_ALLY, 0.45) if is_background_range else P_ALLY
+		var opacity := 0.0 if is_background_range else 0.09
+		if is_moving_tower:
+			position = destination
+			color = P_ALLY if valid_move else P_ALERT
 		var profile := _Range.with_auras(_Range.profile(String(tower.ctype), int(tower.range_merges), directional), position, auras)
 		var aura := _PlacementTowerData.tower_range_aura(String(tower.ctype)) if directional else {}
 		if not aura.is_empty():

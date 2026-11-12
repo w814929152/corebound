@@ -6,7 +6,7 @@ extends RefCounted
 ##     `ui_card_badge_v3.png` 与同一组字号（卡名 28 / 类型 14 / 摘要 14×2）；
 ##   · 这里**不接玩家状态**：没有价格胶囊、锁头、悬停、购买与稀有度描边动画 ——
 ##     图鉴是"看这张卡长什么样"，不是"买不买得起"。
-##   · 右上角空出来的费用位改放稀有度 ▲（图鉴里价格无意义），描边色仍走 `rarity_color()`。
+##   · 顶部中央和商店共用晶核稀有度符号，描边色仍走 `rarity_color()`。
 ##
 ## 规格来源：`design/art/card-redesign-2026-11-11.md` §11（v3.2）。
 
@@ -74,15 +74,7 @@ static func build(nm: String) -> Control:
 	add_pack_badge(root).texture = pack_badge_texture(nm)
 	_picture(root, "ui_card_badge_v3.png", 8.0, 268.0, 194.0, 20.0)
 
-	# ---- 3. 右上：图鉴没有价格，改放稀有度 ▲（描边保证压在插画上也读得出）----
-	var pips := Style.label("▲".repeat(Style.rarity_pips(rar)), 14, Style.rarity_color(rar))
-	pips.position = Vector2(112.0, 12.0)
-	pips.size = Vector2(84.0, 20.0)
-	pips.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	pips.add_theme_constant_override("outline_size", 5)
-	pips.add_theme_color_override("font_outline_color", Color(0.02, 0.03, 0.05, 0.85))
-	pips.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	root.add_child(pips)
+	update_rarity_badge(add_rarity_badge(root), rar)
 
 	# ---- 4. 信息区：卡名 28 / 类型 14 / 摘要 14×2（→ 悬停/商店看完整 3 行）----
 	_label(root, CardText.display_name(nm), 28, C_BLACK, 12.0, 233.0, 186.0, 36.0, "display")
@@ -107,6 +99,49 @@ static func build(nm: String) -> Control:
 
 static func add_pack_badge(parent: Control) -> TextureRect:
 	return _picture(parent, "", 80.5, 217.0, 49.0, 22.0)
+
+
+static func add_rarity_badge(parent: Control) -> Control:
+	var badge := Control.new()
+	badge.position = Vector2(94.0, 10.0)
+	badge.size = Vector2(22.0, 22.0)
+	badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	badge.hide()
+	badge.draw.connect(func() -> void: _draw_rarity_badge(badge))
+	parent.add_child(badge)
+	return badge
+
+
+static func update_rarity_badge(badge: Control, tier: String) -> void:
+	badge.set_meta("rarity", tier)
+	badge.visible = not tier.is_empty()
+	badge.queue_redraw()
+
+
+static func _draw_rarity_badge(badge: Control) -> void:
+	var tier := String(badge.get_meta("rarity", "common"))
+	var color := C_CREAM if tier == "common" else Style.rarity_color(tier).lightened(0.22)
+	var shell := PackedVector2Array([
+		Vector2(7, 4), Vector2(15, 4), Vector2(18, 7), Vector2(18, 10),
+		Vector2(16.5, 10), Vector2(16.5, 12), Vector2(18, 12), Vector2(18, 15),
+		Vector2(15, 18), Vector2(7, 18), Vector2(4, 15), Vector2(4, 12),
+		Vector2(5.5, 12), Vector2(5.5, 10), Vector2(4, 10), Vector2(4, 7),
+	])
+	if tier == "rare":
+		var ring := PackedVector2Array([
+			Vector2(6, 1), Vector2(16, 1), Vector2(21, 6), Vector2(21, 16),
+			Vector2(16, 21), Vector2(6, 21), Vector2(1, 16), Vector2(1, 6), Vector2(6, 1),
+		])
+		badge.draw_polyline(ring, C_BLACK, 2.5, true)
+		badge.draw_polyline(ring, color, 1.1, true)
+	badge.draw_colored_polygon(shell, C_BLACK)
+	shell.append(shell[0])
+	badge.draw_polyline(shell, C_BLACK, 2.7, true)
+	badge.draw_polyline(shell, color, 1.25, true)
+	if tier != "common":
+		badge.draw_colored_polygon(PackedVector2Array([
+			Vector2(11, 7), Vector2(14, 11), Vector2(11, 15), Vector2(8, 11),
+		]), color)
 
 
 static func pack_badge_texture(card_name: String) -> Texture2D:
