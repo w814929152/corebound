@@ -42,7 +42,7 @@ GODOT="C:/Program Files (x86)/Steam/steamapps/common/Godot Engine/godot.windows.
 
 ## 当前状态（2026-11-12 快照，详见 handoff-2026-11-12-progress.md）
 
-- **2026-11-12 快照**：HEAD 与 `origin/master` 一致（收口后 `e8520b3` + 本轮三笔提交）；工作区无已跟踪改动，
+- **2026-11-12 快照**：HEAD `ef10ea9` 与 `origin/master` 一致（`e8520b3` 之后 4 笔：`1dea4c7` + 三笔收口）；工作区无已跟踪改动，
   只剩未跟踪试稿（`output/`、`art/_review`、`art/2d/sprites_ai_v3`、AI 工具、`.appdata`），按约定不入库。
   本轮实跑默认回归 **exit 0**、`world` **15/15 PASS**（新增 `run_save`）、`towersprites` **85/85 PASS**。
   ⚠️ 本机 SSH 22 端口被代理拦截（`kex_exchange_identification`），推送 / 拉取走 HTTPS：
@@ -103,4 +103,4 @@ GODOT="C:/Program Files (x86)/Steam/steamapps/common/Godot Engine/godot.windows.
 | 开局废料 | `scripts/engine/mvp_config.gd`（`PLAYER_STARTING_SCRAP`） |
 | 默认回归 + world | `tests/run_tests.gd`（`WORLD_GATES`） |
 | 塔身贴图产线 / 守卫 | `tools/gen_tower_sprites_v2.py`、`tests/lint_tower_sprites.gd` |
-| 最新功能交接 | `docs/phase6/handoff-2026-11-12-progress.md`（进度快照）；功能细节 `handoff-2026-11-11-card-spec.md`、`handoff-2026-11-10-gameplay.md`；旧文 `handoff-2026-11-09.md` 保留龙娘回执，勿覆盖 |
+| 最新功能交接 | `docs/phase6/handoff-2026-11-12-takeover.md`（收口批次）；进度快照 `handoff-2026-11-12-progress.md`；功能细节 `handoff-2026-11-11-card-spec.md`、`handoff-2026-11-10-gameplay.md`；旧文 `handoff-2026-11-09.md` 保留龙娘回执，勿覆盖 |
